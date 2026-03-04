@@ -20,11 +20,10 @@ pub struct ExecutionConfig {
 }
 
 impl RavenConfig {
-    pub fn load(path: &str) -> Result<Self, crate::error::PentestError > {
+    pub fn load(path: &str) -> Result<Self, crate::error::PentestError> {
         let content = std::fs::read_to_string(path)
             .map_err(|e| crate::error::PentestError::ConfigError(e.to_string()))?;
-        toml::from_str(&content)
-            .map_err(|e| crate::error::PentestError::ConfigError(e.to_string()))
+        toml::from_str(&content).map_err(|e| crate::error::PentestError::ConfigError(e.to_string()))
     }
 }
 

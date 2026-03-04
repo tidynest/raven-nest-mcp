@@ -19,24 +19,25 @@ pub fn validate_target(target: &str) -> Result<(), PentestError> {
     }
 
     // Rejects shell metacharacters
-    const BANNED: &[char] = &[';', '|', '&', '$', '`', '(', ')', '{', '}', '<', '>', '!','\n'];
+    const BANNED: &[char] = &[
+        ';', '|', '&', '$', '`', '(', ')', '{', '}', '<', '>', '!', '\n',
+    ];
     if let Some(c) = target.chars().find(|c| BANNED.contains(c)) {
-        return Err(PentestError::InvalidTarget(
-            format!("forbidden character: '{c}'"),
-        ));
+        return Err(PentestError::InvalidTarget(format!(
+            "forbidden character: '{c}'"
+        )));
     }
 
     // Try parsing as URL first - tools like nuclei/whatweb accept full URLs
     if let Ok(parsed) = url::Url::parse(target) {
         return match parsed.scheme() {
-            "http" | "https" => {
-                parsed.host_str()
-                    .ok_or_else(|| PentestError::InvalidTarget("URL has no host".into()))
-                    .map(|_| ())
-            }
-            scheme => Err(PentestError::InvalidTarget(
-                format!("unsupported scheme: '{scheme}' (only http/https allowed)"),
-            )),
+            "http" | "https" => parsed
+                .host_str()
+                .ok_or_else(|| PentestError::InvalidTarget("URL has no host".into()))
+                .map(|_| ()),
+            scheme => Err(PentestError::InvalidTarget(format!(
+                "unsupported scheme: '{scheme}' (only http/https allowed)"
+            ))),
         };
     }
 
@@ -47,8 +48,8 @@ pub fn validate_target(target: &str) -> Result<(), PentestError> {
 
     // Accept CIDR notation (e.g. 192.168.1.0/24)
     if let Some((ip_part, mask)) = target.split_once('/') {
-        let valid_cidr = ip_part.parse::<IpAddr>().is_ok()
-            && mask.parse::<u8>().is_ok_and(|bits| bits <= 128);
+        let valid_cidr =
+            ip_part.parse::<IpAddr>().is_ok() && mask.parse::<u8>().is_ok_and(|bits| bits <= 128);
         if valid_cidr {
             return Ok(());
         }

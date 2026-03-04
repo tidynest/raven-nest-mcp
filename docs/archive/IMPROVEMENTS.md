@@ -68,13 +68,15 @@ This document serves as the working backlog for fixes and enhancements.
 
 **Files changed:** `crates/raven-server/src/tools/findings.rs`, `crates/raven-server/src/server.rs`
 
-### 3.2 Findings Are Ephemeral — RESOLVED
+### 3.2 Findings Are Ephemeral — RESOLVED (updated by Phase 3.5)
 
 **Problem:** `FindingStore` had `save_to_file`/`load_from_file` methods but they were never called. All findings were lost on server exit.
 
-**Resolution:** Added `FindingStore::with_persistence(path)` constructor that loads existing findings from disk and enables auto-saving. `insert()` and `delete()` now automatically persist to `{output_dir}/findings.json`. The server constructor creates the output directory and initialises the store with persistence.
+**Resolution (Phase 1):** Added `FindingStore::with_persistence(path)` constructor with auto-saving to a single `findings.json`.
 
-**Files changed:** `crates/raven-report/src/store.rs`, `crates/raven-server/src/server.rs`
+**Resolution (Phase 3.5):** Replaced with file-per-finding architecture. Each finding is stored as `{output_dir}/findings/{id}.json`. In-memory index holds only lightweight metadata (`FindingMeta`). No hard cap — scales to tens of thousands. Legacy `findings.json` auto-migrated on first boot.
+
+**Files changed:** `crates/raven-report/src/finding.rs`, `crates/raven-report/src/store.rs`, `crates/raven-server/src/tools/findings.rs`, `crates/raven-server/src/server.rs`
 
 ---
 

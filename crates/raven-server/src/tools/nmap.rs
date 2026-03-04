@@ -1,5 +1,8 @@
 use raven_core::{config::RavenConfig, executor, safety};
-use rmcp::{model::{CallToolResult, Content}, schemars};
+use rmcp::{
+    model::{CallToolResult, Content},
+    schemars,
+};
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct NmapRequest {
@@ -15,8 +18,7 @@ pub async fn run(
     config: &RavenConfig,
     req: NmapRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
-    safety::validate_target(&req.target)
-        .map_err(crate::error::to_mcp)?;
+    safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
     // OS detection requires root privileges
     // SAFETY: geteuid is a trivial read-only syscall with no invariants
@@ -31,7 +33,7 @@ pub async fn run(
         Some("service") => vec!["-sV".into()],
         Some("os") => vec!["-O".into()],
         Some("vuln") => vec!["-sV".into(), "--script=vuln".into()],
-        _ => vec!["-T4".into(), "-F".into()],  // quick (default)
+        _ => vec!["-T4".into(), "-F".into()], // quick (default)
     };
 
     if let Some(ports) = req.ports {
@@ -42,14 +44,9 @@ pub async fn run(
     args.push(req.target);
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let result = executor::run(
-        config,
-        "nmap",
-        &arg_refs,
-        None,
-    )
-    .await
-    .map_err(crate::error::to_mcp)?;
+    let result = executor::run(config, "nmap", &arg_refs, None)
+        .await
+        .map_err(crate::error::to_mcp)?;
 
     let output = crate::error::format_result("nmap", &result);
     Ok(CallToolResult::success(vec![Content::text(output)]))

@@ -1,7 +1,7 @@
 pub mod findings;
 pub mod http;
-pub mod nmap;
 pub mod nikto;
+pub mod nmap;
 pub mod nuclei;
 pub mod ping;
 pub mod scans;

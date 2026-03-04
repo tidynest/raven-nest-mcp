@@ -1,7 +1,10 @@
 use raven_report::finding::{Finding, Severity};
 use raven_report::markdown;
 use raven_report::store::FindingStore;
-use rmcp::{model::{CallToolResult, Content}, schemars};
+use rmcp::{
+    model::{CallToolResult, Content},
+    schemars,
+};
 use std::sync::Mutex;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -53,42 +56,44 @@ pub fn save_finding(
     req: SaveFindingRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     let severity = parse_severity(&req.severity);
-    let mut finding = Finding::new(req.title, severity, req.description,
-                                   req.target, req.tool);
+    let mut finding = Finding::new(req.title, severity, req.description, req.target, req.tool);
     finding.evidence = req.evidence;
     finding.remediation = req.remediation;
     finding.cvss = req.cvss;
     finding.cve = req.cve;
 
-    let id = store.lock()
+    let id = store
+        .lock()
         .map_err(|_| rmcp::ErrorData::internal_error("store lock poisoned", None))?
-        .insert(finding);
+        .insert(finding)
+        .map_err(|e| rmcp::ErrorData::internal_error(e, None))?;
 
-    Ok(CallToolResult::success(vec![Content::text(
-        format!("Finding saved. ID: {id}"),
-    )]))
+    Ok(CallToolResult::success(vec![Content::text(format!(
+        "Finding saved. ID: {id}"
+    ))]))
 }
 
 pub fn get_finding(
     store: &Mutex<FindingStore>,
     req: FindingIdRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
-    let store = store.lock()
+    let store = store
+        .lock()
         .map_err(|_| rmcp::ErrorData::internal_error("store lock poisoned", None))?;
 
     let text = match store.get(&req.finding_id) {
-        Some(f) => serde_json::to_string_pretty(f)
-            .unwrap_or_else(|e| format!("serialisation error: {e}")),
+        Some(f) => {
+            serde_json::to_string_pretty(&f).unwrap_or_else(|e| format!("serialisation error: {e}"))
+        }
         None => "finding not found".into(),
     };
 
     Ok(CallToolResult::success(vec![Content::text(text)]))
 }
 
-pub fn list_findings(
-    store: &Mutex<FindingStore>,
-) -> Result<CallToolResult, rmcp::ErrorData> {
-    let store = store.lock()
+pub fn list_findings(store: &Mutex<FindingStore>) -> Result<CallToolResult, rmcp::ErrorData> {
+    let store = store
+        .lock()
         .map_err(|_| rmcp::ErrorData::internal_error("store lock poisoned", None))?;
 
     let findings = store.list();
@@ -96,22 +101,30 @@ pub fn list_findings(
         return Ok(CallToolResult::success(vec![Content::text("no findings")]));
     }
 
-    let lines: Vec<String> = findings.iter()
+    let lines: Vec<String> = findings
+        .iter()
         .map(|f| format!("{} | [{}] {}", f.id, f.severity, f.title))
         .collect();
 
-    Ok(CallToolResult::success(vec![Content::text(lines.join("\n"))]))
+    Ok(CallToolResult::success(vec![Content::text(
+        lines.join("\n"),
+    )]))
 }
 
 pub fn delete_finding(
     store: &Mutex<FindingStore>,
     req: FindingIdRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
-    let deleted = store.lock()
+    let deleted = store
+        .lock()
         .map_err(|_| rmcp::ErrorData::internal_error("store lock poisoned", None))?
         .delete(&req.finding_id);
 
-    let text = if deleted { "finding deleted" } else { "finding not found" };
+    let text = if deleted {
+        "finding deleted"
+    } else {
+        "finding not found"
+    };
     Ok(CallToolResult::success(vec![Content::text(text)]))
 }
 
@@ -120,12 +133,14 @@ pub fn generate_report(
     config: &raven_core::config::RavenConfig,
     req: GenerateReportRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
-    let store = store.lock()
+    let store = store
+        .lock()
         .map_err(|_| rmcp::ErrorData::internal_error("store lock poisoned", None))?;
 
-    let findings = store.list();
+    let all = store.load_all();
+    let refs: Vec<&raven_report::finding::Finding> = all.iter().collect();
     let title = req.title.as_deref().unwrap_or("Penetration Test Report");
-    let report = markdown::generate_report(&findings, title);
+    let report = markdown::generate_report(&refs, title);
 
     // Save to disk
     let date = chrono::Local::now().format("%Y-%m-%d_%H%M%S");

@@ -1,15 +1,13 @@
+use crate::tools::scans::{LaunchScanRequest, ScanIdRequest, ScanResultsRequest};
 use crate::tools::{
-    findings::{
-        FindingIdRequest, GenerateReportRequest, SaveFindingRequest,
-    },
+    findings::{FindingIdRequest, GenerateReportRequest, SaveFindingRequest},
     http::HttpRequest,
-    nmap::NmapRequest,
     nikto::NiktoRequest,
+    nmap::NmapRequest,
     nuclei::NucleiRequest,
     ping::PingRequest,
     whatweb::WhatwebRequest,
 };
-use crate::tools::scans::{LaunchScanRequest, ScanIdRequest, ScanResultsRequest};
 
 use rmcp::{
     ServerHandler,
@@ -31,11 +29,10 @@ impl RavenServer {
     pub fn new(config: raven_core::config::RavenConfig) -> Self {
         let scan_manager = raven_core::scan_manager::ScanManager::new(config.clone());
         let _ = std::fs::create_dir_all(&config.execution.output_dir);
-        let findings_path = std::path::PathBuf::from(&config.execution.output_dir)
-            .join("findings.json");
-        let finding_store = std::sync::Arc::new(
-            std::sync::Mutex::new(raven_report::store::FindingStore::with_persistence(findings_path)),
-        );
+        let findings_dir = std::path::PathBuf::from(&config.execution.output_dir).join("findings");
+        let finding_store = std::sync::Arc::new(std::sync::Mutex::new(
+            raven_report::store::FindingStore::new(findings_dir),
+        ));
 
         Self {
             config,
@@ -171,24 +168,23 @@ impl RavenServer {
 #[tool_handler]
 impl ServerHandler for RavenServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            instructions: Some(
-                "Raven Nest - pentesting toolkit.\n\n\
-                 Workflow:\n\
-                 1. Use ping_target to verify connectivity before scanning.\n\
-                 2. Use the dedicated tools (run_nmap, run_nuclei, run_nikto, run_whatweb) \
-                    instead of launch_scan.\n\
-                 3. Targets: bare hostnames or IPs for nmap/ping; full URLs accepted \
-                    by nuclei, nikto, and whatweb.\n\
-                 4. Start with less aggressive scans (stealthy/passive modes first).\n\
-                 5. Check scan output for empty results or rate-limit indicators \
-                    before saving findings.\n\
-                 6. Save findings with save_finding, then generate_report for the \
-                    final report."
-                    .into(),
-            ),
-            ..Default::default()
-        }
+        let mut info = ServerInfo::default();
+        info.capabilities = ServerCapabilities::builder().enable_tools().build();
+        info.instructions = Some(
+            "Raven Nest - pentesting toolkit.\n\n\
+             Workflow:\n\
+             1. Use ping_target to verify connectivity before scanning.\n\
+             2. Use the dedicated tools (run_nmap, run_nuclei, run_nikto, run_whatweb) \
+                instead of launch_scan.\n\
+             3. Targets: bare hostnames or IPs for nmap/ping; full URLs accepted \
+                by nuclei, nikto, and whatweb.\n\
+             4. Start with less aggressive scans (stealthy/passive modes first).\n\
+             5. Check scan output for empty results or rate-limit indicators \
+                before saving findings.\n\
+             6. Save findings with save_finding, then generate_report for the \
+                final report."
+                .into(),
+        );
+        info
     }
 }

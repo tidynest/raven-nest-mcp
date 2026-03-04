@@ -179,7 +179,10 @@ List all scans and their current status. No parameters.
 ### Findings and Reports
 
 #### `save_finding`
-Record a vulnerability finding. Findings are automatically persisted to `{output_dir}/findings.json` and restored on server restart.
+Record a vulnerability finding. Each finding is stored as an individual JSON file
+under `{output_dir}/findings/` and indexed in memory for fast listing. There is no
+hard cap on finding count — the store scales to tens of thousands of findings with
+bounded memory (only metadata is kept in RAM; full data lives on disk).
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -204,7 +207,7 @@ Retrieve full details of a finding as JSON.
 List all findings sorted by severity (Critical first). No parameters.
 
 #### `delete_finding`
-Remove a finding. The persistence file is updated automatically.
+Remove a finding. The individual file is deleted from disk and the index is updated.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|

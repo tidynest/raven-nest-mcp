@@ -61,3 +61,28 @@ impl Finding {
         }
     }
 }
+
+/// Lightweight metadata projection — keeps only index-worthy fields in memory.
+/// Full finding data (description, evidence, remediation) lives on disk.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FindingMeta {
+    pub id: String,
+    pub title: String,
+    pub severity: Severity,
+    pub target: String,
+    pub tool: String,
+    pub timestamp: DateTime<Utc>,
+}
+
+impl From<&Finding> for FindingMeta {
+    fn from(f: &Finding) -> Self {
+        Self {
+            id: f.id.clone(),
+            title: f.title.clone(),
+            severity: f.severity.clone(),
+            target: f.target.clone(),
+            tool: f.tool.clone(),
+            timestamp: f.timestamp,
+        }
+    }
+}

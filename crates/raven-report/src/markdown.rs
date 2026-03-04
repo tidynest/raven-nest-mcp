@@ -10,7 +10,11 @@ pub fn generate_report(findings: &[&Finding], title: &str) -> String {
         "| Severity | Count |\n|----------|-------|\n\
         | Critical | {} |\n| High | {} |\n| Medium | {} |\n| Low | {} |\n| Info | {} |\n\
         | **Total** | **{}** |\n\n",
-        counts.0, counts.1, counts.2, counts.3, counts.4,
+        counts.0,
+        counts.1,
+        counts.2,
+        counts.3,
+        counts.4,
         findings.len(),
     ));
 

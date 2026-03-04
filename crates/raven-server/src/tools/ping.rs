@@ -1,5 +1,8 @@
 use raven_core::{config::RavenConfig, safety};
-use rmcp::{model::{CallToolResult, Content}, schemars};
+use rmcp::{
+    model::{CallToolResult, Content},
+    schemars,
+};
 use tokio::process::Command;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -15,12 +18,10 @@ pub async fn run(
     req: PingRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     // Layer 1: allowlist
-    safety::check_allowlist("ping", &config.safety)
-        .map_err(crate::error::to_mcp)?;
+    safety::check_allowlist("ping", &config.safety).map_err(crate::error::to_mcp)?;
 
     // Layer 2: input validation
-    safety::validate_target(&req.target)
-        .map_err(crate::error::to_mcp)?;
+    safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
     let count = req.count.unwrap_or(4).clamp(1, 10);
 
@@ -33,12 +34,16 @@ pub async fn run(
             .output(),
     )
     .await
-    .map_err(|_| rmcp::ErrorData::new(
-        rmcp::model::ErrorCode::INTERNAL_ERROR, "ping timed out", None
-    ))?
-    .map_err(|e| rmcp::ErrorData::new(
-        rmcp::model::ErrorCode::INTERNAL_ERROR, e.to_string(), None
-    ))?;
+    .map_err(|_| {
+        rmcp::ErrorData::new(
+            rmcp::model::ErrorCode::INTERNAL_ERROR,
+            "ping timed out",
+            None,
+        )
+    })?
+    .map_err(|e| {
+        rmcp::ErrorData::new(rmcp::model::ErrorCode::INTERNAL_ERROR, e.to_string(), None)
+    })?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);

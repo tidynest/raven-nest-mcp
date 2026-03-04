@@ -1,5 +1,8 @@
 use raven_core::{config::RavenConfig, executor, safety};
-use rmcp::{model::{CallToolResult, Content}, schemars};
+use rmcp::{
+    model::{CallToolResult, Content},
+    schemars,
+};
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct NucleiRequest {
@@ -15,8 +18,7 @@ pub async fn run(
     config: &RavenConfig,
     req: NucleiRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
-    safety::validate_target(&req.target)
-        .map_err(crate::error::to_mcp)?;
+    safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
     let mut args = vec!["-u".to_string(), req.target, "-jsonl".to_string()];
 
