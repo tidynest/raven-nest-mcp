@@ -57,18 +57,31 @@ pub fn validate_target(target: &str) -> Result<(), PentestError> {
         }
     }
 
-    // Accept hostnames: alphanumeric, hyphens, dots, max 253 chars
-    if target.len() <= 253
-        && target
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')
-        && !target.starts_with('-')
-        && !target.ends_with('-')
+    // Accept host:port (e.g. "example.com:443") — split on last colon,
+    // validate host as hostname and port as u16
+    if let Some((host, port_str)) = target.rsplit_once(':')
+        && !host.is_empty()
+        && port_str.parse::<u16>().is_ok()
     {
-        return Ok(());
+        return validate_hostname(host);
     }
 
-    Err(PentestError::InvalidTarget(target.to_string()))
+    // Accept bare hostnames
+    validate_hostname(target)
+}
+
+fn validate_hostname(host: &str) -> Result<(), PentestError> {
+    if host.len() <= 253
+        && host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')
+        && !host.starts_with('-')
+        && !host.ends_with('-')
+    {
+        Ok(())
+    } else {
+        Err(PentestError::InvalidTarget(host.to_string()))
+    }
 }
 
 /// Truncate long output, preserving the first 70% and last 30%.
@@ -213,6 +226,20 @@ mod tests {
     #[test]
     fn target_rejects_unsupported_scheme() {
         assert!(validate_target("ftp://files.example.com").is_err());
+    }
+
+    // --- validate_target: host:port ---
+
+    #[test]
+    fn target_accepts_host_port() {
+        assert!(validate_target("example.com:443").is_ok());
+        assert!(validate_target("scan.example.com:8080").is_ok());
+    }
+
+    #[test]
+    fn target_rejects_invalid_host_port() {
+        assert!(validate_target(":443").is_err()); // empty host
+        assert!(validate_target("example.com:99999").is_err()); // port > u16
     }
 
     // --- truncate_output ---

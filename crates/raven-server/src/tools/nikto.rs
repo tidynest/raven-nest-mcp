@@ -20,13 +20,16 @@ pub async fn run(
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
+    let is_url = req.target.starts_with("http://") || req.target.starts_with("https://");
     let mut args = vec!["-h".to_string(), req.target, "-nocheck".into()];
 
-    let port = req.port.unwrap_or(80);
-    args.extend(["-p".into(), port.to_string()]);
-
-    if port == 443 {
-        args.push("-ssl".into());
+    // nikto v2.6+ rejects -p alongside a full URI — only add it for bare hostnames
+    if !is_url {
+        let port = req.port.unwrap_or(80);
+        args.extend(["-p".into(), port.to_string()]);
+        if port == 443 {
+            args.push("-ssl".into());
+        }
     }
 
     match req.tuning.as_deref() {

@@ -17,10 +17,21 @@ Install the scanning tools you want to use. All are optional — the server
 starts regardless, but tool calls will fail if the binary isn't installed.
 
 ```bash
-paru -S nmap nuclei nikto whatweb
+# Core tools (official repos)
+sudo pacman -S nmap nikto whatweb testssl.sh sqlmap hydra masscan
+
+# AUR tools
+yay -S feroxbuster-bin ffuf-bin
+
+# Installed via Go/GitHub releases
+nuclei   # see https://github.com/projectdiscovery/nuclei
 ```
 
 `ping` is available by default on all Linux systems.
+
+Note: The Arch `testssl.sh` package installs the binary as `testssl`. If
+the tool config references `testssl.sh`, create a symlink:
+`sudo ln -s /usr/bin/testssl /usr/bin/testssl.sh`
 
 ## Connecting to Claude Code
 
@@ -47,24 +58,49 @@ Edit `config/default.toml` to customise behaviour:
 
 ```toml
 [safety]
-allowed_tools = ["ping", "nmap", "nuclei", "nikto", "whatweb"]
+allowed_tools = [
+    "ping", "nmap", "nuclei", "nikto", "whatweb",
+    "testssl.sh", "feroxbuster", "ffuf",
+    "sqlmap", "hydra", "masscan",
+]
 max_output_chars = 50000
 
+# Safety limits for dangerous tools (prevents LLM escalation)
+# sqlmap_max_level = 2    # 1-5, default 2
+# sqlmap_max_risk = 1     # 1-3, default 1
+# hydra_max_tasks = 4     # parallel tasks, default 4
+# masscan_max_rate = 1000 # packets/sec, default 1000
+
+# Optional: custom binary paths for tools not on $PATH
+# [safety.tool_paths]
+# nmap = "/opt/nmap-dev/bin/nmap"
+
 [execution]
-default_timeout_secs = 300
+default_timeout_secs = 600
 max_concurrent_scans = 3
 output_dir = "/tmp/raven-nest"
+
+# Optional: per-tool timeout overrides (seconds)
+# [execution.timeouts]
+# nmap = 900
+# nuclei = 1200
 ```
 
 | Key | Purpose |
 |-----|---------|
 | `allowed_tools` | Allowlisted binaries. Tool calls for unlisted binaries are rejected. |
-| `max_output_chars` | Truncation limit for tool output (keeps first 70%, last 30%). |
+| `max_output_chars` | Truncation limit for tool output (keeps first 70%, last 30%). Uses char boundaries for UTF-8 safety. |
 | `default_timeout_secs` | Kill subprocess after this many seconds. |
 | `max_concurrent_scans` | Max background scans running simultaneously. |
 | `output_dir` | Directory for reports, findings persistence, and scan output. Created automatically on startup. |
+| `sqlmap_max_level` | Caps sqlmap `--level` to prevent LLM from escalating aggressiveness. |
+| `sqlmap_max_risk` | Caps sqlmap `--risk` similarly. |
+| `hydra_max_tasks` | Max parallel threads for hydra brute-forcing. |
+| `masscan_max_rate` | Max packets/sec for masscan. |
+| `tool_paths` | Custom binary paths for tools not on `$PATH`. |
+| `execution.timeouts` | Per-tool timeout overrides in seconds. |
 
-If the config file is missing or invalid, built-in defaults are used.
+Config resolution: `RAVEN_CONFIG` env var → exe-relative → CWD → built-in defaults.
 
 ## Tools Reference
 
@@ -101,6 +137,15 @@ Identify web technologies (CMS, frameworks, server software).
 | `target` | yes | URL or hostname |
 | `aggression` | no | `stealthy` (default), `passive`, `aggressive` |
 
+#### `run_masscan`
+High-speed port scanning. **Requires root** — returns an error if not running as root.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `target` | yes | IP, hostname, or CIDR range |
+| `ports` | no | Port spec (e.g. `80,443` or `0-65535`) |
+| `rate` | no | Packets/sec (clamped to `masscan_max_rate` config, default 1000) |
+
 ### Vulnerability Scanning
 
 #### `run_nuclei`
@@ -120,6 +165,68 @@ Web server misconfiguration scanner.
 | `target` | yes | Hostname or URL |
 | `port` | no | Port number (default 80) |
 | `tuning` | no | `quick` (default), `thorough`, `injection`, `fileupload` |
+| `timeout_secs` | no | Override default timeout |
+
+### Web Fuzzing & Discovery
+
+#### `run_feroxbuster`
+Directory brute-forcing / content discovery.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `target` | yes | URL |
+| `wordlist` | no | Path to wordlist (default: raft-medium-directories.txt) |
+| `extensions` | no | File extensions to check (e.g. `php,html,js`) |
+| `threads` | no | Concurrent threads (max 200) |
+| `status_codes` | no | Status codes to include (e.g. `200,301,403`) |
+
+#### `run_ffuf`
+Web fuzzing with FUZZ keyword.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `target` | yes | URL containing `FUZZ` keyword (e.g. `https://example.com/FUZZ`) |
+| `wordlist` | no | Path to wordlist |
+| `method` | no | HTTP method (default `GET`) |
+| `headers` | no | Custom headers |
+| `match_codes` | no | Match HTTP status codes |
+| `filter_codes` | no | Filter out HTTP status codes |
+
+### Exploitation
+
+#### `run_sqlmap`
+SQL injection testing. Always runs in `--batch` mode (non-interactive).
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `target` | yes | URL with injectable parameter |
+| `data` | no | POST data |
+| `cookie` | no | Cookie header value |
+| `level` | no | Test level 1-5 (clamped to `sqlmap_max_level` config) |
+| `risk` | no | Risk level 1-3 (clamped to `sqlmap_max_risk` config) |
+| `technique` | no | SQLi technique (e.g. `BEUSTQ`) |
+
+#### `run_hydra`
+Authentication brute-forcing.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `target` | yes | Target host |
+| `service` | yes | Service to attack (e.g. `ssh`, `ftp`, `http-post-form`) |
+| `userlist` | no | Path to username list |
+| `passlist` | no | Path to password list |
+| `tasks` | no | Parallel tasks (clamped to `hydra_max_tasks` config) |
+
+### TLS / SSL
+
+#### `run_testssl`
+SSL/TLS configuration audit.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `target` | yes | Hostname, host:port, or URL |
+| `severity` | no | Minimum severity to report |
+| `quick` | no | Quick mode (`--quiet --sneaky`, fewer checks) |
 
 ### HTTP Testing
 

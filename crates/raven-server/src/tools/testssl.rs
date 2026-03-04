@@ -6,7 +6,7 @@ use rmcp::{
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct TestsslRequest {
-    #[schemars(description = "Target host:port (e.g. 'example.com:443')")]
+    #[schemars(description = "Target hostname, host:port, or URL")]
     pub target: String,
     #[schemars(description = "Run in fast mode (fewer checks)")]
     pub quick: Option<bool>,
@@ -20,10 +20,14 @@ pub async fn run(
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
-    let mut args = vec!["--jsonfile".to_string(), "-".into()];
+    let mut args = Vec::new();
 
     if req.quick.unwrap_or(false) {
-        args.push("--fast".into());
+        // --fast is deprecated in testssl.sh 3.2+; use individual skips instead
+        args.extend([
+            "--quiet".to_string(),
+            "--sneaky".into(),
+        ]);
     }
 
     if let Some(ref sev) = req.severity {
