@@ -1,0 +1,24 @@
+[package]
+name = "raven-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "raven-server"
+path = "src/main.rs"
+
+[dependencies]
+raven-core = { workspace = true }
+raven-report = { workspace = true }
+rmcp = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+reqwest = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+libc = { workspace = true }

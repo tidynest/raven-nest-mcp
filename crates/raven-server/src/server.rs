@@ -1,0 +1,194 @@
+use crate::tools::{
+    findings::{
+        FindingIdRequest, GenerateReportRequest, SaveFindingRequest,
+    },
+    http::HttpRequest,
+    nmap::NmapRequest,
+    nikto::NiktoRequest,
+    nuclei::NucleiRequest,
+    ping::PingRequest,
+    whatweb::WhatwebRequest,
+};
+use crate::tools::scans::{LaunchScanRequest, ScanIdRequest, ScanResultsRequest};
+
+use rmcp::{
+    ServerHandler,
+    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
+    model::{CallToolResult, ServerCapabilities, ServerInfo},
+    tool, tool_handler, tool_router,
+};
+
+#[derive(Clone)]
+pub struct RavenServer {
+    config: raven_core::config::RavenConfig,
+    tool_router: ToolRouter<Self>,
+    pub scan_manager: raven_core::scan_manager::ScanManager,
+    finding_store: std::sync::Arc<std::sync::Mutex<raven_report::store::FindingStore>>,
+}
+
+#[tool_router]
+impl RavenServer {
+    pub fn new(config: raven_core::config::RavenConfig) -> Self {
+        let scan_manager = raven_core::scan_manager::ScanManager::new(config.clone());
+        let _ = std::fs::create_dir_all(&config.execution.output_dir);
+        let findings_path = std::path::PathBuf::from(&config.execution.output_dir)
+            .join("findings.json");
+        let finding_store = std::sync::Arc::new(
+            std::sync::Mutex::new(raven_report::store::FindingStore::with_persistence(findings_path)),
+        );
+
+        Self {
+            config,
+            scan_manager,
+            tool_router: Self::tool_router(),
+            finding_store,
+        }
+    }
+
+    #[tool(description = "Ping a target to verify connectivity and measure latency")]
+    async fn ping_target(
+        &self,
+        Parameters(req): Parameters<PingRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::ping::run(&self.config, req).await
+    }
+
+    #[tool(description = "Run an nmap scan with preset configurations")]
+    async fn run_nmap(
+        &self,
+        Parameters(req): Parameters<NmapRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::nmap::run(&self.config, req).await
+    }
+
+    #[tool(description = "Run nuclei template-based vulnerability scanner")]
+    async fn run_nuclei(
+        &self,
+        Parameters(req): Parameters<NucleiRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::nuclei::run(&self.config, req).await
+    }
+
+    #[tool(description = "Run nikto web server scanner")]
+    async fn run_nikto(
+        &self,
+        Parameters(req): Parameters<NiktoRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::nikto::run(&self.config, req).await
+    }
+
+    #[tool(description = "Run whatweb to identify web technologies")]
+    async fn run_whatweb(
+        &self,
+        Parameters(req): Parameters<WhatwebRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::whatweb::run(&self.config, req).await
+    }
+
+    #[tool(description = "Send a crafted HTTP request for manual endpoint testing")]
+    async fn http_request(
+        &self,
+        Parameters(req): Parameters<HttpRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::http::run(req).await
+    }
+
+    #[tool(description = "Launch a background scan (returns scan ID immediately)")]
+    fn launch_scan(
+        &self,
+        Parameters(req): Parameters<LaunchScanRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::scans::launch(&self.scan_manager, req)
+    }
+
+    #[tool(description = "Check the status of a background scan")]
+    fn get_scan_status(
+        &self,
+        Parameters(req): Parameters<ScanIdRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::scans::status(&self.scan_manager, req)
+    }
+
+    #[tool(description = "Get results from a completed scan (supports pagination)")]
+    fn get_scan_results(
+        &self,
+        Parameters(req): Parameters<ScanResultsRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::scans::results(&self.scan_manager, req)
+    }
+
+    #[tool(description = "Cancel a running scan")]
+    fn cancel_scan(
+        &self,
+        Parameters(req): Parameters<ScanIdRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::scans::cancel(&self.scan_manager, req)
+    }
+
+    #[tool(description = "List all scans and their status")]
+    fn list_scans(&self) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::scans::list_scans(&self.scan_manager)
+    }
+
+    #[tool(description = "Save a vulnerability finding")]
+    fn save_finding(
+        &self,
+        Parameters(req): Parameters<SaveFindingRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::findings::save_finding(&self.finding_store, req)
+    }
+
+    #[tool(description = "Get details of a specific finding")]
+    fn get_finding(
+        &self,
+        Parameters(req): Parameters<FindingIdRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::findings::get_finding(&self.finding_store, req)
+    }
+
+    #[tool(description = "List all findings sorted by severity")]
+    fn list_findings(&self) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::findings::list_findings(&self.finding_store)
+    }
+
+    #[tool(description = "Delete a finding by ID")]
+    fn delete_finding(
+        &self,
+        Parameters(req): Parameters<FindingIdRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::findings::delete_finding(&self.finding_store, req)
+    }
+
+    #[tool(description = "Generate a markdown pentest report from all findings")]
+    fn generate_report(
+        &self,
+        Parameters(req): Parameters<GenerateReportRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::findings::generate_report(&self.finding_store, &self.config, req)
+    }
+}
+
+#[tool_handler]
+impl ServerHandler for RavenServer {
+    fn get_info(&self) -> ServerInfo {
+        ServerInfo {
+            capabilities: ServerCapabilities::builder().enable_tools().build(),
+            instructions: Some(
+                "Raven Nest - pentesting toolkit.\n\n\
+                 Workflow:\n\
+                 1. Use ping_target to verify connectivity before scanning.\n\
+                 2. Use the dedicated tools (run_nmap, run_nuclei, run_nikto, run_whatweb) \
+                    instead of launch_scan.\n\
+                 3. Targets: bare hostnames or IPs for nmap/ping; full URLs accepted \
+                    by nuclei, nikto, and whatweb.\n\
+                 4. Start with less aggressive scans (stealthy/passive modes first).\n\
+                 5. Check scan output for empty results or rate-limit indicators \
+                    before saving findings.\n\
+                 6. Save findings with save_finding, then generate_report for the \
+                    final report."
+                    .into(),
+            ),
+            ..Default::default()
+        }
+    }
+}

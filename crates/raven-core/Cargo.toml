@@ -1,0 +1,16 @@
+[package]
+name = "raven-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tokio = { workspace = true }
+chrono = { workspace = true }
+url = { workspace = true }
+uuid = { workspace = true }

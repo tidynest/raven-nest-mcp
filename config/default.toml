@@ -1,0 +1,8 @@
+[safety]
+allowed_tools = ["ping", "nmap", "nuclei", "nikto", "whatweb"]
+max_output_chars = 50000
+
+[execution]
+default_timeout_secs = 600
+max_concurrent_scans = 3
+output_dir = "/tmp/raven-nest"
