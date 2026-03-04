@@ -27,7 +27,7 @@ struct ScanEntry {
 #[derive(Clone)]
 pub struct ScanManager {
     scans: Arc<Mutex<HashMap<String, ScanEntry>>>,
-    config: RavenConfig,
+    config: Arc<RavenConfig>,
     max_concurrent: usize,
 }
 
@@ -40,7 +40,7 @@ impl ScanManager {
             .map_err(|_| PentestError::CommandFailed("scan state lock poisoned".into()))
     }
 
-    pub fn new(config: RavenConfig) -> Self {
+    pub fn new(config: Arc<RavenConfig>) -> Self {
         let max_concurrent = config.execution.max_concurrent_scans;
         Self {
             scans: Arc::new(Mutex::new(HashMap::new())),
@@ -59,7 +59,7 @@ impl ScanManager {
         crate::safety::check_allowlist(tool, &self.config.safety)?;
         crate::safety::validate_target(target)?;
 
-        let scans = self.scans.lock().unwrap();
+        let scans = self.lock_scans()?;
         let running = scans
             .values()
             .filter(|s| s.status == ScanStatus::Running)
@@ -84,7 +84,13 @@ impl ScanManager {
             let arg_refs: Vec<&str> = arg_strings.iter().map(|s| s.as_str()).collect();
             let result = executor::run(&config, &tool_owned, &arg_refs, timeout_secs).await;
 
-            let mut scans = scans_for_task.lock().expect("scan state lock poisoned");
+            let mut scans = match scans_for_task.lock() {
+                Ok(guard) => guard,
+                Err(_) => {
+                    tracing::error!("scan state lock poisoned — scan {scan_id} result lost");
+                    return;
+                }
+            };
             if let Some(entry) = scans.get_mut(&scan_id) {
                 if entry.status == ScanStatus::Cancelled {
                     return;
@@ -105,7 +111,7 @@ impl ScanManager {
             }
         });
 
-        let mut scans = self.scans.lock().unwrap();
+        let mut scans = self.lock_scans()?;
         scans.insert(
             id.clone(),
             ScanEntry {
@@ -147,7 +153,7 @@ impl ScanManager {
     }
 
     pub fn cancel(&self, id: &str) -> Result<(), PentestError> {
-        let mut scans = self.scans.lock().unwrap();
+        let mut scans = self.lock_scans()?;
         let entry = scans
             .get_mut(id)
             .ok_or_else(|| PentestError::CommandFailed(format!("scan {id} not found")))?;

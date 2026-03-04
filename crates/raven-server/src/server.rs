@@ -1,11 +1,17 @@
 use crate::tools::scans::{LaunchScanRequest, ScanIdRequest, ScanResultsRequest};
 use crate::tools::{
+    feroxbuster::FeroxbusterRequest,
+    ffuf::FfufRequest,
     findings::{FindingIdRequest, GenerateReportRequest, SaveFindingRequest},
     http::HttpRequest,
+    hydra::HydraRequest,
+    masscan::MasscanRequest,
     nikto::NiktoRequest,
     nmap::NmapRequest,
     nuclei::NucleiRequest,
     ping::PingRequest,
+    sqlmap::SqlmapRequest,
+    testssl::TestsslRequest,
     whatweb::WhatwebRequest,
 };
 
@@ -18,19 +24,21 @@ use rmcp::{
 
 #[derive(Clone)]
 pub struct RavenServer {
-    config: raven_core::config::RavenConfig,
+    config: std::sync::Arc<raven_core::config::RavenConfig>,
     tool_router: ToolRouter<Self>,
     pub scan_manager: raven_core::scan_manager::ScanManager,
-    finding_store: std::sync::Arc<std::sync::Mutex<raven_report::store::FindingStore>>,
+    finding_store: std::sync::Arc<std::sync::RwLock<raven_report::store::FindingStore>>,
 }
 
 #[tool_router]
 impl RavenServer {
     pub fn new(config: raven_core::config::RavenConfig) -> Self {
-        let scan_manager = raven_core::scan_manager::ScanManager::new(config.clone());
+        let config = std::sync::Arc::new(config);
+        let scan_manager =
+            raven_core::scan_manager::ScanManager::new(std::sync::Arc::clone(&config));
         let _ = std::fs::create_dir_all(&config.execution.output_dir);
         let findings_dir = std::path::PathBuf::from(&config.execution.output_dir).join("findings");
-        let finding_store = std::sync::Arc::new(std::sync::Mutex::new(
+        let finding_store = std::sync::Arc::new(std::sync::RwLock::new(
             raven_report::store::FindingStore::new(findings_dir),
         ));
 
@@ -80,6 +88,54 @@ impl RavenServer {
         Parameters(req): Parameters<WhatwebRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         crate::tools::whatweb::run(&self.config, req).await
+    }
+
+    #[tool(description = "Run testssl.sh for SSL/TLS configuration auditing")]
+    async fn run_testssl(
+        &self,
+        Parameters(req): Parameters<TestsslRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::testssl::run(&self.config, req).await
+    }
+
+    #[tool(description = "Run feroxbuster for directory and content discovery")]
+    async fn run_feroxbuster(
+        &self,
+        Parameters(req): Parameters<FeroxbusterRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::feroxbuster::run(&self.config, req).await
+    }
+
+    #[tool(description = "Run ffuf for web fuzzing with FUZZ keyword substitution")]
+    async fn run_ffuf(
+        &self,
+        Parameters(req): Parameters<FfufRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::ffuf::run(&self.config, req).await
+    }
+
+    #[tool(description = "Run sqlmap for SQL injection detection and exploitation")]
+    async fn run_sqlmap(
+        &self,
+        Parameters(req): Parameters<SqlmapRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::sqlmap::run(&self.config, req).await
+    }
+
+    #[tool(description = "Run hydra for network authentication brute-forcing")]
+    async fn run_hydra(
+        &self,
+        Parameters(req): Parameters<HydraRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::hydra::run(&self.config, req).await
+    }
+
+    #[tool(description = "Run masscan for high-speed port scanning (requires root)")]
+    async fn run_masscan(
+        &self,
+        Parameters(req): Parameters<MasscanRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        crate::tools::masscan::run(&self.config, req).await
     }
 
     #[tool(description = "Send a crafted HTTP request for manual endpoint testing")]
@@ -174,10 +230,13 @@ impl ServerHandler for RavenServer {
             "Raven Nest - pentesting toolkit.\n\n\
              Workflow:\n\
              1. Use ping_target to verify connectivity before scanning.\n\
-             2. Use the dedicated tools (run_nmap, run_nuclei, run_nikto, run_whatweb) \
-                instead of launch_scan.\n\
-             3. Targets: bare hostnames or IPs for nmap/ping; full URLs accepted \
-                by nuclei, nikto, and whatweb.\n\
+             2. Use dedicated tools instead of launch_scan:\n\
+                - Recon: run_nmap, run_masscan (root), run_whatweb\n\
+                - Web: run_nuclei, run_nikto, run_feroxbuster, run_ffuf\n\
+                - Exploitation: run_sqlmap, run_hydra\n\
+                - TLS: run_testssl\n\
+             3. Targets: bare hostnames/IPs for nmap/ping/masscan; full URLs \
+                for nuclei, nikto, whatweb, feroxbuster, ffuf, sqlmap.\n\
              4. Start with less aggressive scans (stealthy/passive modes first).\n\
              5. Check scan output for empty results or rate-limit indicators \
                 before saving findings.\n\

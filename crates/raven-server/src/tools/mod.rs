@@ -1,8 +1,14 @@
+pub mod feroxbuster;
+pub mod ffuf;
 pub mod findings;
 pub mod http;
+pub mod hydra;
+pub mod masscan;
 pub mod nikto;
 pub mod nmap;
 pub mod nuclei;
 pub mod ping;
 pub mod scans;
+pub mod sqlmap;
+pub mod testssl;
 pub mod whatweb;

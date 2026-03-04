@@ -1,0 +1,74 @@
+use raven_core::{config::RavenConfig, executor, safety};
+use rmcp::{
+    model::{CallToolResult, Content},
+    schemars,
+};
+
+const DEFAULT_WORDLIST: &str = "/usr/share/seclists/Discovery/Web-Content/raft-medium-words.txt";
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct FfufRequest {
+    #[schemars(description = "Target URL with FUZZ keyword (e.g. 'http://example.com/FUZZ')")]
+    pub url: String,
+    #[schemars(description = "Path to wordlist file")]
+    pub wordlist: Option<String>,
+    #[schemars(description = "HTTP method (default GET)")]
+    pub method: Option<String>,
+    #[schemars(description = "Custom headers as 'Name: Value' (repeatable, comma-separated)")]
+    pub headers: Option<String>,
+    #[schemars(description = "Match HTTP status codes (e.g. '200,301,302')")]
+    pub match_codes: Option<String>,
+    #[schemars(description = "Filter responses by size (bytes)")]
+    pub filter_size: Option<String>,
+}
+
+pub async fn run(
+    config: &RavenConfig,
+    req: FfufRequest,
+) -> Result<CallToolResult, rmcp::ErrorData> {
+    // Validate the base URL (strip the FUZZ keyword for validation)
+    let validation_url = req.url.replace("FUZZ", "test");
+    safety::validate_target(&validation_url).map_err(crate::error::to_mcp)?;
+
+    if !req.url.contains("FUZZ") {
+        return Err(rmcp::ErrorData::invalid_params(
+            "URL must contain the FUZZ keyword (e.g. http://example.com/FUZZ)",
+            None,
+        ));
+    }
+
+    let wordlist = req.wordlist.as_deref().unwrap_or(DEFAULT_WORDLIST);
+    let mut args = vec![
+        "-u".to_string(),
+        req.url,
+        "-w".into(),
+        wordlist.into(),
+        "-noninteractive".into(),
+    ];
+
+    if let Some(ref method) = req.method {
+        args.extend(["-X".into(), method.to_uppercase()]);
+    }
+
+    if let Some(ref headers) = req.headers {
+        for header in headers.split(',') {
+            args.extend(["-H".into(), header.trim().to_string()]);
+        }
+    }
+
+    if let Some(ref codes) = req.match_codes {
+        args.extend(["-mc".into(), codes.clone()]);
+    }
+
+    if let Some(ref size) = req.filter_size {
+        args.extend(["-fs".into(), size.clone()]);
+    }
+
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    let result = executor::run(config, "ffuf", &arg_refs, None)
+        .await
+        .map_err(crate::error::to_mcp)?;
+
+    let output = crate::error::format_result("ffuf", &result);
+    Ok(CallToolResult::success(vec![Content::text(output)]))
+}

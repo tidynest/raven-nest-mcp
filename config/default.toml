@@ -1,8 +1,28 @@
 [safety]
-allowed_tools = ["ping", "nmap", "nuclei", "nikto", "whatweb"]
+allowed_tools = [
+    "ping", "nmap", "nuclei", "nikto", "whatweb",
+    "testssl.sh", "feroxbuster", "ffuf",
+    "sqlmap", "hydra", "masscan",
+]
 max_output_chars = 50000
+
+# Safety limits for dangerous tools (prevents LLM escalation)
+# sqlmap_max_level = 2    # 1-5, default 2
+# sqlmap_max_risk = 1     # 1-3, default 1
+# hydra_max_tasks = 4     # parallel tasks, default 4
+# masscan_max_rate = 1000 # packets/sec, default 1000
+
+# Optional: custom binary paths for tools not on $PATH
+# [safety.tool_paths]
+# nmap = "/opt/nmap-dev/bin/nmap"
+# nuclei = "/home/user/.local/bin/nuclei"
 
 [execution]
 default_timeout_secs = 600
 max_concurrent_scans = 3
 output_dir = "/tmp/raven-nest"
+
+# Optional: per-tool timeout overrides (seconds)
+# [execution.timeouts]
+# nmap = 900
+# nuclei = 1200

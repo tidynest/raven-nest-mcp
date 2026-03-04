@@ -2,11 +2,6 @@ use anyhow::Result;
 use rmcp::{ServiceExt, transport::stdio};
 use tracing_subscriber::{self, EnvFilter};
 
-mod tools;
-
-mod error;
-pub mod server;
-
 #[tokio::main]
 async fn main() -> Result<()> {
     tracing_subscriber::fmt()
@@ -17,12 +12,9 @@ async fn main() -> Result<()> {
 
     tracing::info!("Raven Nest MCP server starting");
 
-    let config = raven_core::config::RavenConfig::load("config/default.toml").unwrap_or_else(|e| {
-        tracing::warn!("config load failed: ({e}), using defaults");
-        raven_core::config::RavenConfig::default()
-    });
+    let config = raven_core::config::RavenConfig::load_with_fallback();
 
-    let service = server::RavenServer::new(config);
+    let service = raven_server::server::RavenServer::new(config);
 
     service.serve(stdio()).await?.waiting().await?;
 

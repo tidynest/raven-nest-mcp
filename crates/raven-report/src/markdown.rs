@@ -61,65 +61,96 @@ fn count_by_severity(findings: &[&Finding]) -> (usize, usize, usize, usize, usiz
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::finding::Finding;
 
-    fn make_finding(title: &str, severity: Severity) -> Finding {
+    fn make(title: &str, sev: Severity) -> Finding {
         Finding::new(
             title.into(),
-            severity,
-            "Test description".into(),
-            "192.168.1.1".into(),
+            sev,
+            format!("Description of {title}"),
+            "10.0.0.1".into(),
             "nmap".into(),
         )
     }
 
-    #[test]
-    fn empty_findings_produces_header_only() {
-        let report = generate_report(&[], "Test Report");
-        assert!(report.contains("# Test Report"));
-        assert!(report.contains("| **Total** | **0** |"));
-    }
-
-    #[test]
-    fn single_finding_includes_all_fields() {
-        let mut f = make_finding("SQL Injection", Severity::Critical);
+    fn make_full() -> Finding {
+        let mut f = make("RCE via deserialization", Severity::Critical);
         f.cvss = Some(9.8);
         f.cve = Some("CVE-2024-1234".into());
-        f.evidence = Some("error-based SQL".into());
-        f.remediation = Some("Use parameterized queries".into());
-
-        let report = generate_report(&[&f], "Report");
-        assert!(report.contains("CVSS:"));
-        assert!(report.contains("CVE-2024-1234"));
-        assert!(report.contains("error-based SQL"));
-        assert!(report.contains("Use parameterized queries"));
+        f.evidence = Some("HTTP/1.1 500 Internal Server Error\njava.io.ObjectInputStream".into());
+        f.remediation = Some("Upgrade to patched version".into());
+        f
     }
 
     #[test]
-    fn severity_count_table_correct() {
-        let f1 = make_finding("A", Severity::Critical);
-        let f2 = make_finding("B", Severity::Critical);
-        let f3 = make_finding("C", Severity::High);
-        let report = generate_report(&[&f1, &f2, &f3], "Report");
-        assert!(report.contains("| Critical | 2 |"));
+    fn report_contains_title_and_summary_table() {
+        let f = make("XSS", Severity::High);
+        let findings = vec![&f];
+        let report = generate_report(&findings, "Test Report");
+        assert!(report.starts_with("# Test Report"));
+        assert!(report.contains("Executive Summary"));
         assert!(report.contains("| High | 1 |"));
+        assert!(report.contains("| **Total** | **1** |"));
     }
 
     #[test]
-    fn findings_numbered_sequentially() {
-        let f1 = make_finding("A", Severity::Low);
-        let f2 = make_finding("B", Severity::Low);
-        let f3 = make_finding("C", Severity::Low);
-        let report = generate_report(&[&f1, &f2, &f3], "Report");
-        assert!(report.contains("### 1."));
-        assert!(report.contains("### 2."));
-        assert!(report.contains("### 3."));
+    fn report_severity_counts_are_correct() {
+        let c = make("RCE", Severity::Critical);
+        let h = make("SQLi", Severity::High);
+        let m = make("CSRF", Severity::Medium);
+        let l = make("Cookie", Severity::Low);
+        let i = make("Info", Severity::Info);
+        let findings = vec![&c, &h, &h, &m, &l, &i];
+        let report = generate_report(&findings, "Counts");
+        assert!(report.contains("| Critical | 1 |"));
+        assert!(report.contains("| High | 2 |"));
+        assert!(report.contains("| Medium | 1 |"));
+        assert!(report.contains("| Low | 1 |"));
+        assert!(report.contains("| Info | 1 |"));
+        assert!(report.contains("| **Total** | **6** |"));
     }
 
     #[test]
-    fn optional_fields_omitted_when_none() {
-        let f = make_finding("XSS", Severity::Medium);
-        let report = generate_report(&[&f], "Report");
-        assert!(!report.contains("CVSS:"));
+    fn report_includes_optional_fields() {
+        let f = make_full();
+        let findings = vec![&f];
+        let report = generate_report(&findings, "Full");
+        assert!(report.contains("CVE-2024-1234"));
+        assert!(report.contains("9.8"));
+        assert!(report.contains("ObjectInputStream"));
+        assert!(report.contains("Upgrade to patched version"));
+    }
+
+    #[test]
+    fn report_omits_absent_optional_fields() {
+        let f = make("Basic", Severity::Low);
+        let findings = vec![&f];
+        let report = generate_report(&findings, "Minimal");
         assert!(!report.contains("CVE:"));
+        assert!(!report.contains("CVSS:"));
+        assert!(!report.contains("Evidence:"));
+        assert!(!report.contains("Remediation:"));
+    }
+
+    #[test]
+    fn report_empty_findings() {
+        let findings: Vec<&Finding> = vec![];
+        let report = generate_report(&findings, "Empty");
+        assert!(report.contains("# Empty"));
+        assert!(report.contains("| **Total** | **0** |"));
+        // No findings section entries
+        assert!(!report.contains("### 1."));
+    }
+
+    #[test]
+    fn report_finding_numbering() {
+        let a = make("First", Severity::High);
+        let b = make("Second", Severity::Medium);
+        let c = make("Third", Severity::Low);
+        let findings = vec![&a, &b, &c];
+        let report = generate_report(&findings, "Numbered");
+        assert!(report.contains("### 1. [High] First"));
+        assert!(report.contains("### 2. [Medium] Second"));
+        assert!(report.contains("### 3. [Low] Third"));
     }
 }

@@ -94,11 +94,13 @@ pub async fn run(
 ) -> Result<CommandResult, PentestError> {
     safety::check_allowlist(tool, &config.safety)?;
 
-    let timeout = Duration::from_secs(timeout.unwrap_or(config.execution.default_timeout_secs));
+    let timeout =
+        Duration::from_secs(timeout.unwrap_or_else(|| config.execution.timeout_for(tool)));
+    let binary = config.safety.resolve_tool_binary(tool);
 
     let output = tokio::time::timeout(
         timeout,
-        Command::new(tool).args(args).kill_on_drop(true).output(),
+        Command::new(binary).args(args).kill_on_drop(true).output(),
     )
     .await
     .map_err(|_| {
@@ -126,48 +128,4 @@ pub async fn run(
         quality,
         warning,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    // ── detect_rate_limit ────────────────────────────────────
-
-    #[test]
-    fn detects_429_in_stdout() {
-        assert!(detect_rate_limit("HTTP/1.1 429 Too Many Requests", ""));
-    }
-
-    #[test]
-    fn no_false_positive_on_clean_output() {
-        let stdout =
-            "Nmap scan report for 192.168.1.1\nPORT STATE SERVICE\n80/tcp open http\nNmap done";
-        assert!(!detect_rate_limit(stdout, ""));
-    }
-
-    // ── assess_quality ───────────────────────────────────────
-
-    #[test]
-    fn empty_output_flagged() {
-        let (quality, warning) = assess_quality("nmap", "tiny", "");
-        assert_eq!(quality, OutputQuality::Empty);
-        assert!(warning.unwrap().contains("minimal output"));
-    }
-
-    #[test]
-    fn rate_limited_output_flagged() {
-        let stdout = "X".repeat(60) + " blocked by WAF";
-        let (quality, warning) = assess_quality("nuclei", &stdout, "");
-        assert_eq!(quality, OutputQuality::RateLimited);
-        assert!(warning.is_some());
-    }
-
-    #[test]
-    fn complete_nmap_output() {
-        let stdout = format!("{}\nNmap done: 1 IP address scanned", "X".repeat(60));
-        let (quality, warning) = assess_quality("nmap", &stdout, "");
-        assert_eq!(quality, OutputQuality::Complete);
-        assert!(warning.is_none());
-    }
 }

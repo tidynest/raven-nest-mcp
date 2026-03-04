@@ -1,15 +1,15 @@
 use raven_report::store::FindingStore;
 use raven_server::tools::findings::{FindingIdRequest, GenerateReportRequest, SaveFindingRequest};
 use rmcp::model::Content;
-use std::sync::Mutex;
+use std::sync::RwLock;
 use tempfile::TempDir;
 
 // ── Helpers ──────────────────────────────────────────────────
 
-fn test_store() -> (Mutex<FindingStore>, TempDir) {
+fn test_store() -> (RwLock<FindingStore>, TempDir) {
     let dir = TempDir::new().unwrap();
     let store = FindingStore::new(dir.path().to_path_buf());
-    (Mutex::new(store), dir)
+    (RwLock::new(store), dir)
 }
 
 fn save_req(title: &str, severity: &str) -> SaveFindingRequest {

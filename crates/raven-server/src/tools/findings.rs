@@ -5,7 +5,7 @@ use rmcp::{
     model::{CallToolResult, Content},
     schemars,
 };
-use std::sync::Mutex;
+use std::sync::RwLock;
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct SaveFindingRequest {
@@ -41,21 +41,25 @@ pub struct GenerateReportRequest {
     pub title: Option<String>,
 }
 
-fn parse_severity(s: &str) -> Severity {
+fn parse_severity(s: &str) -> Result<Severity, rmcp::ErrorData> {
     match s.to_lowercase().as_str() {
-        "critical" => Severity::Critical,
-        "high" => Severity::High,
-        "medium" => Severity::Medium,
-        "low" => Severity::Low,
-        _ => Severity::Info,
+        "critical" => Ok(Severity::Critical),
+        "high" => Ok(Severity::High),
+        "medium" => Ok(Severity::Medium),
+        "low" => Ok(Severity::Low),
+        "info" => Ok(Severity::Info),
+        other => Err(rmcp::ErrorData::invalid_params(
+            format!("invalid severity '{other}' — must be: critical, high, medium, low, info"),
+            None,
+        )),
     }
 }
 
 pub fn save_finding(
-    store: &Mutex<FindingStore>,
+    store: &RwLock<FindingStore>,
     req: SaveFindingRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
-    let severity = parse_severity(&req.severity);
+    let severity = parse_severity(&req.severity)?;
     let mut finding = Finding::new(req.title, severity, req.description, req.target, req.tool);
     finding.evidence = req.evidence;
     finding.remediation = req.remediation;
@@ -63,7 +67,7 @@ pub fn save_finding(
     finding.cve = req.cve;
 
     let id = store
-        .lock()
+        .write()
         .map_err(|_| rmcp::ErrorData::internal_error("store lock poisoned", None))?
         .insert(finding)
         .map_err(|e| rmcp::ErrorData::internal_error(e, None))?;
@@ -74,11 +78,11 @@ pub fn save_finding(
 }
 
 pub fn get_finding(
-    store: &Mutex<FindingStore>,
+    store: &RwLock<FindingStore>,
     req: FindingIdRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     let store = store
-        .lock()
+        .read()
         .map_err(|_| rmcp::ErrorData::internal_error("store lock poisoned", None))?;
 
     let text = match store.get(&req.finding_id) {
@@ -91,9 +95,9 @@ pub fn get_finding(
     Ok(CallToolResult::success(vec![Content::text(text)]))
 }
 
-pub fn list_findings(store: &Mutex<FindingStore>) -> Result<CallToolResult, rmcp::ErrorData> {
+pub fn list_findings(store: &RwLock<FindingStore>) -> Result<CallToolResult, rmcp::ErrorData> {
     let store = store
-        .lock()
+        .read()
         .map_err(|_| rmcp::ErrorData::internal_error("store lock poisoned", None))?;
 
     let findings = store.list();
@@ -112,11 +116,11 @@ pub fn list_findings(store: &Mutex<FindingStore>) -> Result<CallToolResult, rmcp
 }
 
 pub fn delete_finding(
-    store: &Mutex<FindingStore>,
+    store: &RwLock<FindingStore>,
     req: FindingIdRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     let deleted = store
-        .lock()
+        .write()
         .map_err(|_| rmcp::ErrorData::internal_error("store lock poisoned", None))?
         .delete(&req.finding_id);
 
@@ -129,12 +133,12 @@ pub fn delete_finding(
 }
 
 pub fn generate_report(
-    store: &Mutex<FindingStore>,
+    store: &RwLock<FindingStore>,
     config: &raven_core::config::RavenConfig,
     req: GenerateReportRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     let store = store
-        .lock()
+        .read()
         .map_err(|_| rmcp::ErrorData::internal_error("store lock poisoned", None))?;
 
     let all = store.load_all();
@@ -154,4 +158,40 @@ pub fn generate_report(
 
     let output = format!("Report saved to: {}\n\n{report}", path.display());
     Ok(CallToolResult::success(vec![Content::text(output)]))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_severity_valid_values() {
+        assert_eq!(parse_severity("critical").unwrap(), Severity::Critical);
+        assert_eq!(parse_severity("high").unwrap(), Severity::High);
+        assert_eq!(parse_severity("medium").unwrap(), Severity::Medium);
+        assert_eq!(parse_severity("low").unwrap(), Severity::Low);
+        assert_eq!(parse_severity("info").unwrap(), Severity::Info);
+    }
+
+    #[test]
+    fn parse_severity_case_insensitive() {
+        assert_eq!(parse_severity("CRITICAL").unwrap(), Severity::Critical);
+        assert_eq!(parse_severity("High").unwrap(), Severity::High);
+        assert_eq!(parse_severity("MeDiUm").unwrap(), Severity::Medium);
+    }
+
+    #[test]
+    fn parse_severity_rejects_invalid() {
+        assert!(parse_severity("hgih").is_err());
+        assert!(parse_severity("").is_err());
+        assert!(parse_severity("severe").is_err());
+        assert!(parse_severity("1").is_err());
+    }
+
+    #[test]
+    fn parse_severity_error_message() {
+        let err = parse_severity("hgih").unwrap_err();
+        assert!(err.message.contains("invalid severity"));
+        assert!(err.message.contains("hgih"));
+    }
 }
