@@ -86,3 +86,133 @@ pub fn truncate_output(output: &str, max_chars: usize) -> String {
 
     format!("{head}\n\n--- truncated {omitted} chars ---\n\n{tail}")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::config::SafetyConfig;
+
+    fn default_safety() -> SafetyConfig {
+        SafetyConfig {
+            allowed_tools: vec!["nmap".into(), "nuclei".into(), "nikto".into()],
+            max_output_chars: 50_000,
+        }
+    }
+
+    // ── check_allowlist ──────────────────────────────────────
+
+    #[test]
+    fn allowlist_permits_listed_tool() {
+        assert!(check_allowlist("nmap", &default_safety()).is_ok());
+    }
+
+    #[test]
+    fn allowlist_rejects_unlisted_tool() {
+        let err = check_allowlist("evil", &default_safety()).unwrap_err();
+        assert!(matches!(err, PentestError::ToolNotAllowed(_)));
+    }
+
+    #[test]
+    fn allowlist_empty_rejects_everything() {
+        let cfg = SafetyConfig {
+            allowed_tools: vec![],
+            max_output_chars: 50_000,
+        };
+        assert!(check_allowlist("nmap", &cfg).is_err());
+    }
+
+    // ── validate_target ──────────────────────────────────────
+
+    #[test]
+    fn valid_ipv4() {
+        assert!(validate_target("192.168.1.1").is_ok());
+    }
+
+    #[test]
+    fn valid_ipv6() {
+        assert!(validate_target("::1").is_ok());
+    }
+
+    #[test]
+    fn valid_hostname() {
+        assert!(validate_target("scanme.nmap.org").is_ok());
+    }
+
+    #[test]
+    fn valid_http_url() {
+        assert!(validate_target("https://example.com/path").is_ok());
+    }
+
+    #[test]
+    fn valid_cidr() {
+        assert!(validate_target("10.0.0.0/24").is_ok());
+    }
+
+    #[test]
+    fn rejects_empty() {
+        let err = validate_target("").unwrap_err();
+        assert!(matches!(err, PentestError::InvalidTarget(_)));
+    }
+
+    #[test]
+    fn rejects_shell_metachar_semicolon() {
+        let err = validate_target("10.0.0.1; rm -rf /").unwrap_err();
+        match err {
+            PentestError::InvalidTarget(msg) => assert!(msg.contains("forbidden character")),
+            other => panic!("expected InvalidTarget, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_shell_metachar_pipe() {
+        assert!(validate_target("host | cat /etc/passwd").is_err());
+    }
+
+    #[test]
+    fn rejects_unsupported_scheme() {
+        let err = validate_target("ftp://evil.com").unwrap_err();
+        match err {
+            PentestError::InvalidTarget(msg) => assert!(msg.contains("unsupported scheme")),
+            other => panic!("expected InvalidTarget, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rejects_url_without_host() {
+        assert!(validate_target("http://").is_err());
+    }
+
+    #[test]
+    fn rejects_hostname_with_leading_hyphen() {
+        assert!(validate_target("-evil.com").is_err());
+    }
+
+    #[test]
+    fn rejects_backtick_injection() {
+        assert!(validate_target("`whoami`.evil.com").is_err());
+    }
+
+    // ── truncate_output ──────────────────────────────────────
+
+    #[test]
+    fn no_truncation_under_limit() {
+        let input = "short output";
+        assert_eq!(truncate_output(input, 100), input);
+    }
+
+    #[test]
+    fn truncation_preserves_head_and_tail() {
+        let input: String = "A".repeat(70) + &"B".repeat(30);
+        let result = truncate_output(&input, 50);
+        // head = 35 chars of 'A', tail = 15 chars of 'B'
+        assert!(result.starts_with(&"A".repeat(35)));
+        assert!(result.ends_with(&"B".repeat(15)));
+    }
+
+    #[test]
+    fn truncation_message_shows_char_count() {
+        let input = "X".repeat(200);
+        let result = truncate_output(&input, 100);
+        assert!(result.contains("truncated 100 chars"));
+    }
+}

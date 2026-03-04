@@ -22,3 +22,6 @@ anyhow = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 libc = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

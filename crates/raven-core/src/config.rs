@@ -48,3 +48,35 @@ impl Default for RavenConfig {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_config_has_expected_tools() {
+        let cfg = RavenConfig::default();
+        let tools = &cfg.safety.allowed_tools;
+        for expected in &["ping", "nmap", "nuclei", "nikto", "whatweb"] {
+            assert!(
+                tools.iter().any(|t| t == expected),
+                "missing tool: {expected}"
+            );
+        }
+    }
+
+    #[test]
+    fn load_missing_file_returns_error() {
+        let err = RavenConfig::load("/nonexistent/path/config.toml").unwrap_err();
+        assert!(matches!(err, crate::error::PentestError::ConfigError(_)));
+    }
+
+    #[test]
+    fn load_invalid_toml_returns_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("bad.toml");
+        std::fs::write(&path, "this is not valid [[[ toml").unwrap();
+        let err = RavenConfig::load(path.to_str().unwrap()).unwrap_err();
+        assert!(matches!(err, crate::error::PentestError::ConfigError(_)));
+    }
+}

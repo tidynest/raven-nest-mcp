@@ -57,3 +57,69 @@ fn count_by_severity(findings: &[&Finding]) -> (usize, usize, usize, usize, usiz
         count(&Severity::Info),
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_finding(title: &str, severity: Severity) -> Finding {
+        Finding::new(
+            title.into(),
+            severity,
+            "Test description".into(),
+            "192.168.1.1".into(),
+            "nmap".into(),
+        )
+    }
+
+    #[test]
+    fn empty_findings_produces_header_only() {
+        let report = generate_report(&[], "Test Report");
+        assert!(report.contains("# Test Report"));
+        assert!(report.contains("| **Total** | **0** |"));
+    }
+
+    #[test]
+    fn single_finding_includes_all_fields() {
+        let mut f = make_finding("SQL Injection", Severity::Critical);
+        f.cvss = Some(9.8);
+        f.cve = Some("CVE-2024-1234".into());
+        f.evidence = Some("error-based SQL".into());
+        f.remediation = Some("Use parameterized queries".into());
+
+        let report = generate_report(&[&f], "Report");
+        assert!(report.contains("CVSS:"));
+        assert!(report.contains("CVE-2024-1234"));
+        assert!(report.contains("error-based SQL"));
+        assert!(report.contains("Use parameterized queries"));
+    }
+
+    #[test]
+    fn severity_count_table_correct() {
+        let f1 = make_finding("A", Severity::Critical);
+        let f2 = make_finding("B", Severity::Critical);
+        let f3 = make_finding("C", Severity::High);
+        let report = generate_report(&[&f1, &f2, &f3], "Report");
+        assert!(report.contains("| Critical | 2 |"));
+        assert!(report.contains("| High | 1 |"));
+    }
+
+    #[test]
+    fn findings_numbered_sequentially() {
+        let f1 = make_finding("A", Severity::Low);
+        let f2 = make_finding("B", Severity::Low);
+        let f3 = make_finding("C", Severity::Low);
+        let report = generate_report(&[&f1, &f2, &f3], "Report");
+        assert!(report.contains("### 1."));
+        assert!(report.contains("### 2."));
+        assert!(report.contains("### 3."));
+    }
+
+    #[test]
+    fn optional_fields_omitted_when_none() {
+        let f = make_finding("XSS", Severity::Medium);
+        let report = generate_report(&[&f], "Report");
+        assert!(!report.contains("CVSS:"));
+        assert!(!report.contains("CVE:"));
+    }
+}
