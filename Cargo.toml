@@ -10,7 +10,7 @@ rust-version = "1.93.0"
 
 [workspace.dependencies]
 # MCP SDK
-rmcp = { version = "0.17.0", features = ["server", "macros", "transport-io"] }
+rmcp = { version = "1.1.0", features = ["server", "macros", "transport-io"] }
 
 # Async runtime
 tokio = { version = "1.50.0", features = ["full"] }
@@ -36,7 +36,8 @@ tracing-subscriber = { version = "0.3.22", features = ["env-filter", "fmt"] }
 chrono = { version = "0.4.44", features = ["serde"] }
 url = "2.5.8"
 uuid = { version = "1.21.0", features = ["v4", "serde"] }
-libc = "0.2"
+libc = "0.2.182"
+roxmltree = "0.20"
 
 # Internal crates
 raven-core = { path = "crates/raven-core" }

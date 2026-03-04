@@ -1,4 +1,7 @@
-use rmcp::{model::{CallToolResult, Content}, schemars};
+use rmcp::{
+    model::{CallToolResult, Content},
+    schemars,
+};
 use std::{collections::HashMap, time::Duration};
 
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -29,15 +32,17 @@ const MAX_RESPONSE_BODY: usize = 100_000;
 
 pub async fn run(req: HttpRequest) -> Result<CallToolResult, rmcp::ErrorData> {
     // Scheme validation
-    let parsed = reqwest::Url::parse(&req.url).map_err(|_| {
-        rmcp::ErrorData::invalid_params("invalid url format", None)
-    })?;
+    let parsed = reqwest::Url::parse(&req.url)
+        .map_err(|_| rmcp::ErrorData::invalid_params("invalid url format", None))?;
 
     match parsed.scheme() {
         "http" | "https" => {}
-        _ => return Err(rmcp::ErrorData::invalid_params(
-            "URL scheme must be http or https", None,
-        )),
+        _ => {
+            return Err(rmcp::ErrorData::invalid_params(
+                "URL scheme must be http or https",
+                None,
+            ));
+        }
     }
 
     let timeout = Duration::from_secs(req.timeout_secs.unwrap_or(30).min(120));
@@ -55,7 +60,8 @@ pub async fn run(req: HttpRequest) -> Result<CallToolResult, rmcp::ErrorData> {
         .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
 
     let method = req.method.as_deref().unwrap_or("GET").to_uppercase();
-    let method: reqwest::Method = method.parse()
+    let method: reqwest::Method = method
+        .parse()
         .map_err(|_| rmcp::ErrorData::invalid_params("invalid HTTP method", None))?;
 
     let mut request = client.request(method, &req.url);
@@ -75,16 +81,22 @@ pub async fn run(req: HttpRequest) -> Result<CallToolResult, rmcp::ErrorData> {
     }
 
     let start = std::time::Instant::now();
-    let response = request.send().await
+    let response = request
+        .send()
+        .await
         .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
     let elapsed = start.elapsed();
 
     let status = response.status();
-    let resp_headers: Vec<String> = response.headers().iter()
+    let resp_headers: Vec<String> = response
+        .headers()
+        .iter()
         .map(|(k, v)| format!("{k}: {}", v.to_str().unwrap_or("<binary>")))
         .collect();
 
-    let body_bytes = response.bytes().await
+    let body_bytes = response
+        .bytes()
+        .await
         .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
 
     let body = if body_bytes.len() > MAX_RESPONSE_BODY {

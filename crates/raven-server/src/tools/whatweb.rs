@@ -14,8 +14,7 @@ pub async fn run(
     config: &RavenConfig,
     req: WhatwebRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
-    safety::validate_target(&req.target)
-        .map_err(crate::error::to_mcp)?;
+    safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
     let level = match req.aggression.as_deref() {
         Some("passive") => "2",

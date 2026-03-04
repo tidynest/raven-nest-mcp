@@ -1,0 +1,58 @@
+use raven_core::{config::RavenConfig, executor, safety};
+use rmcp::{
+    model::{CallToolResult, Content},
+    schemars,
+};
+
+const DEFAULT_WORDLIST: &str =
+    "/usr/share/seclists/Discovery/Web-Content/raft-medium-directories.txt";
+
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+pub struct FeroxbusterRequest {
+    #[schemars(description = "Target URL (e.g. 'http://example.com')")]
+    pub target: String,
+    #[schemars(description = "Path to wordlist file (default: raft-medium-directories.txt)")]
+    pub wordlist: Option<String>,
+    #[schemars(description = "File extensions to check (e.g. 'php,html,txt')")]
+    pub extensions: Option<String>,
+    #[schemars(description = "Number of concurrent threads (default 50)")]
+    pub threads: Option<u16>,
+    #[schemars(description = "HTTP status codes to include (e.g. '200,301,302')")]
+    pub status_codes: Option<String>,
+}
+
+pub async fn run(
+    config: &RavenConfig,
+    req: FeroxbusterRequest,
+) -> Result<CallToolResult, rmcp::ErrorData> {
+    safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
+
+    let wordlist = req.wordlist.as_deref().unwrap_or(DEFAULT_WORDLIST);
+    let mut args = vec![
+        "-u".to_string(),
+        req.target,
+        "-w".into(),
+        wordlist.into(),
+        "--no-state".into(),
+        "-q".into(),
+    ];
+
+    if let Some(ref ext) = req.extensions {
+        args.extend(["-x".into(), ext.clone()]);
+    }
+
+    let threads = req.threads.unwrap_or(50).min(200);
+    args.extend(["-t".into(), threads.to_string()]);
+
+    if let Some(ref codes) = req.status_codes {
+        args.extend(["-s".into(), codes.clone()]);
+    }
+
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    let result = executor::run(config, "feroxbuster", &arg_refs, None)
+        .await
+        .map_err(crate::error::to_mcp)?;
+
+    let output = crate::error::format_result("feroxbuster", &result);
+    Ok(CallToolResult::success(vec![Content::text(output)]))
+}

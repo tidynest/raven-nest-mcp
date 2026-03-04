@@ -18,8 +18,7 @@ pub async fn run(
     config: &RavenConfig,
     req: NiktoRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
-    safety::validate_target(&req.target)
-        .map_err(crate::error::to_mcp)?;
+    safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
     let mut args = vec!["-h".to_string(), req.target, "-nocheck".into()];
 
@@ -38,16 +37,10 @@ pub async fn run(
     }
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let result = executor::run(
-        config,
-        "nikto",
-        &arg_refs,
-        req.timeout_secs,
-    )
-    .await
-    .map_err(crate::error::to_mcp)?;
+    let result = executor::run(config, "nikto", &arg_refs, req.timeout_secs)
+        .await
+        .map_err(crate::error::to_mcp)?;
 
     let output = crate::error::format_result("nikto", &result);
     Ok(CallToolResult::success(vec![Content::text(output)]))
-
 }
