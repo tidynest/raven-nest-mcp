@@ -1,5 +1,6 @@
 use raven_core::{config::RavenConfig, executor, safety};
 use rmcp::{
+    Peer, RoleServer,
     model::{CallToolResult, Content},
     schemars,
 };
@@ -17,8 +18,13 @@ pub struct NmapRequest {
 pub async fn run(
     config: &RavenConfig,
     req: NmapRequest,
+    peer: Option<Peer<RoleServer>>,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
+
+    let _ticker = peer.map(|p| {
+        crate::progress::ProgressTicker::start(p, "nmap".into(), req.target.clone())
+    });
 
     // OS detection requires root privileges
     // SAFETY: geteuid is a trivial read-only syscall with no invariants

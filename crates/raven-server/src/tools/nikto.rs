@@ -1,4 +1,5 @@
 use raven_core::{config::RavenConfig, executor, safety};
+use rmcp::{Peer, RoleServer};
 use rmcp::model::{CallToolResult, Content};
 use rmcp::schemars;
 
@@ -17,8 +18,13 @@ pub struct NiktoRequest {
 pub async fn run(
     config: &RavenConfig,
     req: NiktoRequest,
+    peer: Option<Peer<RoleServer>>,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
+
+    let _ticker = peer.map(|p| {
+        crate::progress::ProgressTicker::start(p, "nikto".into(), req.target.clone())
+    });
 
     let is_url = req.target.starts_with("http://") || req.target.starts_with("https://");
     let mut args = vec!["-h".to_string(), req.target, "-nocheck".into()];

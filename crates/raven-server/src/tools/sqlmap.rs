@@ -1,5 +1,6 @@
 use raven_core::{config::RavenConfig, executor, safety};
 use rmcp::{
+    Peer, RoleServer,
     model::{CallToolResult, Content},
     schemars,
 };
@@ -23,8 +24,13 @@ pub struct SqlmapRequest {
 pub async fn run(
     config: &RavenConfig,
     req: SqlmapRequest,
+    peer: Option<Peer<RoleServer>>,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.url).map_err(crate::error::to_mcp)?;
+
+    let _ticker = peer.map(|p| {
+        crate::progress::ProgressTicker::start(p, "sqlmap".into(), req.url.clone())
+    });
 
     // Enforce config safety limits
     let level = req

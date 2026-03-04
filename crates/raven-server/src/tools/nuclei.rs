@@ -1,5 +1,6 @@
 use raven_core::{config::RavenConfig, executor, safety};
 use rmcp::{
+    Peer, RoleServer,
     model::{CallToolResult, Content},
     schemars,
 };
@@ -17,8 +18,13 @@ pub struct NucleiRequest {
 pub async fn run(
     config: &RavenConfig,
     req: NucleiRequest,
+    peer: Option<Peer<RoleServer>>,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
+
+    let _ticker = peer.map(|p| {
+        crate::progress::ProgressTicker::start(p, "nuclei".into(), req.target.clone())
+    });
 
     let mut args = vec!["-u".to_string(), req.target, "-jsonl".to_string()];
 

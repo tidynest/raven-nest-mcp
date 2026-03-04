@@ -1,5 +1,6 @@
 use raven_core::{config::RavenConfig, executor, safety};
 use rmcp::{
+    Peer, RoleServer,
     model::{CallToolResult, Content},
     schemars,
 };
@@ -21,8 +22,13 @@ pub struct HydraRequest {
 pub async fn run(
     config: &RavenConfig,
     req: HydraRequest,
+    peer: Option<Peer<RoleServer>>,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
+
+    let _ticker = peer.map(|p| {
+        crate::progress::ProgressTicker::start(p, "hydra".into(), req.target.clone())
+    });
 
     let tasks = req
         .tasks

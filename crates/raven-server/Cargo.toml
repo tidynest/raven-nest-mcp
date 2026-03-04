@@ -27,6 +27,7 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 libc = { workspace = true }
 roxmltree = { workspace = true }
+tokio-util = { version = "0.7", features = ["rt"] }
 
 [dev-dependencies]
 tempfile = { workspace = true }

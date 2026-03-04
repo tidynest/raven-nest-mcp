@@ -4,6 +4,7 @@ use crate::executor;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
+    time::Instant,
 };
 use tokio::task::JoinHandle;
 use uuid::Uuid;
@@ -16,12 +17,24 @@ pub enum ScanStatus {
     Cancelled,
 }
 
+/// Rich status snapshot returned by `status_enriched()` and `list()`.
+#[derive(Debug, Clone)]
+pub struct ScanStatusInfo {
+    pub id: String,
+    pub tool: String,
+    pub target: String,
+    pub status: ScanStatus,
+    pub elapsed_secs: u64,
+    pub output_chars: Option<usize>,
+}
+
 struct ScanEntry {
     tool: String,
     target: String,
     status: ScanStatus,
     output: Option<String>,
     handle: Option<JoinHandle<()>>,
+    started_at: Instant,
 }
 
 #[derive(Clone)]
@@ -120,6 +133,7 @@ impl ScanManager {
                 status: ScanStatus::Running,
                 output: None,
                 handle: Some(handle),
+                started_at: Instant::now(),
             },
         );
 
@@ -128,6 +142,25 @@ impl ScanManager {
 
     pub fn status(&self, id: &str) -> Result<Option<ScanStatus>, PentestError> {
         Ok(self.lock_scans()?.get(id).map(|e| e.status.clone()))
+    }
+
+    /// Returns enriched status including elapsed time and output size.
+    pub fn status_enriched(&self, id: &str) -> Result<Option<ScanStatusInfo>, PentestError> {
+        let scans = self.lock_scans()?;
+        Ok(scans.get(id).map(|e| ScanStatusInfo {
+            id: id.to_string(),
+            tool: e.tool.clone(),
+            target: e.target.clone(),
+            status: e.status.clone(),
+            elapsed_secs: e.started_at.elapsed().as_secs(),
+            output_chars: e.output.as_ref().map(|o| o.len()),
+        }))
+    }
+
+    /// Returns the raw output string for completed scans (used for auto-inline).
+    pub fn output(&self, id: &str) -> Result<Option<String>, PentestError> {
+        let scans = self.lock_scans()?;
+        Ok(scans.get(id).and_then(|e| e.output.clone()))
     }
 
     pub fn results(
@@ -167,18 +200,51 @@ impl ScanManager {
         Ok(())
     }
 
-    pub fn list(&self) -> Result<Vec<(String, String, String, ScanStatus)>, PentestError> {
+    /// Returns enriched status for all scans.
+    pub fn list(&self) -> Result<Vec<ScanStatusInfo>, PentestError> {
         Ok(self
             .lock_scans()?
             .iter()
-            .map(|(id, e)| {
-                (
-                    id.clone(),
-                    e.tool.clone(),
-                    e.target.clone(),
-                    e.status.clone(),
-                )
+            .map(|(id, e)| ScanStatusInfo {
+                id: id.clone(),
+                tool: e.tool.clone(),
+                target: e.target.clone(),
+                status: e.status.clone(),
+                elapsed_secs: e.started_at.elapsed().as_secs(),
+                output_chars: e.output.as_ref().map(|o| o.len()),
             })
             .collect())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scan_status_info_tracks_elapsed_and_output() {
+        let info = ScanStatusInfo {
+            id: "test-id".into(),
+            tool: "nmap".into(),
+            target: "10.0.0.1".into(),
+            status: ScanStatus::Completed,
+            elapsed_secs: 42,
+            output_chars: Some(2340),
+        };
+        assert_eq!(info.elapsed_secs, 42);
+        assert_eq!(info.output_chars, Some(2340));
+    }
+
+    #[test]
+    fn scan_status_info_none_output_for_running() {
+        let info = ScanStatusInfo {
+            id: "test-id".into(),
+            tool: "nuclei".into(),
+            target: "http://example.com".into(),
+            status: ScanStatus::Running,
+            elapsed_secs: 10,
+            output_chars: None,
+        };
+        assert!(info.output_chars.is_none());
     }
 }

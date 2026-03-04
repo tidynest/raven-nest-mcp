@@ -1,5 +1,6 @@
 use raven_core::{config::RavenConfig, executor, safety};
 use rmcp::{
+    Peer, RoleServer,
     model::{CallToolResult, Content},
     schemars,
 };
@@ -24,8 +25,13 @@ pub struct FeroxbusterRequest {
 pub async fn run(
     config: &RavenConfig,
     req: FeroxbusterRequest,
+    peer: Option<Peer<RoleServer>>,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
+
+    let _ticker = peer.map(|p| {
+        crate::progress::ProgressTicker::start(p, "feroxbuster".into(), req.target.clone())
+    });
 
     let wordlist = req.wordlist.as_deref().unwrap_or(DEFAULT_WORDLIST);
     let mut args = vec![
