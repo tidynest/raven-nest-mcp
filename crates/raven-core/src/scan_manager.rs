@@ -17,6 +17,25 @@ pub enum ScanStatus {
     Cancelled,
 }
 
+const SPILL_THRESHOLD: usize = 1_048_576; // 1 MB
+
+enum ScanOutput {
+    Memory(String),
+    Disk(std::path::PathBuf),
+}
+
+impl ScanOutput {
+    /// Approximate size: char count for memory, byte count for disk.
+    fn size(&self) -> usize {
+        match self {
+            ScanOutput::Memory(s) => s.len(),
+            ScanOutput::Disk(path) => {
+                std::fs::metadata(path).map(|m| m.len() as usize).unwrap_or(0)
+            }
+        }
+    }
+}
+
 /// Rich status snapshot returned by `status_enriched()` and `list()`.
 #[derive(Debug, Clone)]
 pub struct ScanStatusInfo {
@@ -32,7 +51,7 @@ struct ScanEntry {
     tool: String,
     target: String,
     status: ScanStatus,
-    output: Option<String>,
+    output: Option<ScanOutput>,
     handle: Option<JoinHandle<()>>,
     started_at: Instant,
 }
@@ -132,10 +151,34 @@ impl ScanManager {
                 match result {
                     Ok(r) => {
                         entry.status = ScanStatus::Completed;
-                        entry.output = Some(if r.success {
+                        let output_str = if r.success {
                             r.stdout
                         } else {
                             format!("{}\n{}", r.stdout, r.stderr)
+                        };
+
+                        entry.output = Some(if output_str.len() > SPILL_THRESHOLD {
+                            let scan_dir = std::path::Path::new(&config.execution.output_dir)
+                                .join("scans");
+                            let _ = std::fs::create_dir_all(&scan_dir);
+                            let path = scan_dir.join(format!("{scan_id}.txt"));
+                            match std::fs::write(&path, &output_str) {
+                                Ok(()) => {
+                                    tracing::info!(
+                                        "scan {scan_id}: spilled {}B to disk",
+                                        output_str.len()
+                                    );
+                                    ScanOutput::Disk(path)
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        "scan {scan_id}: disk spill failed ({e}), keeping in memory"
+                                    );
+                                    ScanOutput::Memory(output_str)
+                                }
+                            }
+                        } else {
+                            ScanOutput::Memory(output_str)
                         });
                     }
                     Err(e) => {
@@ -174,14 +217,21 @@ impl ScanManager {
             target: e.target.clone(),
             status: e.status.clone(),
             elapsed_secs: e.started_at.elapsed().as_secs(),
-            output_chars: e.output.as_ref().map(|o| o.len()),
+            output_chars: e.output.as_ref().map(|o| o.size()),
         }))
     }
 
     /// Returns the raw output string for completed scans (used for auto-inline).
     pub fn output(&self, id: &str) -> Result<Option<String>, PentestError> {
         let scans = self.lock_scans()?;
-        Ok(scans.get(id).and_then(|e| e.output.clone()))
+        let Some(entry) = scans.get(id) else { return Ok(None) };
+        match &entry.output {
+            None => Ok(None),
+            Some(ScanOutput::Memory(s)) => Ok(Some(s.clone())),
+            Some(ScanOutput::Disk(path)) => std::fs::read_to_string(path)
+                .map(Some)
+                .map_err(|e| PentestError::CommandFailed(format!("read spilled output: {e}"))),
+        }
     }
 
     pub fn results(
@@ -194,11 +244,17 @@ impl ScanManager {
         let Some(entry) = scans.get(id) else {
             return Ok(None);
         };
-        let Some(output) = entry.output.as_ref() else {
-            return Ok(None);
+
+        let content = match &entry.output {
+            None => return Ok(None),
+            Some(ScanOutput::Memory(s)) => std::borrow::Cow::Borrowed(s.as_str()),
+            Some(ScanOutput::Disk(path)) => std::borrow::Cow::Owned(
+                std::fs::read_to_string(path)
+                    .map_err(|e| PentestError::CommandFailed(format!("read spilled output: {e}")))?,
+            ),
         };
 
-        let chars: Vec<char> = output.chars().collect();
+        let chars: Vec<char> = content.chars().collect();
         if offset >= chars.len() {
             return Ok(Some(String::new()));
         }
@@ -232,7 +288,7 @@ impl ScanManager {
                 target: e.target.clone(),
                 status: e.status.clone(),
                 elapsed_secs: e.started_at.elapsed().as_secs(),
-                output_chars: e.output.as_ref().map(|o| o.len()),
+                output_chars: e.output.as_ref().map(|o| o.size()),
             })
             .collect())
     }
@@ -272,6 +328,27 @@ mod tests {
     fn default_args_unknown_tool_appends_target() {
         let args = ScanManager::default_args("custom", "10.0.0.1");
         assert_eq!(args, vec!["10.0.0.1"]);
+    }
+
+    #[test]
+    fn scan_output_memory_size() {
+        let out = ScanOutput::Memory("hello world".into());
+        assert_eq!(out.size(), 11);
+    }
+
+    #[test]
+    fn scan_output_disk_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.txt");
+        let content = "x".repeat(2_000_000);
+        std::fs::write(&path, &content).unwrap();
+        let out = ScanOutput::Disk(path);
+        assert_eq!(out.size(), 2_000_000);
+    }
+
+    #[test]
+    fn spill_threshold_is_one_megabyte() {
+        assert_eq!(SPILL_THRESHOLD, 1_048_576);
     }
 
     #[test]
