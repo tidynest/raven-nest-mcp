@@ -146,8 +146,6 @@ pub async fn run(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn proxy_env_vars_set_on_command() {
         use std::process::Command;
