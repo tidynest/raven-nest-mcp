@@ -98,10 +98,24 @@ pub async fn run(
         Duration::from_secs(timeout.unwrap_or_else(|| config.execution.timeout_for(tool)));
     let binary = config.safety.resolve_tool_binary(tool);
 
-    let output = tokio::time::timeout(
-        timeout,
-        Command::new(binary).args(args).kill_on_drop(true).output(),
-    )
+    let mut cmd = Command::new(binary);
+    cmd.args(args).kill_on_drop(true);
+
+    if let Some(ref proxy) = config.network.http_proxy {
+        cmd.env("HTTP_PROXY", proxy);
+        cmd.env("http_proxy", proxy);
+    }
+    if let Some(ref proxy) = config.network.https_proxy {
+        cmd.env("HTTPS_PROXY", proxy);
+        cmd.env("https_proxy", proxy);
+    }
+    if !config.network.no_proxy.is_empty() {
+        let no_proxy = config.network.no_proxy.join(",");
+        cmd.env("NO_PROXY", &no_proxy);
+        cmd.env("no_proxy", &no_proxy);
+    }
+
+    let output = tokio::time::timeout(timeout, cmd.output())
     .await
     .map_err(|_| {
         PentestError::CommandTimeout(format!("{tool} time out after {}s", timeout.as_secs()))
@@ -128,4 +142,23 @@ pub async fn run(
         quality,
         warning,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn proxy_env_vars_set_on_command() {
+        use std::process::Command;
+        let mut cmd = Command::new("echo");
+        let proxy = "http://proxy:3128";
+        cmd.env("HTTP_PROXY", proxy);
+        cmd.env("http_proxy", proxy);
+        let envs: Vec<_> = cmd.get_envs().collect();
+        assert!(envs.iter().any(|(k, v)| *k == "HTTP_PROXY"
+            && *v == Some(std::ffi::OsStr::new(proxy))));
+        assert!(envs.iter().any(|(k, v)| *k == "http_proxy"
+            && *v == Some(std::ffi::OsStr::new(proxy))));
+    }
 }
