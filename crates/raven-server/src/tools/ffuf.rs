@@ -20,6 +20,8 @@ pub struct FfufRequest {
     pub match_codes: Option<String>,
     #[schemars(description = "Filter responses by size (bytes)")]
     pub filter_size: Option<String>,
+    #[schemars(description = "Number of concurrent threads (default 40, reduced to 10 for localhost)")]
+    pub threads: Option<u16>,
 }
 
 pub async fn run(
@@ -37,6 +39,9 @@ pub async fn run(
         ));
     }
 
+    let default_threads: u16 = if super::is_localhost(&req.url) { 10 } else { 40 };
+    let threads = req.threads.unwrap_or(default_threads).min(150);
+
     let wordlist = req.wordlist.as_deref().unwrap_or(DEFAULT_WORDLIST);
     let mut args = vec![
         "-u".to_string(),
@@ -44,6 +49,8 @@ pub async fn run(
         "-w".into(),
         wordlist.into(),
         "-noninteractive".into(),
+        "-t".into(),
+        threads.to_string(),
     ];
 
     if let Some(ref method) = req.method {

@@ -17,6 +17,8 @@ pub struct HydraRequest {
     pub passlist: String,
     #[schemars(description = "Number of parallel tasks (capped by config)")]
     pub tasks: Option<u16>,
+    #[schemars(description = "Form attack string for http-post-form/http-get-form (e.g. '/login:user=^USER^&pass=^PASS^:F=incorrect')")]
+    pub form_params: Option<String>,
 }
 
 pub async fn run(
@@ -35,7 +37,17 @@ pub async fn run(
         .unwrap_or(4)
         .clamp(1, config.safety.hydra_max_tasks);
 
-    let args = vec![
+    // http-*-form services require form_params
+    let is_form_service = req.service.starts_with("http-") && req.service.contains("form");
+    if is_form_service && req.form_params.is_none() {
+        return Err(rmcp::ErrorData::invalid_params(
+            "form_params is required for http-post-form/http-get-form \
+             (e.g. '/login:user=^USER^&pass=^PASS^:F=incorrect')",
+            None,
+        ));
+    }
+
+    let mut args = vec![
         "-L".to_string(),
         req.userlist,
         "-P".into(),
@@ -46,6 +58,10 @@ pub async fn run(
         req.target,
         req.service,
     ];
+
+    if let Some(form_params) = req.form_params {
+        args.push(form_params);
+    }
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     let result = executor::run(config, "hydra", &arg_refs, None)

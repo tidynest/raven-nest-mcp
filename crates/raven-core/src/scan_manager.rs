@@ -62,6 +62,23 @@ impl ScanManager {
         }
     }
 
+    /// Build sensible default arguments when the caller provides none.
+    /// Mirrors the defaults used by each dedicated tool handler.
+    fn default_args(tool: &str, target: &str) -> Vec<String> {
+        match tool {
+            "nmap" => vec![
+                "-T4".into(),
+                "-F".into(),
+                "-oX".into(),
+                "-".into(),
+                target.into(),
+            ],
+            "nuclei" => vec!["-u".into(), target.into(), "-silent".into()],
+            "nikto" => vec!["-h".into(), target.into()],
+            _ => vec![target.into()],
+        }
+    }
+
     pub fn launch(
         &self,
         tool: &str,
@@ -91,7 +108,11 @@ impl ScanManager {
         let scans_for_task = self.scans.clone();
         let scan_id = id.clone();
 
-        let arg_strings = args;
+        let arg_strings = if args.is_empty() {
+            Self::default_args(tool, target)
+        } else {
+            args
+        };
 
         let handle = tokio::spawn(async move {
             let arg_refs: Vec<&str> = arg_strings.iter().map(|s| s.as_str()).collect();
@@ -233,6 +254,24 @@ mod tests {
         };
         assert_eq!(info.elapsed_secs, 42);
         assert_eq!(info.output_chars, Some(2340));
+    }
+
+    #[test]
+    fn default_args_nmap_builds_quick_scan() {
+        let args = ScanManager::default_args("nmap", "example.com");
+        assert_eq!(args, vec!["-T4", "-F", "-oX", "-", "example.com"]);
+    }
+
+    #[test]
+    fn default_args_nuclei_builds_silent_scan() {
+        let args = ScanManager::default_args("nuclei", "http://example.com");
+        assert_eq!(args, vec!["-u", "http://example.com", "-silent"]);
+    }
+
+    #[test]
+    fn default_args_unknown_tool_appends_target() {
+        let args = ScanManager::default_args("custom", "10.0.0.1");
+        assert_eq!(args, vec!["10.0.0.1"]);
     }
 
     #[test]

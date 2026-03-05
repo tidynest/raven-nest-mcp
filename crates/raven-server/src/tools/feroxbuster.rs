@@ -33,6 +33,9 @@ pub async fn run(
         crate::progress::ProgressTicker::start(p, "feroxbuster".into(), req.target.clone())
     });
 
+    let default_threads: u16 = if super::is_localhost(&req.target) { 10 } else { 50 };
+    let threads = req.threads.unwrap_or(default_threads).min(200);
+
     let wordlist = req.wordlist.as_deref().unwrap_or(DEFAULT_WORDLIST);
     let mut args = vec![
         "-u".to_string(),
@@ -46,8 +49,6 @@ pub async fn run(
     if let Some(ref ext) = req.extensions {
         args.extend(["-x".into(), ext.clone()]);
     }
-
-    let threads = req.threads.unwrap_or(50).min(200);
     args.extend(["-t".into(), threads.to_string()]);
 
     if let Some(ref codes) = req.status_codes {
