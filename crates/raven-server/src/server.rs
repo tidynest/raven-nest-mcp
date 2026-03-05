@@ -28,6 +28,7 @@ pub struct RavenServer {
     tool_router: ToolRouter<Self>,
     pub scan_manager: raven_core::scan_manager::ScanManager,
     finding_store: std::sync::Arc<std::sync::RwLock<raven_report::store::FindingStore>>,
+    cookie_jar: std::sync::Arc<reqwest::cookie::Jar>,
 }
 
 #[tool_router]
@@ -41,12 +42,14 @@ impl RavenServer {
         let finding_store = std::sync::Arc::new(std::sync::RwLock::new(
             raven_report::store::FindingStore::new(findings_dir),
         ));
+        let cookie_jar = std::sync::Arc::new(reqwest::cookie::Jar::default());
 
         Self {
             config,
             scan_manager,
             tool_router: Self::tool_router(),
             finding_store,
+            cookie_jar,
         }
     }
 
@@ -82,7 +85,7 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<HttpRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::http::run(req).await
+        crate::tools::http::run(&self.config, self.cookie_jar.clone(), req).await
     }
 
     #[tool(

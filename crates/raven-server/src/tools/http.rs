@@ -30,7 +30,11 @@ pub struct HttpRequest {
 
 const MAX_RESPONSE_BODY: usize = 100_000;
 
-pub async fn run(req: HttpRequest) -> Result<CallToolResult, rmcp::ErrorData> {
+pub async fn run(
+    config: &raven_core::config::RavenConfig,
+    cookie_jar: std::sync::Arc<reqwest::cookie::Jar>,
+    req: HttpRequest,
+) -> Result<CallToolResult, rmcp::ErrorData> {
     // Scheme validation
     let parsed = reqwest::Url::parse(&req.url)
         .map_err(|_| rmcp::ErrorData::invalid_params("invalid url format", None))?;
@@ -53,10 +57,23 @@ pub async fn run(req: HttpRequest) -> Result<CallToolResult, rmcp::ErrorData> {
         reqwest::redirect::Policy::none()
     };
 
-    let client = reqwest::Client::builder()
+    let mut builder = reqwest::Client::builder()
         .timeout(timeout)
         .redirect(redirect_policy)
-        .build()
+        .cookie_provider(cookie_jar);
+
+    if let Some(ref proxy_url) = config.network.http_proxy {
+        let proxy = reqwest::Proxy::http(proxy_url)
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("invalid http_proxy: {e}"), None))?;
+        builder = builder.proxy(proxy);
+    }
+    if let Some(ref proxy_url) = config.network.https_proxy {
+        let proxy = reqwest::Proxy::https(proxy_url)
+            .map_err(|e| rmcp::ErrorData::internal_error(format!("invalid https_proxy: {e}"), None))?;
+        builder = builder.proxy(proxy);
+    }
+
+    let client = builder.build()
         .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
 
     let method = req.method.as_deref().unwrap_or("GET").to_uppercase();
