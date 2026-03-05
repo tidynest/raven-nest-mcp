@@ -26,3 +26,8 @@ output_dir = "/tmp/raven-nest"
 # [execution.timeouts]
 # nmap = 900
 # nuclei = 1200
+
+# [network]
+# http_proxy = "http://127.0.0.1:8080"
+# https_proxy = "http://127.0.0.1:8080"
+# no_proxy = ["127.0.0.1", "localhost"]

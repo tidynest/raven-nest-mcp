@@ -5,6 +5,8 @@ use std::collections::HashMap;
 pub struct RavenConfig {
     pub safety: SafetyConfig,
     pub execution: ExecutionConfig,
+    #[serde(default)]
+    pub network: NetworkConfig,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -50,6 +52,25 @@ pub struct ExecutionConfig {
     /// Per-tool timeout overrides (seconds). Falls back to default_timeout_secs.
     #[serde(default)]
     pub timeouts: HashMap<String, u64>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct NetworkConfig {
+    pub http_proxy: Option<String>,
+    pub https_proxy: Option<String>,
+    #[serde(default)]
+    pub no_proxy: Vec<String>,
+}
+
+impl Default for NetworkConfig {
+    fn default() -> Self {
+        Self {
+            http_proxy: None,
+            https_proxy: None,
+            no_proxy: Vec::new(),
+        }
+    }
 }
 
 impl ExecutionConfig {
@@ -146,6 +167,7 @@ impl Default for RavenConfig {
                 output_dir: "/tmp/raven-nest".into(),
                 timeouts: HashMap::new(),
             },
+            network: NetworkConfig::default(),
         }
     }
 }
@@ -229,5 +251,33 @@ mod tests {
         assert_eq!(cfg.execution.default_timeout_secs, 600);
         assert!(cfg.safety.tool_paths.is_empty());
         assert!(cfg.execution.timeouts.is_empty());
+    }
+
+    #[test]
+    fn network_config_defaults_to_none() {
+        let cfg = RavenConfig::default();
+        assert!(cfg.network.http_proxy.is_none());
+        assert!(cfg.network.https_proxy.is_none());
+        assert!(cfg.network.no_proxy.is_empty());
+    }
+
+    #[test]
+    fn network_config_parses_from_toml() {
+        let toml_str = r#"
+        [safety]
+        allowed_tools = ["nmap"]
+        max_output_chars = 50000
+        [execution]
+        default_timeout_secs = 600
+        max_concurrent_scans = 3
+        output_dir = "/tmp/test"
+        [network]
+        http_proxy = "http://proxy:3128"
+        https_proxy = "https://proxy:3128"
+        no_proxy = ["localhost", "127.0.0.1"]
+        "#;
+        let cfg: RavenConfig = toml::from_str(toml_str).unwrap();
+        assert_eq!(cfg.network.http_proxy.as_deref(), Some("http://proxy:3128"));
+        assert_eq!(cfg.network.no_proxy, vec!["localhost", "127.0.0.1"]);
     }
 }
