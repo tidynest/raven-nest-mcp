@@ -3,4 +3,8 @@
 .mcp.json
 reports/
 logs/
+scans/
+findings/
+*.findings.json
+*.findings.json.migrated
 .worktrees/
