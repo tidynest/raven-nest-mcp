@@ -1,7 +1,5 @@
 # Tool Validation Bugfixes Implementation Plan
 
-> **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
-
 **Goal:** Fix three bugs found during tool validation: launch_scan nmap args, hydra form_params, and localhost-aware thread defaults.
 
 **Architecture:** Each fix is isolated to 1-2 files. Fix 1 adds a default args builder in `scan_manager.rs`. Fix 2 adds a field to `HydraRequest`. Fix 3 adds localhost detection to feroxbuster/ffuf.
