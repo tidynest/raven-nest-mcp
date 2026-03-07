@@ -25,7 +25,7 @@ pub struct NmapRequest {
     pub target: String,
     #[schemars(description = "Port spec (e.g. '80,443' or '1-1000')")]
     pub ports: Option<String>,
-    #[schemars(description = "Scan type: 'quick', 'service', 'os'")]
+    #[schemars(description = "Scan type: 'quick', 'service', 'os', 'vuln'")]
     pub scan_type: Option<String>,
 }
 

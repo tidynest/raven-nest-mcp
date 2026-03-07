@@ -8,3 +8,5 @@ findings/
 *.findings.json
 *.findings.json.migrated
 .worktrees/
+docs/plans/
+docs/archive/

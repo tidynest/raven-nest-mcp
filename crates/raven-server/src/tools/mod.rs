@@ -42,7 +42,7 @@ mod tests {
     fn remote_targets() {
         assert!(!is_localhost("http://example.com"));
         assert!(!is_localhost("https://10.0.0.1:443"));
-        assert!(!is_localhost("hackthissite.org"));
+        assert!(!is_localhost("remote.example.com"));
     }
 }
 

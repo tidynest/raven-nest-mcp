@@ -5,7 +5,8 @@
 ### Build
 
 ```bash
-cd ~/RustroverProjects/raven-nest-mcp
+git clone https://github.com/tidynest/raven-nest-mcp.git
+cd raven-nest-mcp
 cargo build --release
 ```
 
@@ -33,23 +34,23 @@ Note: The Arch `testssl.sh` package installs the binary as `testssl`. If
 the tool config references `testssl.sh`, create a symlink:
 `sudo ln -s /usr/bin/testssl /usr/bin/testssl.sh`
 
-## Connecting to Claude Code
+## Connecting to an MCP Client
 
-Create `.mcp.json` in the project root:
+Create `.mcp.json` in the project root (adjust paths to your system):
 
 ```json
 {
   "mcpServers": {
     "raven-nest": {
-      "command": "/home/bakri/RustroverProjects/raven-nest-mcp/target/release/raven-server",
+      "command": "./target/release/raven-server",
       "args": [],
-      "cwd": "/home/bakri/RustroverProjects/raven-nest-mcp"
+      "cwd": "."
     }
   }
 }
 ```
 
-Restart Claude Code or start a new session in the project directory.
+Restart your MCP client or start a new session in the project directory.
 The server communicates over stdio — stdout carries JSON-RPC, logs go to stderr.
 
 ## Configuration
@@ -100,7 +101,7 @@ output_dir = "/tmp/raven-nest"
 | `tool_paths` | Custom binary paths for tools not on `$PATH`. |
 | `execution.timeouts` | Per-tool timeout overrides in seconds. |
 
-Config resolution: `RAVEN_CONFIG` env var → exe-relative → CWD → built-in defaults.
+Config resolution: `RAVEN_CONFIG` env var > exe-relative > CWD > built-in defaults.
 
 ## Tools Reference
 
@@ -143,8 +144,8 @@ High-speed port scanning. **Requires root** — returns an error if not running 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `target` | yes | IP, hostname, or CIDR range |
-| `ports` | no | Port spec (e.g. `80,443` or `0-65535`) |
-| `rate` | no | Packets/sec (clamped to `masscan_max_rate` config, default 1000) |
+| `ports` | yes | Port spec (e.g. `80,443` or `0-65535`) |
+| `rate` | no | Packets/sec (clamped to `masscan_max_rate` config, default 100) |
 
 ### Vulnerability Scanning
 
@@ -177,7 +178,7 @@ Directory brute-forcing / content discovery.
 | `target` | yes | URL |
 | `wordlist` | no | Path to wordlist (default: raft-medium-directories.txt) |
 | `extensions` | no | File extensions to check (e.g. `php,html,js`) |
-| `threads` | no | Concurrent threads (max 200) |
+| `threads` | no | Concurrent threads (default 50, reduced to 10 for localhost; max 200) |
 | `status_codes` | no | Status codes to include (e.g. `200,301,403`) |
 
 #### `run_ffuf`
@@ -185,12 +186,13 @@ Web fuzzing with FUZZ keyword.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `target` | yes | URL containing `FUZZ` keyword (e.g. `https://example.com/FUZZ`) |
+| `url` | yes | URL containing `FUZZ` keyword (e.g. `https://example.com/FUZZ`) |
 | `wordlist` | no | Path to wordlist |
 | `method` | no | HTTP method (default `GET`) |
-| `headers` | no | Custom headers |
-| `match_codes` | no | Match HTTP status codes |
-| `filter_codes` | no | Filter out HTTP status codes |
+| `headers` | no | Custom headers (comma-separated `Name: Value` pairs) |
+| `match_codes` | no | Match HTTP status codes (e.g. `200,301,302`) |
+| `filter_size` | no | Filter responses by size (bytes) |
+| `threads` | no | Concurrent threads (default 40, reduced to 10 for localhost; max 150) |
 
 ### Exploitation
 
@@ -213,9 +215,10 @@ Authentication brute-forcing.
 |-----------|----------|-------------|
 | `target` | yes | Target host |
 | `service` | yes | Service to attack (e.g. `ssh`, `ftp`, `http-post-form`) |
-| `userlist` | no | Path to username list |
-| `passlist` | no | Path to password list |
+| `userlist` | yes | Path to username list |
+| `passlist` | yes | Path to password list |
 | `tasks` | no | Parallel tasks (clamped to `hydra_max_tasks` config) |
+| `form_params` | no* | Form attack string for `http-post-form`/`http-get-form` (e.g. `'/login:user=^USER^&pass=^PASS^:F=incorrect'`). **Required** when service is a form type. |
 
 ### TLS / SSL
 
@@ -231,7 +234,8 @@ SSL/TLS configuration audit.
 ### HTTP Testing
 
 #### `http_request`
-Send crafted HTTP requests for manual endpoint testing.
+Send crafted HTTP requests for manual endpoint testing. Cookies are
+automatically persisted across requests within the same session.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -253,12 +257,14 @@ validated and the tool is checked against the allowlist before launching.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `tool` | yes | Tool name (`nmap`, `nuclei`, `nikto`, `whatweb`) |
+| `tool` | yes | Any allowlisted tool name (e.g. `nmap`, `nuclei`, `nikto`, `whatweb`) |
 | `target` | yes | Target IP, hostname, or URL |
 | `args` | no | Tool arguments as a string list |
+| `timeout_secs` | no | Scan timeout in seconds (default from config) |
 
 #### `get_scan_status`
 Check whether a scan is Running, Completed, Failed, or Cancelled.
+Completed scans with output under 10K chars include the output inline.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -343,17 +349,17 @@ Every tool call passes through six layers:
 
 ```
 You: "Ping scanme.nmap.org to check if it's up"
-Claude: [calls ping_target with target: "scanme.nmap.org"]
+Assistant: [calls ping_target with target: "scanme.nmap.org"]
 
 You: "Run a service scan on it, ports 22,80,443"
-Claude: [calls run_nmap with target: "scanme.nmap.org", ports: "22,80,443", scan_type: "service"]
+Assistant: [calls run_nmap with target: "scanme.nmap.org", ports: "22,80,443", scan_type: "service"]
 
 You: "Check for vulnerabilities with nuclei"
-Claude: [calls run_nuclei with target: "scanme.nmap.org", severity: "high"]
+Assistant: [calls run_nuclei with target: "scanme.nmap.org", severity: "high"]
 
 You: "Save that open SSH finding"
-Claude: [calls save_finding with title, severity, description, target, tool]
+Assistant: [calls save_finding with title, severity, description, target, tool]
 
 You: "Generate the pentest report"
-Claude: [calls generate_report]
+Assistant: [calls generate_report]
 ```
