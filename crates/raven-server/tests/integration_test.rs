@@ -1,3 +1,14 @@
+//! Integration tests for the findings management pipeline.
+//!
+//! Tests the full path from MCP handler → FindingStore → disk, verifying:
+//! - Save and retrieve round-trips.
+//! - Optional fields (CVSS, CVE, evidence, remediation).
+//! - Severity-sorted listing.
+//! - Delete (existing and nonexistent).
+//! - Report generation with default and custom titles.
+//!
+//! These tests use a temporary directory so each test gets an isolated store.
+
 use raven_report::store::FindingStore;
 use raven_server::tools::findings::{FindingIdRequest, GenerateReportRequest, SaveFindingRequest};
 use rmcp::model::Content;
@@ -6,12 +17,14 @@ use tempfile::TempDir;
 
 // ── Helpers ──────────────────────────────────────────────────
 
+/// Create an isolated FindingStore backed by a temp directory.
 fn test_store() -> (RwLock<FindingStore>, TempDir) {
     let dir = TempDir::new().unwrap();
     let store = FindingStore::new(dir.path().to_path_buf());
     (RwLock::new(store), dir)
 }
 
+/// Build a minimal SaveFindingRequest with only required fields.
 fn save_req(title: &str, severity: &str) -> SaveFindingRequest {
     SaveFindingRequest {
         title: title.into(),
@@ -26,6 +39,7 @@ fn save_req(title: &str, severity: &str) -> SaveFindingRequest {
     }
 }
 
+/// Extract the text content from an MCP CallToolResult.
 fn extract_text(content: &[Content]) -> String {
     content
         .first()

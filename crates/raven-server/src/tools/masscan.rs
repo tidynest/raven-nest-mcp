@@ -1,9 +1,22 @@
+//! Masscan high-speed port scanner handler.
+//!
+//! Masscan can scan the entire internet in under 6 minutes. Because of this
+//! power, it has strict safety controls:
+//! - Requires root (raw socket access for SYN scanning).
+//! - Packet rate is capped by [`SafetyConfig::masscan_max_rate`](raven_core::config::SafetyConfig::masscan_max_rate)
+//!   to prevent network saturation.
+//! - `--open` flag is always set (only report open ports).
+//!
+//! This is a fast tool (1-5s for small ranges) and doesn't use a
+//! [`ProgressTicker`](crate::progress::ProgressTicker).
+
 use raven_core::{config::RavenConfig, executor, safety};
 use rmcp::{
     model::{CallToolResult, Content},
     schemars,
 };
 
+/// MCP request schema for `run_masscan`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct MasscanRequest {
     #[schemars(description = "Target CIDR range (e.g. '10.0.0.0/24')")]
@@ -14,13 +27,14 @@ pub struct MasscanRequest {
     pub rate: Option<u32>,
 }
 
+/// Execute masscan with root-privilege check and rate-capped packet transmission.
 pub async fn run(
     config: &RavenConfig,
     req: MasscanRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
-    // masscan requires root for raw sockets
+    // masscan requires root for raw sockets (SYN scanning)
     // SAFETY: geteuid is a trivial read-only syscall with no invariants
     if unsafe { libc::geteuid() } != 0 {
         return Err(rmcp::ErrorData::invalid_params(
@@ -29,6 +43,7 @@ pub async fn run(
         ));
     }
 
+    // Cap packet rate to configured maximum to prevent network saturation
     let rate = req
         .rate
         .unwrap_or(100)
@@ -40,7 +55,7 @@ pub async fn run(
         req.ports,
         "--rate".into(),
         rate.to_string(),
-        "--open".into(), // only show open ports
+        "--open".into(), // only report open ports
     ];
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();

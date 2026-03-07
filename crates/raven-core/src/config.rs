@@ -1,6 +1,24 @@
+//! TOML-based configuration for the Raven Nest toolkit.
+//!
+//! [`RavenConfig`] is the root struct, loaded once at server startup and shared
+//! (via `Arc`) across all tool handlers in `raven-server`. It groups settings
+//! into three sections:
+//!
+//! - [`SafetyConfig`] — tool allowlisting, output caps, and per-tool aggressiveness limits.
+//! - [`ExecutionConfig`] — timeouts, concurrency, and output directory.
+//! - [`NetworkConfig`] — optional HTTP/HTTPS proxy settings injected into
+//!   tool subprocesses by [`executor::run`](crate::executor::run).
+//!
+//! Configuration resolves through a fallback chain:
+//! `RAVEN_CONFIG` env var → exe-relative `config/default.toml` → CWD fallback → built-in defaults.
+
 use serde::Deserialize;
 use std::collections::HashMap;
 
+/// Top-level configuration, deserialized from `config/default.toml`.
+///
+/// Shared as `Arc<RavenConfig>` by [`RavenServer`](raven_server::server::RavenServer)
+/// and passed by reference to every tool handler.
 #[derive(Clone, Debug, Deserialize)]
 pub struct RavenConfig {
     pub safety: SafetyConfig,
@@ -9,24 +27,31 @@ pub struct RavenConfig {
     pub network: NetworkConfig,
 }
 
+/// Controls which tools may run and how aggressively they operate.
+///
+/// Every tool invocation passes through [`safety::check_allowlist`](crate::safety::check_allowlist)
+/// before execution. Per-tool caps (sqlmap level/risk, hydra tasks, masscan rate)
+/// prevent an LLM from escalating beyond operator-approved limits.
 #[derive(Clone, Debug, Deserialize)]
 pub struct SafetyConfig {
+    /// Whitelist of tool names permitted to execute (e.g. `["nmap", "ping"]`).
     pub allowed_tools: Vec<String>,
+    /// Maximum characters kept after output truncation (see [`safety::truncate_output`](crate::safety::truncate_output)).
     pub max_output_chars: usize,
-    /// Optional map of tool name → absolute binary path.
-    /// Falls back to $PATH lookup if not specified.
+    /// Optional map of tool name to absolute binary path.
+    /// Falls back to `$PATH` lookup if not specified.
     #[serde(default)]
     pub tool_paths: HashMap<String, String>,
-    /// Max sqlmap --level (1-5). Default 2, prevents LLM escalation.
+    /// Max sqlmap `--level` (1-5). Default 2 — prevents LLM escalation beyond safe testing.
     #[serde(default = "default_sqlmap_max_level")]
     pub sqlmap_max_level: u8,
-    /// Max sqlmap --risk (1-3). Default 1.
+    /// Max sqlmap `--risk` (1-3). Default 1 — avoids destructive payloads.
     #[serde(default = "default_sqlmap_max_risk")]
     pub sqlmap_max_risk: u8,
-    /// Max hydra parallel tasks. Default 4.
+    /// Max hydra parallel tasks. Default 4 — limits brute-force throughput.
     #[serde(default = "default_hydra_max_tasks")]
     pub hydra_max_tasks: u16,
-    /// Max masscan packet rate (packets/sec). Default 1000.
+    /// Max masscan packet rate (packets/sec). Default 1000 — prevents network saturation.
     #[serde(default = "default_masscan_max_rate")]
     pub masscan_max_rate: u32,
 }
@@ -44,21 +69,34 @@ fn default_masscan_max_rate() -> u32 {
     1000
 }
 
+/// Execution environment: timeouts, concurrency, and filesystem paths.
 #[derive(Clone, Debug, Deserialize)]
 pub struct ExecutionConfig {
+    /// Global timeout applied when no per-tool override exists (seconds).
     pub default_timeout_secs: u64,
+    /// Maximum number of background scans that can run simultaneously.
+    /// Enforced by [`ScanManager::launch`](crate::scan_manager::ScanManager::launch).
     pub max_concurrent_scans: usize,
+    /// Base directory for scan output files, spilled data, and reports.
     pub output_dir: String,
-    /// Per-tool timeout overrides (seconds). Falls back to default_timeout_secs.
+    /// Per-tool timeout overrides (seconds). Falls back to `default_timeout_secs`.
     #[serde(default)]
     pub timeouts: HashMap<String, u64>,
 }
 
+/// Optional proxy configuration injected into tool subprocesses.
+///
+/// When set, [`executor::run`](crate::executor::run) sets both upper- and
+/// lower-case environment variables (`HTTP_PROXY`/`http_proxy`) so that tools
+/// using either convention pick up the proxy.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct NetworkConfig {
+    /// HTTP proxy URL (e.g. `http://proxy:3128`).
     pub http_proxy: Option<String>,
+    /// HTTPS proxy URL.
     pub https_proxy: Option<String>,
+    /// Hostnames/IPs that should bypass the proxy.
     #[serde(default)]
     pub no_proxy: Vec<String>,
 }
@@ -84,7 +122,7 @@ impl ExecutionConfig {
 }
 
 impl SafetyConfig {
-    /// Resolve the binary path for a tool: custom path if configured, else bare name for $PATH.
+    /// Resolve the binary path for a tool: custom path if configured, else bare name for `$PATH`.
     pub fn resolve_tool_binary<'a>(&'a self, tool: &'a str) -> &'a str {
         self.tool_paths
             .get(tool)
@@ -94,13 +132,18 @@ impl SafetyConfig {
 }
 
 impl RavenConfig {
+    /// Load configuration from an explicit file path.
     pub fn load(path: &str) -> Result<Self, crate::error::PentestError> {
         let content = std::fs::read_to_string(path)
             .map_err(|e| crate::error::PentestError::ConfigError(e.to_string()))?;
         toml::from_str(&content).map_err(|e| crate::error::PentestError::ConfigError(e.to_string()))
     }
 
-    /// Resolution chain: RAVEN_CONFIG env → exe-relative config → default.
+    /// Load configuration using a fallback chain:
+    /// 1. `RAVEN_CONFIG` environment variable
+    /// 2. `config/default.toml` relative to the executable (checks parent dir too)
+    /// 3. `config/default.toml` in the current working directory
+    /// 4. Built-in defaults (if all else fails)
     pub fn load_with_fallback() -> Self {
         // 1. Environment variable
         if let Ok(path) = std::env::var("RAVEN_CONFIG") {
@@ -113,7 +156,7 @@ impl RavenConfig {
             }
         }
 
-        // 2. Relative to executable (exe_dir/../config/default.toml or exe_dir/config/default.toml)
+        // 2. Relative to executable (exe_dir/../config/ or exe_dir/config/)
         if let Ok(exe) = std::env::current_exe() {
             for ancestor in exe.ancestors().skip(1).take(2) {
                 let candidate = ancestor.join("config/default.toml");

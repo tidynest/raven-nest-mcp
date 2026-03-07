@@ -1,13 +1,21 @@
+//! Background scan management handlers (launch, poll, paginate, cancel, list).
+//!
+//! These handlers wrap [`ScanManager`](raven_core::scan_manager::ScanManager)
+//! for the MCP interface. The key feature is **auto-inline**: when a completed
+//! scan's output is smaller than [`AUTO_INLINE_LIMIT`] (10K chars), the status
+//! response includes the output directly, eliminating an extra `get_scan_results`
+//! call. For larger outputs, clients use paginated retrieval via `get_scan_results`.
+
 use raven_core::scan_manager::{ScanManager, ScanStatus};
 use rmcp::{
     model::{CallToolResult, Content},
     schemars,
 };
 
-/// Auto-inline threshold: outputs smaller than this are included directly
-/// in the status response, eliminating a separate get_scan_results call.
+/// Outputs smaller than this are included directly in the status response.
 const AUTO_INLINE_LIMIT: usize = 10_000;
 
+/// MCP request schema for `launch_scan`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct LaunchScanRequest {
     #[schemars(description = "Tool to run: 'nmap', 'nuclei', 'nikto', 'whatweb'")]
@@ -20,12 +28,14 @@ pub struct LaunchScanRequest {
     pub timeout_secs: Option<u64>,
 }
 
+/// MCP request schema for `get_scan_status` and `cancel_scan`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct ScanIdRequest {
     #[schemars(description = "Scan ID returned by launch_scan")]
     pub scan_id: String,
 }
 
+/// MCP request schema for `get_scan_results` (paginated retrieval).
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct ScanResultsRequest {
     #[schemars(description = "Scan ID returned by launch_scan")]
@@ -36,6 +46,7 @@ pub struct ScanResultsRequest {
     pub limit: Option<usize>,
 }
 
+/// Launch a background scan and return the scan ID with a polling hint.
 pub fn launch(
     manager: &ScanManager,
     req: LaunchScanRequest,
@@ -46,6 +57,7 @@ pub fn launch(
         .launch(tool, args, &req.target, req.timeout_secs)
         .map_err(crate::error::to_mcp)?;
 
+    // Suggest appropriate first-poll delay based on typical tool duration
     let poll_hint = match tool.as_str() {
         "nmap" | "whatweb" => "First poll recommended after 10s",
         "nuclei" | "nikto" | "testssl.sh" => "First poll recommended after 30s",
@@ -57,6 +69,8 @@ pub fn launch(
     ))]))
 }
 
+/// Check scan status with auto-inline: completed outputs under 10K chars
+/// are included directly in the response.
 pub fn status(
     manager: &ScanManager,
     req: ScanIdRequest,
@@ -83,7 +97,7 @@ pub fn status(
         info.tool, info.target, status_str, info.elapsed_secs
     );
 
-    // Auto-inline: if completed and output fits, include it directly
+    // Auto-inline: embed output directly if it fits
     if info.status == ScanStatus::Completed
         && let Some(size) = info.output_chars
     {
@@ -105,6 +119,7 @@ pub fn status(
     Ok(CallToolResult::success(vec![Content::text(text)]))
 }
 
+/// Get a paginated slice of scan output (character-based offset/limit).
 pub fn results(
     manager: &ScanManager,
     req: ScanResultsRequest,
@@ -125,6 +140,7 @@ pub fn results(
     Ok(CallToolResult::success(vec![Content::text(text)]))
 }
 
+/// Cancel a running scan by aborting its background task.
 pub fn cancel(
     manager: &ScanManager,
     req: ScanIdRequest,
@@ -136,6 +152,7 @@ pub fn cancel(
     )]))
 }
 
+/// List all tracked scans with their status and elapsed time.
 pub fn list_scans(manager: &ScanManager) -> Result<CallToolResult, rmcp::ErrorData> {
     let scans = manager.list().map_err(crate::error::to_mcp)?;
 

@@ -1,8 +1,27 @@
+//! File-per-finding persistence layer.
+//!
+//! Each [`Finding`] is stored as `{id}.json` inside a dedicated directory.
+//! An in-memory [`HashMap`] of [`FindingMeta`] entries serves as the index,
+//! rebuilt from disk on startup.
+//!
+//! This design was chosen over a single JSON file because:
+//! - Individual writes don't risk corrupting the entire dataset.
+//! - The in-memory index avoids O(n) disk reads for listing.
+//! - Deletes are a single `fs::remove_file` with no rewrite.
+//!
+//! On first run, any legacy `findings.json` in the parent directory is
+//! automatically migrated to individual files and renamed to `.migrated`.
+//!
+//! Consumed by `raven-server::tools::findings` via `RwLock<FindingStore>`.
+
 use crate::finding::{Finding, FindingMeta};
 use std::{collections::HashMap, fs, path::PathBuf};
 
+/// File-per-finding store with an in-memory severity-sorted index.
 pub struct FindingStore {
+    /// In-memory index: finding ID → lightweight metadata.
     index: HashMap<String, FindingMeta>,
+    /// Directory where `{id}.json` files are stored.
     findings_dir: PathBuf,
 }
 
@@ -10,6 +29,7 @@ impl FindingStore {
     /// Create or open a file-per-finding store at `findings_dir`.
     ///
     /// On first run, migrates any legacy `findings.json` found in the parent directory.
+    /// Rebuilds the in-memory index by scanning all `.json` files in the directory.
     pub fn new(findings_dir: PathBuf) -> Self {
         fs::create_dir_all(&findings_dir).unwrap_or_else(|e| {
             panic!(
@@ -53,6 +73,7 @@ impl FindingStore {
         }
     }
 
+    /// Persist a new finding to disk and add it to the in-memory index.
     pub fn insert(&mut self, finding: Finding) -> Result<String, String> {
         let id = finding.id.clone();
         let path = self.finding_path(&id);
@@ -62,6 +83,7 @@ impl FindingStore {
         Ok(id)
     }
 
+    /// Load the full finding from disk by ID. Returns `None` if not found.
     pub fn get(&self, id: &str) -> Option<Finding> {
         if !self.index.contains_key(id) {
             return None;
@@ -71,6 +93,7 @@ impl FindingStore {
         serde_json::from_str(&content).ok()
     }
 
+    /// Delete a finding from disk and the in-memory index. Returns `true` if found.
     pub fn delete(&mut self, id: &str) -> bool {
         if self.index.remove(id).is_none() {
             return false;
@@ -83,6 +106,7 @@ impl FindingStore {
     }
 
     /// List metadata for all findings, sorted by severity (critical first).
+    ///
     /// Zero disk I/O — reads only the in-memory index.
     pub fn list(&self) -> Vec<&FindingMeta> {
         let mut metas: Vec<&FindingMeta> = self.index.values().collect();
@@ -91,7 +115,9 @@ impl FindingStore {
     }
 
     /// Load full findings from disk in severity order.
-    /// Used by report generation — infrequent, O(n) disk reads acceptable.
+    ///
+    /// Used by [`markdown::generate_report`](crate::markdown::generate_report)
+    /// — infrequent, so O(n) disk reads are acceptable.
     pub fn load_all(&self) -> Vec<Finding> {
         let sorted_ids: Vec<&str> = self.list().iter().map(|m| m.id.as_str()).collect();
         sorted_ids
@@ -100,10 +126,15 @@ impl FindingStore {
             .collect()
     }
 
+    /// Build the filesystem path for a finding's JSON file.
     fn finding_path(&self, id: &str) -> PathBuf {
         self.findings_dir.join(format!("{id}.json"))
     }
 
+    /// Migrate from the legacy single-file `findings.json` to individual files.
+    ///
+    /// Reads the array, writes each finding as `{id}.json`, then renames the
+    /// legacy file to `findings.json.migrated` to prevent re-migration.
     fn migrate_legacy(legacy_path: &std::path::Path, findings_dir: &std::path::Path) {
         let content = match fs::read_to_string(legacy_path) {
             Ok(c) => c,

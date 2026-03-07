@@ -1,3 +1,13 @@
+//! Hydra network authentication brute-force handler.
+//!
+//! Hydra tests login credentials against network services (SSH, FTP, HTTP forms,
+//! etc.). Parallel task count is capped by [`SafetyConfig::hydra_max_tasks`](raven_core::config::SafetyConfig::hydra_max_tasks)
+//! to limit brute-force throughput.
+//!
+//! The `-f` flag is always set (stop on first valid credential pair), and
+//! `http-*-form` services require the `form_params` field to specify the
+//! login path, form fields, and failure condition.
+
 use raven_core::{config::RavenConfig, executor, safety};
 use rmcp::{
     Peer, RoleServer,
@@ -5,6 +15,7 @@ use rmcp::{
     schemars,
 };
 
+/// MCP request schema for `run_hydra`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct HydraRequest {
     #[schemars(description = "Target IP or hostname")]
@@ -21,6 +32,7 @@ pub struct HydraRequest {
     pub form_params: Option<String>,
 }
 
+/// Execute hydra with safety-capped parallelism and form-service validation.
 pub async fn run(
     config: &RavenConfig,
     req: HydraRequest,
@@ -32,12 +44,13 @@ pub async fn run(
         crate::progress::ProgressTicker::start(p, "hydra".into(), req.target.clone())
     });
 
+    // Cap parallel tasks to prevent excessive brute-force throughput
     let tasks = req
         .tasks
         .unwrap_or(4)
         .clamp(1, config.safety.hydra_max_tasks);
 
-    // http-*-form services require form_params
+    // http-*-form services need form_params to know the login path and fields
     let is_form_service = req.service.starts_with("http-") && req.service.contains("form");
     if is_form_service && req.form_params.is_none() {
         return Err(rmcp::ErrorData::invalid_params(
@@ -54,11 +67,12 @@ pub async fn run(
         req.passlist,
         "-t".into(),
         tasks.to_string(),
-        "-f".into(), // stop on first valid pair
+        "-f".into(), // stop on first valid credential pair
         req.target,
         req.service,
     ];
 
+    // form_params is passed as a positional arg after the service name
     if let Some(form_params) = req.form_params {
         args.push(form_params);
     }

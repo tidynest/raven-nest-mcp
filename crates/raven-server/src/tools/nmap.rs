@@ -1,3 +1,16 @@
+//! Nmap port scanner handler with XML output parsing.
+//!
+//! Supports four scan types: `quick` (default, `-T4 -F`), `service` (`-sV`),
+//! `os` (`-O`, requires root), and `vuln` (`-sV --script=vuln`). All output
+//! is requested in XML format (`-oX -`) and parsed into a structured text
+//! summary via [`parse_nmap_xml`].
+//!
+//! Falls back to raw text output if XML parsing fails (e.g. when nmap emits
+//! warnings before the XML document).
+//!
+//! The `os` scan type checks for root privileges via `libc::geteuid()` before
+//! launching, since nmap's `-O` requires raw sockets.
+
 use raven_core::{config::RavenConfig, executor, safety};
 use rmcp::{
     Peer, RoleServer,
@@ -5,6 +18,7 @@ use rmcp::{
     schemars,
 };
 
+/// MCP request schema for `run_nmap`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct NmapRequest {
     #[schemars(description = "Target IP, hostname, or CIDR range")]
@@ -15,6 +29,7 @@ pub struct NmapRequest {
     pub scan_type: Option<String>,
 }
 
+/// Execute an nmap scan, parse XML output, and return structured results.
 pub async fn run(
     config: &RavenConfig,
     req: NmapRequest,
@@ -26,7 +41,7 @@ pub async fn run(
         crate::progress::ProgressTicker::start(p, "nmap".into(), req.target.clone())
     });
 
-    // OS detection requires root privileges
+    // OS detection requires root for raw sockets
     // SAFETY: geteuid is a trivial read-only syscall with no invariants
     if req.scan_type.as_deref() == Some("os") && unsafe { libc::geteuid() } != 0 {
         return Err(rmcp::ErrorData::invalid_params(
@@ -35,6 +50,7 @@ pub async fn run(
         ));
     }
 
+    // Build arguments based on scan type preset
     let mut args: Vec<String> = match req.scan_type.as_deref() {
         Some("service") => vec!["-sV".into()],
         Some("os") => vec!["-O".into()],
@@ -73,7 +89,11 @@ pub async fn run(
     Ok(CallToolResult::success(vec![Content::text(output)]))
 }
 
-/// Parse nmap XML output into a structured text summary.
+/// Parse nmap XML output (`-oX -`) into a human-readable text summary.
+///
+/// Extracts: command line, host addresses, port states with service/version,
+/// OS detection matches (top 3), and run statistics (elapsed time, host counts).
+/// Returns `None` if the input isn't valid nmap XML.
 pub fn parse_nmap_xml(xml: &str) -> Option<String> {
     let doc = roxmltree::Document::parse(xml).ok()?;
     let root = doc.root_element();
@@ -84,7 +104,6 @@ pub fn parse_nmap_xml(xml: &str) -> Option<String> {
 
     let mut output = String::new();
 
-    // Extract scan info
     if let Some(args) = root.attribute("args") {
         output.push_str(&format!("Command: {args}\n"));
     }
@@ -103,7 +122,7 @@ pub fn parse_nmap_xml(xml: &str) -> Option<String> {
             output.push_str(&format!("Status: {state}\n"));
         }
 
-        // Ports
+        // Port table
         if let Some(ports) = host.children().find(|n| n.tag_name().name() == "ports") {
             output.push_str("\nPORT       STATE    SERVICE    VERSION\n");
             for port in ports.children().filter(|n| n.tag_name().name() == "port") {
@@ -139,7 +158,7 @@ pub fn parse_nmap_xml(xml: &str) -> Option<String> {
             }
         }
 
-        // OS detection results
+        // OS detection results (top 3 matches)
         for osmatch in host
             .children()
             .find(|n| n.tag_name().name() == "os")
@@ -153,7 +172,7 @@ pub fn parse_nmap_xml(xml: &str) -> Option<String> {
         }
     }
 
-    // Run stats
+    // Run statistics
     if let Some(runstats) = root.children().find(|n| n.tag_name().name() == "runstats") {
         if let Some(finished) = runstats
             .children()

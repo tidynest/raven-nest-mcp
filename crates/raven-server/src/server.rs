@@ -1,3 +1,14 @@
+//! MCP server implementation — tool registration and request routing.
+//!
+//! [`RavenServer`] is the central struct that:
+//! - Holds shared state (`Arc<RavenConfig>`, `ScanManager`, `FindingStore`, cookie jar).
+//! - Registers all 18+ MCP tools via the `#[tool_router]` macro.
+//! - Implements `ServerHandler` to provide server info and capabilities.
+//!
+//! Tool methods are thin wrappers that extract parameters and delegate to the
+//! corresponding module in [`tools`](crate::tools). Long-running tools receive
+//! a `Peer<RoleServer>` for progress notifications via [`ProgressTicker`](crate::progress::ProgressTicker).
+
 use crate::tools::scans::{LaunchScanRequest, ScanIdRequest, ScanResultsRequest};
 use crate::tools::{
     feroxbuster::FeroxbusterRequest,
@@ -22,17 +33,24 @@ use rmcp::{
     tool, tool_handler, tool_router,
 };
 
+/// Central MCP server that owns all shared state and routes tool calls.
+///
+/// Cloned per-connection by rmcp — all inner state is behind `Arc`/`RwLock`.
 #[derive(Clone)]
 pub struct RavenServer {
     config: std::sync::Arc<raven_core::config::RavenConfig>,
     tool_router: ToolRouter<Self>,
     pub scan_manager: raven_core::scan_manager::ScanManager,
     finding_store: std::sync::Arc<std::sync::RwLock<raven_report::store::FindingStore>>,
+    /// Shared cookie jar for `http_request` — persists cookies across requests within a session.
     cookie_jar: std::sync::Arc<reqwest::cookie::Jar>,
 }
 
 #[tool_router]
 impl RavenServer {
+    /// Create a new server instance, initialising all shared state.
+    ///
+    /// Creates the output directory, findings store, and scan manager.
     pub fn new(config: raven_core::config::RavenConfig) -> Self {
         let config = std::sync::Arc::new(config);
         let scan_manager =
@@ -318,6 +336,8 @@ impl ServerHandler for RavenServer {
     }
 }
 
+/// Instructions sent to the MCP client on connection, guiding tool usage order
+/// and parallelism strategy.
 const SERVER_INSTRUCTIONS: &str = "\
 Raven Nest - pentesting toolkit.
 

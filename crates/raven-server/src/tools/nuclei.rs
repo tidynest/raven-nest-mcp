@@ -1,3 +1,11 @@
+//! Nuclei template-based vulnerability scanner handler.
+//!
+//! Nuclei runs community-maintained detection templates against a target.
+//! Output is requested in JSONL format (`-jsonl`) for structured processing.
+//!
+//! Supports optional severity filtering (e.g. only `high,critical`) and
+//! tag-based template selection (e.g. `cve,oast`).
+
 use raven_core::{config::RavenConfig, executor, safety};
 use rmcp::{
     Peer, RoleServer,
@@ -5,6 +13,7 @@ use rmcp::{
     schemars,
 };
 
+/// MCP request schema for `run_nuclei`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct NucleiRequest {
     #[schemars(description = "Target URL or hostname")]
@@ -15,6 +24,7 @@ pub struct NucleiRequest {
     pub tags: Option<String>,
 }
 
+/// Execute a nuclei scan with optional severity/tag filtering.
 pub async fn run(
     config: &RavenConfig,
     req: NucleiRequest,
@@ -28,6 +38,7 @@ pub async fn run(
 
     let mut args = vec!["-u".to_string(), req.target, "-jsonl".to_string()];
 
+    // Only apply severity filter if it's a valid nuclei severity value
     if let Some(sev) = &req.severity {
         let valid = ["info", "low", "medium", "high", "critical"];
         if valid.contains(&sev.as_str()) {

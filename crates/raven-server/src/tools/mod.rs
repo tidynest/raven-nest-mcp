@@ -1,4 +1,19 @@
-/// Returns true if the target URL points to a localhost address.
+//! Tool handler modules — one per external pentesting tool.
+//!
+//! Each module exports a `run()` async function that:
+//! 1. Validates input via [`safety::validate_target`](raven_core::safety::validate_target).
+//! 2. Optionally starts a [`ProgressTicker`](crate::progress::ProgressTicker) for long-running tools.
+//! 3. Builds CLI arguments with safety-capped parameters.
+//! 4. Delegates execution to [`executor::run`](raven_core::executor::run).
+//! 5. Formats output via [`error::format_result`](crate::error::format_result).
+//!
+//! Additionally, [`scans`] handles background scan launch/poll/cancel, and
+//! [`findings`] manages finding persistence and report generation.
+
+/// Detect whether a target URL points to localhost.
+///
+/// Used by [`feroxbuster`] and [`ffuf`] to reduce default thread counts for
+/// local targets, preventing self-DoS during development testing.
 pub(crate) fn is_localhost(target: &str) -> bool {
     let lower = target.to_lowercase();
     let host_part = lower

@@ -1,8 +1,24 @@
+//! Input validation and output sanitisation — the security backbone of Raven Nest.
+//!
+//! Every tool invocation passes through at least two of these gates:
+//!
+//! 1. [`check_allowlist`] — rejects tools not in `SafetyConfig::allowed_tools`.
+//! 2. [`validate_target`] — rejects shell metacharacters, validates IPs, CIDRs,
+//!    URLs, and hostnames to prevent command injection.
+//! 3. [`truncate_output`] — caps output at `max_output_chars`, preserving both
+//!    the head (metadata) and tail (summary) of long results.
+//!
+//! These functions are called by [`executor::run`](crate::executor::run) and
+//! directly by tool handlers in `raven-server::tools` for early validation.
+
 use crate::config::SafetyConfig;
 use crate::error::PentestError;
 use std::net::IpAddr;
 
-/// Reject if the tool isn't in the allowlist.
+/// Reject if the tool isn't in the operator's allowlist.
+///
+/// This is the first gate in the safety pipeline. Without this, an LLM could
+/// invoke arbitrary binaries through the MCP interface.
 pub fn check_allowlist(tool: &str, config: &SafetyConfig) -> Result<(), PentestError> {
     if config.allowed_tools.iter().any(|t| t == tool) {
         Ok(())
@@ -11,14 +27,18 @@ pub fn check_allowlist(tool: &str, config: &SafetyConfig) -> Result<(), PentestE
     }
 }
 
-/// Validate that a target string is a reasonable IP, hostname, or CIDR.
-/// Rejects shell metacharacters to prevent injection.
+/// Validate that a target string is a reasonable IP, hostname, CIDR, or URL.
+///
+/// Accepts: IPv4/v6 addresses, CIDR ranges, `host:port`, HTTP(S) URLs, bare hostnames.
+/// Rejects: empty strings, shell metacharacters (`;|&$\`(){}<!>\n`), unsupported schemes.
+///
+/// This prevents command injection when targets are interpolated into tool CLI arguments.
 pub fn validate_target(target: &str) -> Result<(), PentestError> {
     if target.is_empty() {
         return Err(PentestError::InvalidTarget("empty target".into()));
     }
 
-    // Rejects shell metacharacters
+    // Shell metacharacter blocklist — these could escape argument boundaries
     const BANNED: &[char] = &[
         ';', '|', '&', '$', '`', '(', ')', '{', '}', '<', '>', '!', '\n',
     ];
@@ -28,7 +48,7 @@ pub fn validate_target(target: &str) -> Result<(), PentestError> {
         )));
     }
 
-    // Try parsing as URL — only if it looks like one (avoids false positives
+    // URL validation — only if it looks like one (avoids false positives
     // from url::Url::parse treating IPv6 CIDR like "fe80::/10" as scheme "fe80")
     if (target.starts_with("http://") || target.starts_with("https://"))
         && let Ok(parsed) = url::Url::parse(target)
@@ -39,12 +59,12 @@ pub fn validate_target(target: &str) -> Result<(), PentestError> {
             .map(|_| ());
     }
 
-    // Accept valid IP addresses directly
+    // Plain IP address
     if target.parse::<IpAddr>().is_ok() {
         return Ok(());
     }
 
-    // Accept CIDR notation (e.g. 192.168.1.0/24) with correct max prefix per IP version
+    // CIDR notation (e.g. 192.168.1.0/24, fe80::/10) with correct max prefix per IP version
     if let Some((ip_part, mask)) = target.split_once('/')
         && let Ok(ip) = ip_part.parse::<IpAddr>()
     {
@@ -57,8 +77,7 @@ pub fn validate_target(target: &str) -> Result<(), PentestError> {
         }
     }
 
-    // Accept host:port (e.g. "example.com:443") — split on last colon,
-    // validate host as hostname and port as u16
+    // host:port (e.g. "example.com:443") — split on last colon to handle IPv6 correctly
     if let Some((host, port_str)) = target.rsplit_once(':')
         && !host.is_empty()
         && port_str.parse::<u16>().is_ok()
@@ -66,10 +85,14 @@ pub fn validate_target(target: &str) -> Result<(), PentestError> {
         return validate_hostname(host);
     }
 
-    // Accept bare hostnames
+    // Bare hostname
     validate_hostname(target)
 }
 
+/// Validate a bare hostname (no scheme, no port).
+///
+/// Allows ASCII alphanumerics, hyphens, and dots. Rejects leading/trailing
+/// hyphens and hostnames longer than 253 chars (DNS limit).
 fn validate_hostname(host: &str) -> Result<(), PentestError> {
     if host.len() <= 253
         && host
@@ -84,10 +107,13 @@ fn validate_hostname(host: &str) -> Result<(), PentestError> {
     }
 }
 
-/// Truncate long output, preserving the first 70% and last 30%.
-/// This ensures you see both the beginning (headers/metadata) and
-/// end (summary/final results) of tool output.
-/// Uses char boundaries to avoid panicking on multi-byte UTF-8.
+/// Truncate long output while preserving the most useful parts.
+///
+/// Keeps the first 70% (headers, metadata, early results) and last 30%
+/// (summary lines, final statistics) of the output. The middle section is
+/// replaced with a `--- truncated N chars ---` marker.
+///
+/// Uses char-level indexing to avoid panicking on multi-byte UTF-8.
 pub fn truncate_output(output: &str, max_chars: usize) -> String {
     let char_count = output.chars().count();
     if char_count <= max_chars {
@@ -103,7 +129,7 @@ pub fn truncate_output(output: &str, max_chars: usize) -> String {
         .nth(head_chars)
         .map_or(output.len(), |(i, _)| i);
 
-    // Find byte offset for the tail (char_count - tail_chars from start)
+    // Find byte offset for the tail start (char_count - tail_chars from start)
     let tail_start = output
         .char_indices()
         .nth(char_count - tail_chars)
@@ -289,7 +315,7 @@ mod tests {
     #[test]
     fn truncate_mixed_multibyte() {
         // Mix of ASCII (1 byte), 2-byte, 3-byte, and 4-byte chars
-        let input = "aé中🔥".repeat(10); // 4 chars × 10 = 40 chars
+        let input = "aé中🔥".repeat(10); // 4 chars x 10 = 40 chars
         let result = truncate_output(&input, 20);
         assert!(result.contains("--- truncated"));
         // No panic = success for boundary safety

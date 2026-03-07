@@ -1,3 +1,12 @@
+//! Feroxbuster directory and content discovery handler.
+//!
+//! Feroxbuster brute-forces directories and files using a wordlist. Supports
+//! file extension probing, thread count control, and HTTP status code filtering.
+//!
+//! Thread count defaults to 50 for remote targets but drops to 10 for localhost
+//! (via [`is_localhost`](super::is_localhost)) to prevent self-DoS during local testing.
+//! Maximum is capped at 200 regardless of input.
+
 use raven_core::{config::RavenConfig, executor, safety};
 use rmcp::{
     Peer, RoleServer,
@@ -5,9 +14,11 @@ use rmcp::{
     schemars,
 };
 
+/// Default wordlist path (SecLists raft-medium-directories).
 const DEFAULT_WORDLIST: &str =
     "/usr/share/seclists/Discovery/Web-Content/raft-medium-directories.txt";
 
+/// MCP request schema for `run_feroxbuster`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct FeroxbusterRequest {
     #[schemars(description = "Target URL (e.g. 'http://example.com')")]
@@ -22,6 +33,7 @@ pub struct FeroxbusterRequest {
     pub status_codes: Option<String>,
 }
 
+/// Execute feroxbuster for directory discovery.
 pub async fn run(
     config: &RavenConfig,
     req: FeroxbusterRequest,
@@ -33,6 +45,7 @@ pub async fn run(
         crate::progress::ProgressTicker::start(p, "feroxbuster".into(), req.target.clone())
     });
 
+    // Reduce threads for localhost to prevent self-DoS
     let default_threads: u16 = if super::is_localhost(&req.target) { 10 } else { 50 };
     let threads = req.threads.unwrap_or(default_threads).min(200);
 

@@ -1,3 +1,13 @@
+//! ICMP ping handler — verifies target connectivity and measures latency.
+//!
+//! This is typically the first tool invoked in a pentest session. Unlike other
+//! tools, ping bypasses [`executor::run`](raven_core::executor::run) and
+//! spawns the process directly, since it only needs basic timeout containment
+//! and output truncation (no quality assessment or proxy injection needed).
+//!
+//! Safety layers: allowlist check → target validation → argument clamping →
+//! timeout containment → output truncation.
+
 use raven_core::{config::RavenConfig, safety};
 use rmcp::{
     model::{CallToolResult, Content},
@@ -5,6 +15,7 @@ use rmcp::{
 };
 use tokio::process::Command;
 
+/// MCP request schema for `ping_target`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct PingRequest {
     #[schemars(description = "Target IP address or hostname")]
@@ -13,19 +24,17 @@ pub struct PingRequest {
     pub count: Option<u8>,
 }
 
+/// Run ping against the target and return the output.
 pub async fn run(
     config: &RavenConfig,
     req: PingRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
-    // Layer 1: allowlist
     safety::check_allowlist("ping", &config.safety).map_err(crate::error::to_mcp)?;
-
-    // Layer 2: input validation
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
+    // Clamp packet count to prevent abuse (1-10 range)
     let count = req.count.unwrap_or(4).clamp(1, 10);
 
-    // Layer 3+4: argument building + execution containment
     let output = tokio::time::timeout(
         std::time::Duration::from_secs(config.execution.default_timeout_secs),
         Command::new("ping")
@@ -49,7 +58,6 @@ pub async fn run(
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     let result = if output.status.success() {
-        // Layer 5: output sanitisation
         safety::truncate_output(&stdout, config.safety.max_output_chars)
     } else {
         format!("ping failed (exit {}):\n{stderr}", output.status)

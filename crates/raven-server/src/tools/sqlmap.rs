@@ -1,3 +1,12 @@
+//! Sqlmap SQL injection detection and exploitation handler.
+//!
+//! Sqlmap tests URLs for SQL injection vulnerabilities. Runs in `--batch` mode
+//! (no interactive prompts) with level/risk capped by [`SafetyConfig`](raven_core::config::SafetyConfig)
+//! to prevent the LLM from escalating to destructive payloads.
+//!
+//! Supports POST data, cookies for authenticated testing, and technique selection
+//! (`BEUSTQ` — Boolean, Error, Union, Stacked, Time-based, Query-based).
+
 use raven_core::{config::RavenConfig, executor, safety};
 use rmcp::{
     Peer, RoleServer,
@@ -5,6 +14,7 @@ use rmcp::{
     schemars,
 };
 
+/// MCP request schema for `run_sqlmap`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct SqlmapRequest {
     #[schemars(description = "Target URL with injectable parameter")]
@@ -21,6 +31,7 @@ pub struct SqlmapRequest {
     pub technique: Option<String>,
 }
 
+/// Execute sqlmap with safety-capped level and risk parameters.
 pub async fn run(
     config: &RavenConfig,
     req: SqlmapRequest,
@@ -32,7 +43,7 @@ pub async fn run(
         crate::progress::ProgressTicker::start(p, "sqlmap".into(), req.url.clone())
     });
 
-    // Enforce config safety limits
+    // Enforce config safety limits — prevents LLM from requesting dangerous levels
     let level = req
         .level
         .unwrap_or(1)
@@ -45,7 +56,7 @@ pub async fn run(
     let mut args = vec![
         "-u".to_string(),
         req.url,
-        "--batch".into(),
+        "--batch".into(), // non-interactive mode
         "--level".into(),
         level.to_string(),
         "--risk".into(),

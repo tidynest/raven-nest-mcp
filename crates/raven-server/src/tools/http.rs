@@ -1,9 +1,24 @@
+//! Manual HTTP request handler for endpoint testing.
+//!
+//! Unlike the other tools (which shell out to external binaries), this handler
+//! uses `reqwest` directly to send crafted HTTP requests. Supports:
+//! - All standard HTTP methods (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS).
+//! - Custom headers, request body, and Bearer token auth.
+//! - Configurable redirect following (default: follow up to 10 hops).
+//! - Timeout capping at 120s.
+//! - Proxy support via [`NetworkConfig`](raven_core::config::NetworkConfig).
+//! - Session cookie persistence via a shared [`Jar`](reqwest::cookie::Jar)
+//!   that survives across requests within a session.
+//!
+//! Response bodies larger than [`MAX_RESPONSE_BODY`] (100KB) are truncated.
+
 use rmcp::{
     model::{CallToolResult, Content},
     schemars,
 };
 use std::{collections::HashMap, time::Duration};
 
+/// MCP request schema for `http_request`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct HttpRequest {
     #[schemars(description = "Full URL (must start with http:// or https://)")]
@@ -28,14 +43,16 @@ pub struct HttpRequest {
     pub follow_redirects: Option<bool>,
 }
 
+/// Maximum response body size before truncation (100KB).
 const MAX_RESPONSE_BODY: usize = 100_000;
 
+/// Execute an HTTP request using reqwest with proxy and cookie jar support.
 pub async fn run(
     config: &raven_core::config::RavenConfig,
     cookie_jar: std::sync::Arc<reqwest::cookie::Jar>,
     req: HttpRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
-    // Scheme validation
+    // Validate URL scheme (only http/https allowed)
     let parsed = reqwest::Url::parse(&req.url)
         .map_err(|_| rmcp::ErrorData::invalid_params("invalid url format", None))?;
 
@@ -57,6 +74,7 @@ pub async fn run(
         reqwest::redirect::Policy::none()
     };
 
+    // Build client with proxy support and shared cookie jar
     let mut builder = reqwest::Client::builder()
         .timeout(timeout)
         .redirect(redirect_policy)
@@ -116,6 +134,7 @@ pub async fn run(
         .await
         .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
 
+    // Truncate large response bodies to prevent overwhelming the MCP client
     let body = if body_bytes.len() > MAX_RESPONSE_BODY {
         let truncated = String::from_utf8_lossy(&body_bytes[..MAX_RESPONSE_BODY]);
         format!("{truncated}\n\n--- truncated at {MAX_RESPONSE_BODY} bytes ---\n")

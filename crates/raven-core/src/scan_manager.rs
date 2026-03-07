@@ -1,3 +1,18 @@
+//! Background scan orchestration with concurrency control and memory management.
+//!
+//! [`ScanManager`] lets the MCP client fire off long-running scans without blocking
+//! the tool call. Scans are tracked by UUID and can be polled, paginated, or cancelled.
+//!
+//! Key design decisions:
+//! - **Concurrency cap** — `max_concurrent_scans` prevents resource exhaustion.
+//! - **Spill-to-disk** — outputs exceeding [`SPILL_THRESHOLD`] (1 MB) are written
+//!   to `{output_dir}/scans/{id}.txt` instead of held in memory.
+//! - **Auto-inline** — `raven-server::tools::scans::status` embeds small outputs
+//!   directly in the status response, saving an extra `get_scan_results` call.
+//!
+//! This module delegates actual execution to [`executor::run`](crate::executor::run)
+//! and is consumed by the `raven-server::tools::scans` handler.
+
 use crate::config::RavenConfig;
 use crate::error::PentestError;
 use crate::executor;
@@ -9,6 +24,7 @@ use std::{
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
+/// Lifecycle state of a background scan.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ScanStatus {
     Running,
@@ -17,8 +33,10 @@ pub enum ScanStatus {
     Cancelled,
 }
 
+/// Outputs larger than this are spilled to disk to prevent unbounded memory growth.
 const SPILL_THRESHOLD: usize = 1_048_576; // 1 MB
 
+/// Where the scan output lives — either in-process memory or a file on disk.
 enum ScanOutput {
     Memory(String),
     Disk(std::path::PathBuf),
@@ -36,7 +54,10 @@ impl ScanOutput {
     }
 }
 
-/// Rich status snapshot returned by `status_enriched()` and `list()`.
+/// Enriched status snapshot returned by [`ScanManager::status_enriched`] and [`ScanManager::list`].
+///
+/// Provides everything the MCP client needs to display scan progress without
+/// a separate results call.
 #[derive(Debug, Clone)]
 pub struct ScanStatusInfo {
     pub id: String,
@@ -44,18 +65,25 @@ pub struct ScanStatusInfo {
     pub target: String,
     pub status: ScanStatus,
     pub elapsed_secs: u64,
+    /// Character count of the output, if available (scan must be completed/failed).
     pub output_chars: Option<usize>,
 }
 
+/// Internal bookkeeping for a single scan.
 struct ScanEntry {
     tool: String,
     target: String,
     status: ScanStatus,
     output: Option<ScanOutput>,
+    /// Handle to the tokio task running the scan. Taken (consumed) on cancel.
     handle: Option<JoinHandle<()>>,
     started_at: Instant,
 }
 
+/// Thread-safe background scan manager.
+///
+/// Cloned cheaply (all state behind `Arc<Mutex>`) and shared across MCP tool handlers.
+/// Created once in [`RavenServer::new`](raven_server::server::RavenServer::new).
 #[derive(Clone)]
 pub struct ScanManager {
     scans: Arc<Mutex<HashMap<String, ScanEntry>>>,
@@ -64,6 +92,7 @@ pub struct ScanManager {
 }
 
 impl ScanManager {
+    /// Acquire the scan state lock, converting a poisoned mutex into a `PentestError`.
     fn lock_scans(
         &self,
     ) -> Result<std::sync::MutexGuard<'_, HashMap<String, ScanEntry>>, PentestError> {
@@ -82,7 +111,9 @@ impl ScanManager {
     }
 
     /// Build sensible default arguments when the caller provides none.
-    /// Mirrors the defaults used by each dedicated tool handler.
+    ///
+    /// Mirrors the defaults used by each dedicated tool handler in `raven-server::tools`,
+    /// so that `launch_scan("nmap", target, [])` behaves like `run_nmap(target)`.
     fn default_args(tool: &str, target: &str) -> Vec<String> {
         match tool {
             "nmap" => vec![
@@ -98,6 +129,11 @@ impl ScanManager {
         }
     }
 
+    /// Launch a new background scan, returning its UUID.
+    ///
+    /// Validates the tool against the allowlist and the target against injection rules
+    /// before spawning. Enforces the concurrency cap — returns an error if already at
+    /// `max_concurrent_scans`.
     pub fn launch(
         &self,
         tool: &str,
@@ -108,6 +144,7 @@ impl ScanManager {
         crate::safety::check_allowlist(tool, &self.config.safety)?;
         crate::safety::validate_target(target)?;
 
+        // Enforce concurrency limit
         let scans = self.lock_scans()?;
         let running = scans
             .values()
@@ -133,6 +170,7 @@ impl ScanManager {
             args
         };
 
+        // Spawn the scan as a background tokio task
         let handle = tokio::spawn(async move {
             let arg_refs: Vec<&str> = arg_strings.iter().map(|s| s.as_str()).collect();
             let result = executor::run(&config, &tool_owned, &arg_refs, timeout_secs).await;
@@ -145,6 +183,7 @@ impl ScanManager {
                 }
             };
             if let Some(entry) = scans.get_mut(&scan_id) {
+                // Don't overwrite a cancellation
                 if entry.status == ScanStatus::Cancelled {
                     return;
                 }
@@ -157,6 +196,7 @@ impl ScanManager {
                             format!("{}\n{}", r.stdout, r.stderr)
                         };
 
+                        // Spill large outputs to disk to prevent unbounded memory growth
                         entry.output = Some(if output_str.len() > SPILL_THRESHOLD {
                             let scan_dir = std::path::Path::new(&config.execution.output_dir)
                                 .join("scans");
@@ -188,6 +228,7 @@ impl ScanManager {
             }
         });
 
+        // Register the scan entry so it can be polled
         let mut scans = self.lock_scans()?;
         scans.insert(
             id.clone(),
@@ -204,11 +245,14 @@ impl ScanManager {
         Ok(id)
     }
 
+    /// Get the bare status of a scan (no output, no timing).
     pub fn status(&self, id: &str) -> Result<Option<ScanStatus>, PentestError> {
         Ok(self.lock_scans()?.get(id).map(|e| e.status.clone()))
     }
 
-    /// Returns enriched status including elapsed time and output size.
+    /// Get enriched status including elapsed time and output size.
+    ///
+    /// Used by `raven-server::tools::scans::status` for the auto-inline feature.
     pub fn status_enriched(&self, id: &str) -> Result<Option<ScanStatusInfo>, PentestError> {
         let scans = self.lock_scans()?;
         Ok(scans.get(id).map(|e| ScanStatusInfo {
@@ -221,7 +265,10 @@ impl ScanManager {
         }))
     }
 
-    /// Returns the raw output string for completed scans (used for auto-inline).
+    /// Get the full output string for a completed scan.
+    ///
+    /// Reads from memory or disk depending on where the output was stored.
+    /// Used by `raven-server::tools::scans::status` for auto-inline.
     pub fn output(&self, id: &str) -> Result<Option<String>, PentestError> {
         let scans = self.lock_scans()?;
         let Some(entry) = scans.get(id) else { return Ok(None) };
@@ -234,6 +281,9 @@ impl ScanManager {
         }
     }
 
+    /// Get a paginated slice of the scan output (character-based offset + limit).
+    ///
+    /// Used by `get_scan_results` for outputs too large for auto-inline.
     pub fn results(
         &self,
         id: &str,
@@ -262,6 +312,7 @@ impl ScanManager {
         Ok(Some(chars[offset..end].iter().collect()))
     }
 
+    /// Cancel a running scan by aborting its tokio task.
     pub fn cancel(&self, id: &str) -> Result<(), PentestError> {
         let mut scans = self.lock_scans()?;
         let entry = scans
@@ -277,7 +328,7 @@ impl ScanManager {
         Ok(())
     }
 
-    /// Returns enriched status for all scans.
+    /// List enriched status for all tracked scans (running, completed, failed, cancelled).
     pub fn list(&self) -> Result<Vec<ScanStatusInfo>, PentestError> {
         Ok(self
             .lock_scans()?

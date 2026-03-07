@@ -1,3 +1,12 @@
+//! testssl.sh SSL/TLS configuration auditing handler.
+//!
+//! Tests a server's TLS configuration for vulnerabilities, weak ciphers,
+//! certificate issues, and protocol support. Supports quick mode (fewer checks)
+//! and severity-based filtering.
+//!
+//! Note: `--fast` is deprecated in testssl.sh 3.2+, so quick mode uses
+//! `--quiet --sneaky` instead.
+
 use raven_core::{config::RavenConfig, executor, safety};
 use rmcp::{
     Peer, RoleServer,
@@ -5,6 +14,7 @@ use rmcp::{
     schemars,
 };
 
+/// MCP request schema for `run_testssl`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct TestsslRequest {
     #[schemars(description = "Target hostname, host:port, or URL")]
@@ -15,6 +25,7 @@ pub struct TestsslRequest {
     pub severity: Option<String>,
 }
 
+/// Execute testssl.sh with optional quick mode and severity filtering.
 pub async fn run(
     config: &RavenConfig,
     req: TestsslRequest,
@@ -29,13 +40,14 @@ pub async fn run(
     let mut args = Vec::new();
 
     if req.quick.unwrap_or(false) {
-        // --fast is deprecated in testssl.sh 3.2+; use individual skips instead
+        // --fast is deprecated in testssl.sh 3.2+; use individual flags instead
         args.extend([
             "--quiet".to_string(),
             "--sneaky".into(),
         ]);
     }
 
+    // Validate and apply severity filter (case-insensitive input)
     if let Some(ref sev) = req.severity {
         let valid = ["LOW", "MEDIUM", "HIGH", "CRITICAL"];
         if valid.contains(&sev.to_uppercase().as_str()) {

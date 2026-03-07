@@ -1,3 +1,13 @@
+//! Finding management handlers (save, get, list, delete, report generation).
+//!
+//! These handlers bridge the MCP interface to [`FindingStore`] for persistence
+//! and [`markdown::generate_report`](raven_report::markdown::generate_report)
+//! for report output. The store is protected by `RwLock` — reads (list, get)
+//! take a shared lock, writes (save, delete) take an exclusive lock.
+//!
+//! Reports are both returned in the MCP response and saved to disk at
+//! `{output_dir}/report-{timestamp}.md`.
+
 use raven_report::finding::{Finding, Severity};
 use raven_report::markdown;
 use raven_report::store::FindingStore;
@@ -7,6 +17,7 @@ use rmcp::{
 };
 use std::sync::RwLock;
 
+/// MCP request schema for `save_finding`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct SaveFindingRequest {
     #[schemars(description = "Finding title")]
@@ -29,18 +40,21 @@ pub struct SaveFindingRequest {
     pub cve: Option<String>,
 }
 
+/// MCP request schema for `get_finding` and `delete_finding`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct FindingIdRequest {
     #[schemars(description = "Finding ID")]
     pub finding_id: String,
 }
 
+/// MCP request schema for `generate_report`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct GenerateReportRequest {
     #[schemars(description = "Report title")]
     pub title: Option<String>,
 }
 
+/// Parse a severity string (case-insensitive) into a [`Severity`] enum.
 fn parse_severity(s: &str) -> Result<Severity, rmcp::ErrorData> {
     match s.to_lowercase().as_str() {
         "critical" => Ok(Severity::Critical),
@@ -55,6 +69,7 @@ fn parse_severity(s: &str) -> Result<Severity, rmcp::ErrorData> {
     }
 }
 
+/// Save a new finding to the store. Returns the generated finding ID.
 pub fn save_finding(
     store: &RwLock<FindingStore>,
     req: SaveFindingRequest,
@@ -77,6 +92,7 @@ pub fn save_finding(
     ))]))
 }
 
+/// Retrieve a finding by ID, returning its full JSON representation.
 pub fn get_finding(
     store: &RwLock<FindingStore>,
     req: FindingIdRequest,
@@ -95,6 +111,7 @@ pub fn get_finding(
     Ok(CallToolResult::success(vec![Content::text(text)]))
 }
 
+/// List all findings as `ID | [Severity] Title`, sorted by severity.
 pub fn list_findings(store: &RwLock<FindingStore>) -> Result<CallToolResult, rmcp::ErrorData> {
     let store = store
         .read()
@@ -115,6 +132,7 @@ pub fn list_findings(store: &RwLock<FindingStore>) -> Result<CallToolResult, rmc
     )]))
 }
 
+/// Delete a finding by ID from the store and disk.
 pub fn delete_finding(
     store: &RwLock<FindingStore>,
     req: FindingIdRequest,
@@ -132,6 +150,11 @@ pub fn delete_finding(
     Ok(CallToolResult::success(vec![Content::text(text)]))
 }
 
+/// Generate a markdown report from all stored findings and save it to disk.
+///
+/// The report is both returned in the MCP response and persisted to
+/// `{output_dir}/report-{timestamp}.md`. If disk write fails, the report
+/// is still returned to the client.
 pub fn generate_report(
     store: &RwLock<FindingStore>,
     config: &raven_core::config::RavenConfig,
@@ -146,7 +169,7 @@ pub fn generate_report(
     let title = req.title.as_deref().unwrap_or("Penetration Test Report");
     let report = markdown::generate_report(&refs, title);
 
-    // Save to disk
+    // Persist to disk alongside findings
     let date = chrono::Local::now().format("%Y-%m-%d_%H%M%S");
     let filename = format!("report-{date}.md");
     let path = std::path::Path::new(&config.execution.output_dir).join(&filename);

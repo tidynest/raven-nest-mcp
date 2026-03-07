@@ -1,9 +1,23 @@
+//! Markdown report generator for pentest findings.
+//!
+//! Produces a structured report with:
+//! 1. **Executive summary** — severity breakdown table with counts.
+//! 2. **Findings section** — numbered entries with target, tool, CVSS/CVE,
+//!    description, evidence, and remediation.
+//!
+//! Called by [`raven_server::tools::findings::generate_report`] which also
+//! persists the output to `{output_dir}/report-{timestamp}.md`.
+
 use crate::finding::{Finding, Severity};
 
+/// Generate a complete markdown pentest report from a list of findings.
+///
+/// Findings are rendered in the order provided — callers typically pass them
+/// pre-sorted by severity via [`FindingStore::load_all`](crate::store::FindingStore::load_all).
 pub fn generate_report(findings: &[&Finding], title: &str) -> String {
     let mut report = format!("# {title}\n\n");
 
-    // Executive Summary
+    // Executive Summary — severity breakdown table
     report.push_str("## Executive Summary\n\n");
     let counts = count_by_severity(findings);
     report.push_str(&format!(
@@ -18,7 +32,7 @@ pub fn generate_report(findings: &[&Finding], title: &str) -> String {
         findings.len(),
     ));
 
-    // Individual findings
+    // Individual findings — each with metadata, description, and optional fields
     report.push_str("## Findings\n\n");
     for (i, f) in findings.iter().enumerate() {
         report.push_str(&format!("### {}. [{}] {}\n\n", i + 1, f.severity, f.title));
@@ -47,6 +61,7 @@ pub fn generate_report(findings: &[&Finding], title: &str) -> String {
     report
 }
 
+/// Count findings by each severity level. Returns (critical, high, medium, low, info).
 fn count_by_severity(findings: &[&Finding]) -> (usize, usize, usize, usize, usize) {
     let count = |s: &Severity| findings.iter().filter(|f| f.severity == *s).count();
     (

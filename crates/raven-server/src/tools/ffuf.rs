@@ -1,11 +1,22 @@
+//! Ffuf web fuzzer handler.
+//!
+//! Ffuf substitutes the `FUZZ` keyword in URLs (and optionally headers/bodies)
+//! with wordlist entries. Supports custom HTTP methods, headers, status code
+//! matching, and response size filtering.
+//!
+//! Like [`feroxbuster`](super::feroxbuster), thread count defaults lower for
+//! localhost targets (10 vs 40) and is capped at 150.
+
 use raven_core::{config::RavenConfig, executor, safety};
 use rmcp::{
     model::{CallToolResult, Content},
     schemars,
 };
 
+/// Default wordlist path (SecLists raft-medium-words).
 const DEFAULT_WORDLIST: &str = "/usr/share/seclists/Discovery/Web-Content/raft-medium-words.txt";
 
+/// MCP request schema for `run_ffuf`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 pub struct FfufRequest {
     #[schemars(description = "Target URL with FUZZ keyword (e.g. 'http://example.com/FUZZ')")]
@@ -24,14 +35,16 @@ pub struct FfufRequest {
     pub threads: Option<u16>,
 }
 
+/// Execute ffuf with FUZZ keyword substitution and configurable filtering.
 pub async fn run(
     config: &RavenConfig,
     req: FfufRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
-    // Validate the base URL (strip the FUZZ keyword for validation)
+    // Validate the base URL (substitute FUZZ keyword for validation only)
     let validation_url = req.url.replace("FUZZ", "test");
     safety::validate_target(&validation_url).map_err(crate::error::to_mcp)?;
 
+    // The FUZZ keyword is required — it's the substitution point for wordlist entries
     if !req.url.contains("FUZZ") {
         return Err(rmcp::ErrorData::invalid_params(
             "URL must contain the FUZZ keyword (e.g. http://example.com/FUZZ)",
@@ -39,6 +52,7 @@ pub async fn run(
         ));
     }
 
+    // Reduce threads for localhost to prevent self-DoS
     let default_threads: u16 = if super::is_localhost(&req.url) { 10 } else { 40 };
     let threads = req.threads.unwrap_or(default_threads).min(150);
 
@@ -57,6 +71,7 @@ pub async fn run(
         args.extend(["-X".into(), method.to_uppercase()]);
     }
 
+    // Split comma-separated headers into individual -H flags
     if let Some(ref headers) = req.headers {
         for header in headers.split(',') {
             args.extend(["-H".into(), header.trim().to_string()]);
