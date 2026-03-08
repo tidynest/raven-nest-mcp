@@ -17,6 +17,7 @@ const AUTO_INLINE_LIMIT: usize = 10_000;
 
 /// MCP request schema for `launch_scan`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct LaunchScanRequest {
     #[schemars(description = "Tool to run: 'nmap', 'nuclei', 'nikto', 'whatweb'")]
     pub tool: String,
@@ -30,6 +31,7 @@ pub struct LaunchScanRequest {
 
 /// MCP request schema for `get_scan_status` and `cancel_scan`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ScanIdRequest {
     #[schemars(description = "Scan ID returned by launch_scan")]
     pub scan_id: String,
@@ -37,6 +39,7 @@ pub struct ScanIdRequest {
 
 /// MCP request schema for `get_scan_results` (paginated retrieval).
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ScanResultsRequest {
     #[schemars(description = "Scan ID returned by launch_scan")]
     pub scan_id: String,

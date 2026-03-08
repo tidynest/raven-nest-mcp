@@ -18,6 +18,7 @@ use rmcp::{
 
 /// MCP request schema for `run_masscan`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct MasscanRequest {
     #[schemars(description = "Target CIDR range (e.g. '10.0.0.0/24')")]
     pub target: String,

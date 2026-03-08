@@ -20,6 +20,7 @@ const DEFAULT_WORDLIST: &str =
 
 /// MCP request schema for `run_feroxbuster`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct FeroxbusterRequest {
     #[schemars(description = "Target URL (e.g. 'http://example.com')")]
     pub target: String,
@@ -31,6 +32,8 @@ pub struct FeroxbusterRequest {
     pub threads: Option<u16>,
     #[schemars(description = "HTTP status codes to include (e.g. '200,301,302')")]
     pub status_codes: Option<String>,
+    #[schemars(description = "Cookie string for authenticated scanning (e.g. 'PHPSESSID=abc123')")]
+    pub cookie: Option<String>,
 }
 
 /// Execute feroxbuster for directory discovery.
@@ -66,6 +69,9 @@ pub async fn run(
 
     if let Some(ref codes) = req.status_codes {
         args.extend(["-s".into(), codes.clone()]);
+    }
+    if let Some(ref cookie) = req.cookie {
+        args.extend(["-b".into(), cookie.clone()]);
     }
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();

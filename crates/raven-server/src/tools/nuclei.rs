@@ -15,6 +15,7 @@ use rmcp::{
 
 /// MCP request schema for `run_nuclei`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct NucleiRequest {
     #[schemars(description = "Target URL or hostname")]
     pub target: String,
@@ -22,6 +23,8 @@ pub struct NucleiRequest {
     pub severity: Option<String>,
     #[schemars(description = "Template tags to include (e.g. 'cve,oast)")]
     pub tags: Option<String>,
+    #[schemars(description = "Cookie string for authenticated scanning (e.g. 'PHPSESSID=abc123')")]
+    pub cookie: Option<String>,
 }
 
 /// Execute a nuclei scan with optional severity/tag filtering.
@@ -48,6 +51,9 @@ pub async fn run(
 
     if let Some(tags) = &req.tags {
         args.extend(["-tags".to_string(), tags.clone()]);
+    }
+    if let Some(cookie) = &req.cookie {
+        args.extend(["-H".to_string(), format!("Cookie: {cookie}")]);
     }
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();

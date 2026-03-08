@@ -17,6 +17,7 @@ use tokio::process::Command;
 
 /// MCP request schema for `ping_target`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct PingRequest {
     #[schemars(description = "Target IP address or hostname")]
     pub target: String,

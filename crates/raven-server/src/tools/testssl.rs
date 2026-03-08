@@ -16,6 +16,7 @@ use rmcp::{
 
 /// MCP request schema for `run_testssl`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct TestsslRequest {
     #[schemars(description = "Target hostname, host:port, or URL")]
     pub target: String,

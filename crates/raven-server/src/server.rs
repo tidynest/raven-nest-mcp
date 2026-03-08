@@ -365,6 +365,11 @@ Run these in parallel for faster sessions:
 - run_testssl alongside any web scanner
 Do NOT parallelise run_sqlmap + run_hydra (both are resource-intensive and may interfere).
 
+## Authenticated Scanning
+- http_request has a cookie jar that persists across http_request calls within a session.
+- Scanning tools (sqlmap, nikto, nuclei, feroxbuster, ffuf, whatweb) run as subprocesses and do NOT share this jar.
+- After authenticating with http_request, pass the session cookie explicitly via each tool's `cookie` parameter.
+
 ## Background Scans (launch_scan)
 - get_scan_status returns results inline when scan is complete and output < 10K chars — no need to call get_scan_results separately.
 - Polling strategy: first poll after 10s (nmap/whatweb) or 30s (nuclei/nikto/testssl), then every 15-30s.

@@ -18,6 +18,7 @@ const DEFAULT_WORDLIST: &str = "/usr/share/seclists/Discovery/Web-Content/raft-m
 
 /// MCP request schema for `run_ffuf`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct FfufRequest {
     #[schemars(description = "Target URL with FUZZ keyword (e.g. 'http://example.com/FUZZ')")]
     pub url: String,
@@ -33,6 +34,8 @@ pub struct FfufRequest {
     pub filter_size: Option<String>,
     #[schemars(description = "Number of concurrent threads (default 40, reduced to 10 for localhost)")]
     pub threads: Option<u16>,
+    #[schemars(description = "Cookie string for authenticated fuzzing (e.g. 'PHPSESSID=abc123')")]
+    pub cookie: Option<String>,
 }
 
 /// Execute ffuf with FUZZ keyword substitution and configurable filtering.
@@ -84,6 +87,9 @@ pub async fn run(
 
     if let Some(ref size) = req.filter_size {
         args.extend(["-fs".into(), size.clone()]);
+    }
+    if let Some(ref cookie) = req.cookie {
+        args.extend(["-b".into(), cookie.clone()]);
     }
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();

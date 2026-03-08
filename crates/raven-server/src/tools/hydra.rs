@@ -17,6 +17,7 @@ use rmcp::{
 
 /// MCP request schema for `run_hydra`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct HydraRequest {
     #[schemars(description = "Target IP or hostname")]
     pub target: String,

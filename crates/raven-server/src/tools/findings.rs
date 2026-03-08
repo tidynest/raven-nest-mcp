@@ -19,6 +19,7 @@ use std::sync::RwLock;
 
 /// MCP request schema for `save_finding`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SaveFindingRequest {
     #[schemars(description = "Finding title")]
     pub title: String,
@@ -42,6 +43,7 @@ pub struct SaveFindingRequest {
 
 /// MCP request schema for `get_finding` and `delete_finding`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct FindingIdRequest {
     #[schemars(description = "Finding ID")]
     pub finding_id: String,
@@ -49,6 +51,7 @@ pub struct FindingIdRequest {
 
 /// MCP request schema for `generate_report`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct GenerateReportRequest {
     #[schemars(description = "Report title")]
     pub title: Option<String>,

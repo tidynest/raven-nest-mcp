@@ -14,11 +14,14 @@ use rmcp::schemars;
 
 /// MCP request schema for `run_whatweb`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct WhatwebRequest {
     #[schemars(description = "Target URL or hostname")]
     pub target: String,
     #[schemars(description = "Aggression: 'stealthy', 'passive', 'aggressive'")]
     pub aggression: Option<String>,
+    #[schemars(description = "Cookie string for authenticated scanning (e.g. 'PHPSESSID=abc123')")]
+    pub cookie: Option<String>,
 }
 
 /// Execute whatweb with the specified aggression level.
@@ -35,8 +38,12 @@ pub async fn run(
         _ => "1", // stealthy (default)
     };
 
-    let args = ["-a", level, "--color=never", &req.target];
-    let result = executor::run(config, "whatweb", &args, None)
+    let mut args = vec!["-a".to_string(), level.into(), "--color=never".into(), req.target];
+    if let Some(ref cookie) = req.cookie {
+        args.extend(["--cookie".into(), cookie.clone()]);
+    }
+    let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+    let result = executor::run(config, "whatweb", &arg_refs, None)
         .await
         .map_err(crate::error::to_mcp)?;
 

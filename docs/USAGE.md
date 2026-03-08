@@ -137,6 +137,7 @@ Identify web technologies (CMS, frameworks, server software).
 |-----------|----------|-------------|
 | `target` | yes | URL or hostname |
 | `aggression` | no | `stealthy` (default), `passive`, `aggressive` |
+| `cookie` | no | Cookie string for authenticated scanning |
 
 #### `run_masscan`
 High-speed port scanning. **Requires root** — returns an error if not running as root.
@@ -157,6 +158,7 @@ Template-based vulnerability scanning.
 | `target` | yes | URL or hostname |
 | `severity` | no | `info`, `low`, `medium`, `high`, `critical` |
 | `tags` | no | Template tags (e.g. `cve,oast`) |
+| `cookie` | no | Cookie string for authenticated scanning |
 
 #### `run_nikto`
 Web server misconfiguration scanner.
@@ -166,6 +168,7 @@ Web server misconfiguration scanner.
 | `target` | yes | Hostname or URL |
 | `port` | no | Port number (default 80) |
 | `tuning` | no | `quick` (default), `thorough`, `injection`, `fileupload` |
+| `cookie` | no | Cookie string for authenticated scanning |
 | `timeout_secs` | no | Override default timeout |
 
 ### Web Fuzzing & Discovery
@@ -180,6 +183,7 @@ Directory brute-forcing / content discovery.
 | `extensions` | no | File extensions to check (e.g. `php,html,js`) |
 | `threads` | no | Concurrent threads (default 50, reduced to 10 for localhost; max 200) |
 | `status_codes` | no | Status codes to include (e.g. `200,301,403`) |
+| `cookie` | no | Cookie string for authenticated scanning |
 
 #### `run_ffuf`
 Web fuzzing with FUZZ keyword.
@@ -193,6 +197,7 @@ Web fuzzing with FUZZ keyword.
 | `match_codes` | no | Match HTTP status codes (e.g. `200,301,302`) |
 | `filter_size` | no | Filter responses by size (bytes) |
 | `threads` | no | Concurrent threads (default 40, reduced to 10 for localhost; max 150) |
+| `cookie` | no | Cookie string for authenticated fuzzing |
 
 ### Exploitation
 

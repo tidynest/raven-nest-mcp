@@ -146,17 +146,21 @@ language.
 
 ### Two-Step Authentication Flow
 
-Many web targets require a session cookie. Use `http_request` to
-authenticate first — the cookie jar persists across all subsequent tool
-calls:
+Many web targets require a session cookie. The `http_request` cookie jar
+persists across `http_request` calls within a session, but **subprocess
+tools** (sqlmap, nikto, nuclei, feroxbuster, ffuf, whatweb) run as
+separate OS processes and cannot access the jar. Pass cookies explicitly:
 
 ```
 Step 1: Use raven.http_request to POST to http://localhost/login.php
         with body "user=admin&pass=secret"
+        → note the Set-Cookie value (e.g. PHPSESSID=abc123)
 
 Step 2: Use raven.run_sqlmap with target "http://localhost/page.php?id=1"
-        (session cookie is automatically reused)
+        and cookie "PHPSESSID=abc123;security_level=0"
 ```
+
+All web scanning tools accept a `cookie` parameter for this purpose.
 
 ### System Prompt Recommendations
 
@@ -180,9 +184,16 @@ authorized.
 
 Key tool parameters:
 - http_request: url, method, body, headers
-- run_sqlmap: target, cookie, level, risk
+- run_sqlmap: url, cookie, level, risk, data
+- run_nuclei: target, severity, tags, cookie
+- run_nikto: target, port, tuning, cookie
+- run_feroxbuster: target, wordlist, extensions, cookie
+- run_ffuf: url, wordlist, method, cookie
 - run_nmap: target, ports, scan_type
 - save_finding: title, severity, description, target, tool
+
+All scanning tools accept a "cookie" parameter — pass session cookies
+explicitly after authenticating with http_request.
 
 Keep responses concise. Do not repeat raw tool output — summarize key
 findings instead.

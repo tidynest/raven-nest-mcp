@@ -20,6 +20,7 @@ use rmcp::{
 
 /// MCP request schema for `run_nmap`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct NmapRequest {
     #[schemars(description = "Target IP, hostname, or CIDR range")]
     pub target: String,

@@ -14,6 +14,7 @@ use rmcp::schemars;
 
 /// MCP request schema for `run_nikto`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct NiktoRequest {
     #[schemars(description = "Target hostname or URL")]
     pub target: String,
@@ -21,6 +22,8 @@ pub struct NiktoRequest {
     pub port: Option<u16>,
     #[schemars(description = "Tuning: 'quick', 'thorough', 'injection', 'fileupload'")]
     pub tuning: Option<String>,
+    #[schemars(description = "Cookie string for authenticated scanning (e.g. 'PHPSESSID=abc123')")]
+    pub cookie: Option<String>,
     #[schemars(description = "Scan timeout in seconds (default 600)")]
     pub timeout_secs: Option<u64>,
 }
@@ -48,6 +51,10 @@ pub async fn run(
         if port == 443 {
             args.push("-ssl".into());
         }
+    }
+
+    if let Some(ref cookie) = req.cookie {
+        args.extend(["-cookie".into(), cookie.clone()]);
     }
 
     // Tuning presets map to nikto's -T flag (test type bitmask)

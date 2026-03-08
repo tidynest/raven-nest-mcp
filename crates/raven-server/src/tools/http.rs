@@ -20,6 +20,7 @@ use std::{collections::HashMap, time::Duration};
 
 /// MCP request schema for `http_request`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct HttpRequest {
     #[schemars(description = "Full URL (must start with http:// or https://)")]
     pub url: String,

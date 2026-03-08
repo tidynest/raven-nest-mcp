@@ -16,6 +16,7 @@ use rmcp::{
 
 /// MCP request schema for `run_sqlmap`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct SqlmapRequest {
     #[schemars(description = "Target URL with injectable parameter")]
     pub url: String,
