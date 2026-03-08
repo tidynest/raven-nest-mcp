@@ -19,12 +19,14 @@ pub struct NiktoRequest {
     #[schemars(description = "Target hostname or URL")]
     pub target: String,
     #[schemars(description = "Port to scan (default 80)")]
+    #[serde(default, deserialize_with = "super::lenient::option_number")]
     pub port: Option<u16>,
     #[schemars(description = "Tuning: 'quick', 'thorough', 'injection', 'fileupload'")]
     pub tuning: Option<String>,
     #[schemars(description = "Cookie string for authenticated scanning (e.g. 'PHPSESSID=abc123')")]
     pub cookie: Option<String>,
     #[schemars(description = "Scan timeout in seconds (default 600)")]
+    #[serde(default, deserialize_with = "super::lenient::option_number")]
     pub timeout_secs: Option<u64>,
 }
 

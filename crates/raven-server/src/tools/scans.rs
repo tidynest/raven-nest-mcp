@@ -26,6 +26,7 @@ pub struct LaunchScanRequest {
     #[schemars(description = "Tool arguments as a list of strings")]
     pub args: Option<Vec<String>>,
     #[schemars(description = "Scan timeout in seconds (default from config, typically 600)")]
+    #[serde(default, deserialize_with = "super::lenient::option_number")]
     pub timeout_secs: Option<u64>,
 }
 
@@ -44,8 +45,10 @@ pub struct ScanResultsRequest {
     #[schemars(description = "Scan ID returned by launch_scan")]
     pub scan_id: String,
     #[schemars(description = "Character offset to start reading from (default 0)")]
+    #[serde(default, deserialize_with = "super::lenient::option_number")]
     pub offset: Option<usize>,
     #[schemars(description = "Max characters to return (default 10000)")]
+    #[serde(default, deserialize_with = "super::lenient::option_number")]
     pub limit: Option<usize>,
 }
 

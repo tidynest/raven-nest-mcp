@@ -46,6 +46,8 @@ mod tests {
     }
 }
 
+pub mod lenient;
+
 pub mod feroxbuster;
 pub mod ffuf;
 pub mod findings;

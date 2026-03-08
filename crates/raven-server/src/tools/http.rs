@@ -16,6 +16,7 @@ use rmcp::{
     model::{CallToolResult, Content},
     schemars,
 };
+use reqwest::cookie::CookieStore;
 use std::{collections::HashMap, time::Duration};
 
 /// MCP request schema for `http_request`.
@@ -38,6 +39,7 @@ pub struct HttpRequest {
     pub auth_token: Option<String>,
 
     #[schemars(description = "Request timeout in seconds (default 30, max 120)")]
+    #[serde(default, deserialize_with = "super::lenient::option_number")]
     pub timeout_secs: Option<u64>,
 
     #[schemars(description = "Follow redirects (default true)")]
@@ -79,7 +81,7 @@ pub async fn run(
     let mut builder = reqwest::Client::builder()
         .timeout(timeout)
         .redirect(redirect_policy)
-        .cookie_provider(cookie_jar);
+        .cookie_provider(cookie_jar.clone());
 
     if let Some(ref proxy_url) = config.network.http_proxy {
         let proxy = reqwest::Proxy::http(proxy_url)
@@ -148,14 +150,24 @@ pub async fn run(
         String::from_utf8_lossy(&body_bytes).into_owned()
     };
 
-    let output = format!(
-        "HTTP {} {}\nElapsed: {:.1}ms\n\n--Headers ---\n{}\n\n--- Body ---\n{}",
+    // Surface session cookies from the jar so models can pass them to subprocess tools
+    let cookies_line = cookie_jar
+        .cookies(&parsed)
+        .and_then(|v: reqwest::header::HeaderValue| v.to_str().ok().map(String::from))
+        .unwrap_or_default();
+
+    let mut output = format!(
+        "HTTP {} {}\nElapsed: {:.1}ms\n\n--- Headers ---\n{}\n\n--- Body ---\n{}",
         status.as_u16(),
         status.canonical_reason().unwrap_or(""),
         elapsed.as_secs_f64() * 1000.0,
         resp_headers.join("\n"),
         body,
     );
+
+    if !cookies_line.is_empty() {
+        output.push_str(&format!("\n\n--- Session Cookies ---\n{cookies_line}"));
+    }
 
     Ok(CallToolResult::success(vec![Content::text(output)]))
 }

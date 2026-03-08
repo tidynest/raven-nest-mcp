@@ -25,8 +25,10 @@ pub struct SqlmapRequest {
     #[schemars(description = "Cookie string for authenticated testing")]
     pub cookie: Option<String>,
     #[schemars(description = "Test level 1-5 (default 1, capped by config)")]
+    #[serde(default, deserialize_with = "super::lenient::option_number")]
     pub level: Option<u8>,
     #[schemars(description = "Risk level 1-3 (default 1, capped by config)")]
+    #[serde(default, deserialize_with = "super::lenient::option_number")]
     pub risk: Option<u8>,
     #[schemars(description = "SQL injection techniques (e.g. 'BEUSTQ')")]
     pub technique: Option<String>,

@@ -22,6 +22,7 @@ pub struct PingRequest {
     #[schemars(description = "Target IP address or hostname")]
     pub target: String,
     #[schemars(description = "Number of ping packets (1-10), default 4)")]
+    #[serde(default, deserialize_with = "super::lenient::option_number")]
     pub count: Option<u8>,
 }
 

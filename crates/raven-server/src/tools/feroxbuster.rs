@@ -29,6 +29,7 @@ pub struct FeroxbusterRequest {
     #[schemars(description = "File extensions to check (e.g. 'php,html,txt')")]
     pub extensions: Option<String>,
     #[schemars(description = "Number of concurrent threads (default 50)")]
+    #[serde(default, deserialize_with = "super::lenient::option_number")]
     pub threads: Option<u16>,
     #[schemars(description = "HTTP status codes to include (e.g. '200,301,302')")]
     pub status_codes: Option<String>,

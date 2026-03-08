@@ -25,6 +25,7 @@ pub struct MasscanRequest {
     #[schemars(description = "Port spec (e.g. '80,443' or '0-65535')")]
     pub ports: String,
     #[schemars(description = "Packets per second (capped by config, default 100)")]
+    #[serde(default, deserialize_with = "super::lenient::option_number")]
     pub rate: Option<u32>,
 }
 

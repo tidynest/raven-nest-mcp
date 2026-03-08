@@ -33,6 +33,7 @@ pub struct FfufRequest {
     #[schemars(description = "Filter responses by size (bytes)")]
     pub filter_size: Option<String>,
     #[schemars(description = "Number of concurrent threads (default 40, reduced to 10 for localhost)")]
+    #[serde(default, deserialize_with = "super::lenient::option_number")]
     pub threads: Option<u16>,
     #[schemars(description = "Cookie string for authenticated fuzzing (e.g. 'PHPSESSID=abc123')")]
     pub cookie: Option<String>,

@@ -78,25 +78,12 @@ Local models may use wrong parameter names based on their training data.
 For example, Qwen 3.5 used `"data"` instead of `"body"` for
 `http_request` — likely influenced by Python's `requests.post(data=...)`.
 
-The parameter is silently ignored because serde deserializes unknown fields
-as `None`. The request goes through but without the intended body.
+**Built-in protection:** all 18 request structs use
+`#[serde(deny_unknown_fields)]`, so misnamed parameters produce an
+explicit error message naming the invalid field instead of being silently
+ignored.
 
-**Mitigation for server developers:** consider adding
-`#[serde(deny_unknown_fields)]` to request structs so misnamed parameters
-produce an explicit error instead of silent failure:
-
-```rust
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct HttpRequestParams {
-    pub url: String,
-    pub method: Option<String>,
-    pub body: Option<String>,   // not "data"
-    // ...
-}
-```
-
-**Mitigation for users:** when a tool call produces unexpected results,
+**Mitigation for users:** when a tool call fails with a field error,
 check whether the model used the correct parameter names from the schema.
 Using explicit parameter names in your prompts helps:
 
@@ -106,6 +93,16 @@ with body "user=admin&pass=test"
 ```
 
 The word "body" in the prompt primes the model to use the correct field name.
+
+### Numeric Parameters Sent as Strings
+
+Some models serialize numbers as JSON strings (`"2"` instead of `2`).
+This affected fields like `level`, `risk`, `threads`, `port`, and
+`timeout_secs` across all tool request structs.
+
+**Built-in protection:** all numeric `Option` fields use a lenient
+deserializer that accepts both `2` (number) and `"2"` (string). Invalid
+strings like `"abc"` still produce a clear parse error.
 
 ### Context Window Exhaustion
 
@@ -154,13 +151,16 @@ separate OS processes and cannot access the jar. Pass cookies explicitly:
 ```
 Step 1: Use raven.http_request to POST to http://localhost/login.php
         with body "user=admin&pass=secret"
-        → note the Set-Cookie value (e.g. PHPSESSID=abc123)
+        → the response includes a "Session Cookies" section with the
+          PHPSESSID value (e.g. PHPSESSID=abc123; security_level=0)
 
 Step 2: Use raven.run_sqlmap with target "http://localhost/page.php?id=1"
         and cookie "PHPSESSID=abc123;security_level=0"
 ```
 
-All web scanning tools accept a `cookie` parameter for this purpose.
+The `http_request` response always includes a `--- Session Cookies ---`
+section showing cookies stored in the jar for that URL. All web scanning
+tools accept a `cookie` parameter to pass these explicitly.
 
 ### System Prompt Recommendations
 

@@ -28,6 +28,7 @@ pub struct HydraRequest {
     #[schemars(description = "Path to password list file")]
     pub passlist: String,
     #[schemars(description = "Number of parallel tasks (capped by config)")]
+    #[serde(default, deserialize_with = "super::lenient::option_number")]
     pub tasks: Option<u16>,
     #[schemars(description = "Form attack string for http-post-form/http-get-form (e.g. '/login:user=^USER^&pass=^PASS^:F=incorrect')")]
     pub form_params: Option<String>,
