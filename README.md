@@ -38,6 +38,7 @@ Create `.mcp.json` in your project root:
 ```
 
 See [docs/USAGE.md](docs/USAGE.md) for tool installation, configuration, and the full parameter reference.
+See [docs/LOCAL_AI_INTEGRATION.md](docs/LOCAL_AI_INTEGRATION.md) for using Raven Nest with local models (Ollama, LM Studio).
 
 ## Safety Architecture
 

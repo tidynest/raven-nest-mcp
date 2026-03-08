@@ -29,16 +29,39 @@ pub fn check_allowlist(tool: &str, config: &SafetyConfig) -> Result<(), PentestE
 
 /// Validate that a target string is a reasonable IP, hostname, CIDR, or URL.
 ///
-/// Accepts: IPv4/v6 addresses, CIDR ranges, `host:port`, HTTP(S) URLs, bare hostnames.
+/// Accepts: IPv4/v6 addresses, CIDR ranges, `host:port`, HTTP(S) URLs (including
+/// query strings with `&`), bare hostnames.
 /// Rejects: empty strings, shell metacharacters (`;|&$\`(){}<!>\n`), unsupported schemes.
 ///
-/// This prevents command injection when targets are interpolated into tool CLI arguments.
+/// URLs are parsed first so that query-string characters like `&` are not
+/// rejected — `Command::arg()` passes them as a single argument with no shell.
 pub fn validate_target(target: &str) -> Result<(), PentestError> {
     if target.is_empty() {
         return Err(PentestError::InvalidTarget("empty target".into()));
     }
 
-    // Shell metacharacter blocklist — these could escape argument boundaries
+    // URL validation first — query strings may contain characters (like &)
+    // that are banned in non-URL targets but safe inside a parsed URL.
+    if (target.starts_with("http://") || target.starts_with("https://"))
+        && let Ok(parsed) = url::Url::parse(target)
+    {
+        // Validate host and path portions only (query string is safe)
+        let host = parsed
+            .host_str()
+            .ok_or_else(|| PentestError::InvalidTarget("URL has no host".into()))?;
+        let to_check = format!("{}{}", host, parsed.path());
+        const BANNED: &[char] = &[
+            ';', '|', '&', '$', '`', '(', ')', '{', '}', '<', '>', '!', '\n',
+        ];
+        if let Some(c) = to_check.chars().find(|c| BANNED.contains(c)) {
+            return Err(PentestError::InvalidTarget(format!(
+                "forbidden character in URL host/path: '{c}'"
+            )));
+        }
+        return Ok(());
+    }
+
+    // Non-URL targets: full metacharacter check
     const BANNED: &[char] = &[
         ';', '|', '&', '$', '`', '(', ')', '{', '}', '<', '>', '!', '\n',
     ];
@@ -46,17 +69,6 @@ pub fn validate_target(target: &str) -> Result<(), PentestError> {
         return Err(PentestError::InvalidTarget(format!(
             "forbidden character: '{c}'"
         )));
-    }
-
-    // URL validation — only if it looks like one (avoids false positives
-    // from url::Url::parse treating IPv6 CIDR like "fe80::/10" as scheme "fe80")
-    if (target.starts_with("http://") || target.starts_with("https://"))
-        && let Ok(parsed) = url::Url::parse(target)
-    {
-        return parsed
-            .host_str()
-            .ok_or_else(|| PentestError::InvalidTarget("URL has no host".into()))
-            .map(|_| ());
     }
 
     // Plain IP address
@@ -242,6 +254,18 @@ mod tests {
                 "should reject: {payload}"
             );
         }
+    }
+
+    #[test]
+    fn target_allows_url_query_ampersand() {
+        assert!(validate_target("http://localhost/sqli.php?title=test&action=search").is_ok());
+        assert!(validate_target("https://example.com/page?a=1&b=2&c=3").is_ok());
+    }
+
+    #[test]
+    fn target_rejects_metacharacters_in_url_host_path() {
+        assert!(validate_target("http://localhost/$(whoami)").is_err());
+        assert!(validate_target("http://evil;host/path").is_err());
     }
 
     #[test]

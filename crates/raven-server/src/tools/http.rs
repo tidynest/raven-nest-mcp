@@ -112,6 +112,11 @@ pub async fn run(
     }
 
     if let Some(body) = req.body {
+        let has_content_type = req.headers.as_ref()
+            .map_or(false, |h| h.keys().any(|k| k.eq_ignore_ascii_case("content-type")));
+        if !has_content_type {
+            request = request.header("content-type", "application/x-www-form-urlencoded");
+        }
         request = request.body(body);
     }
 
