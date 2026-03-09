@@ -47,7 +47,7 @@ Best-to-worst for Raven Nest tool calling, based on the
 | Model | Size | VRAM (8GB fit?) | Tool F1 | Notes |
 |-------|------|-----------------|---------|-------|
 | Qwen3 8B (dense) | ~5 GB | Yes | 0.933 | Tested and recommended. Zero param hallucination, correct tool semantics. ~40 tok/s. Context exhausts after 3-4 large tool outputs at 32K. |
-| Qwen3 14B (dense) | ~10 GB | No (CPU offload) | 0.971 | Near GPT-4 accuracy. ~8 tok/s with partial offload. |
+| Qwen3 14B (dense) | ~10 GB | No (CPU offload) | 0.971 | Tested. Correct tool selection and cookie passthrough in batch mode. Fabricates in interactive mode (same as Qwen3.5). ~8 tok/s with partial offload. |
 | Qwen3-Coder 32B | ~20 GB | No (RAM) | Excellent | Community gold standard for MCP/agent tool calling. |
 | Granite 3.3 8B (IBM) | ~5 GB | Yes | Good | Designed for tool use. Companion Guardian model for hallucination detection. |
 | Mistral Small 3.1 24B | ~14 GB | No (CPU offload) | Good | Native tool calling, competitive with Llama 3.3 70B in general benchmarks. |
@@ -60,7 +60,8 @@ in structured output generation, reducing parameter name hallucination.
 
 | Model | Size | Tool Calling | Notes |
 |-------|------|-------------|-------|
-| Qwen 3.5 35B-A3B (MoE) | 23 GB | Partial | Calls tools but hallucinates parameter names. MoE routing inconsistency. 32K context. |
+| Qwen3 14B (dense) | 9 GB | Good (batch) | Correct tool selection, excellent cookie handling, sqlmap finds 4 injection types. Fails in interactive single-step mode (fabrication). 40K context. |
+| Qwen 3.5 35B-A3B (MoE) | 23 GB | Good (batch) | Excellent in batch mode, fabricates in single-step interactive. MoE routing inconsistency. 32K context. |
 | Qwen 2.5 Coder 14B | 9 GB | Broken | Outputs tool calls as JSON text instead of using the tool-calling API — never executes tools. |
 | Qwen 2.5 Coder 7B/1.5B | 4.7/1.3 GB | Untested | Likely too small for reliable multi-tool orchestration. |
 
@@ -116,7 +117,7 @@ summaries instead of raw verbose output:
 - **nikto** — keeps only finding lines (prefixed with `+`)
 - **feroxbuster** — extracts `status URL` pairs, filters 404s
 - **testssl** — extracts vulnerability assessments and certificate info
-- **nmap** — parses XML into structured port/service table (existing)
+- **nmap** — parses XML into structured port/service table, NSE script results (vulners top-5 CVEs by CVSS, other scripts compressed to single-line summaries), host scripts
 
 **HTTP response reduction:**
 - HTML responses are automatically stripped to plain text (scripts, styles,
@@ -313,6 +314,21 @@ chain 15+ tool calls without going silent, enabling full automated
 pentest sessions without manual intervention.
 
 ## Live Testing Results (2026-03-09)
+
+### Model Comparison Summary
+
+| Metric | Qwen3 8B (32K) | Qwen3.5 35B-A3B (32K) | Qwen3 14B (40K) |
+|--------|---------------|----------------------|-----------------|
+| Architecture | Dense | MoE (3B active) | Dense |
+| Batch mode | Good (5-6 tool chains) | Excellent (15+ tools) | Decent (9-17 tools) |
+| Interactive mode | Reliable | Fabricates | Fabricates after 3 calls |
+| Cookie passthrough | Correct | Correct | Correct |
+| Param hallucination | Zero | Minor | 1 (fabricated CVE) |
+| Findings saved | Yes (with prompting) | Yes (autonomous) | Rarely (1 of ~50 found) |
+| Context exhaustion | After 3-4 large outputs | No | No |
+| Recommendation | Best for 8GB VRAM | Best for batch accuracy | Not recommended over 8B |
+
+### Qwen3 8B (Dense, 32K context)
 
 Tested against bWAPP (localhost:80) via ollmcp + Qwen3 8B. All 7 context
 reduction bugfixes verified end-to-end with the local model driving tool

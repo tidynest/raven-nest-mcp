@@ -89,12 +89,110 @@ pub async fn run(
     Ok(CallToolResult::success(vec![Content::text(output)]))
 }
 
+/// Compress multi-line script output to a single line with "+N more" suffix.
+///
+/// Keeps the first line (trimmed) and appends how many additional lines were
+/// omitted. If the first line exceeds `max_len`, it is truncated with "…".
+fn summarize_script_output(output: &str, max_len: usize) -> String {
+    let lines: Vec<&str> = output.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+    if lines.is_empty() {
+        return String::new();
+    }
+    let first = if lines[0].len() > max_len {
+        format!("{}…", &lines[0][..max_len])
+    } else {
+        lines[0].to_string()
+    };
+    if lines.len() > 1 {
+        format!("{first} (+{} more lines)", lines.len() - 1)
+    } else {
+        first
+    }
+}
+
+/// Format an NSE `<script>` element into a compact one- or few-line summary.
+///
+/// Special handling for `vulners`: parses the nested `<table>/<elem>` structure
+/// to extract CVE IDs and CVSS scores, showing only the top 5 by severity.
+/// All other scripts use the `output` attribute, compressed via
+/// [`summarize_script_output`].
+fn format_nse_script(script: &roxmltree::Node) -> Option<String> {
+    let id = script.attribute("id")?;
+
+    if id == "vulners" {
+        // Parse structured vulners output: <table key="cpe:..."><table><elem key="id">...</elem><elem key="cvss">...</elem></table>...</table>
+        let mut cves: Vec<(String, f32)> = Vec::new();
+        for outer_table in script.children().filter(|n| n.tag_name().name() == "table") {
+            for entry in outer_table.children().filter(|n| n.tag_name().name() == "table") {
+                let cve_id = entry
+                    .children()
+                    .find(|e| e.tag_name().name() == "elem" && e.attribute("key") == Some("id"))
+                    .and_then(|e| e.text());
+                let cvss = entry
+                    .children()
+                    .find(|e| e.tag_name().name() == "elem" && e.attribute("key") == Some("cvss"))
+                    .and_then(|e| e.text())
+                    .and_then(|s| s.parse::<f32>().ok());
+                if let (Some(id), Some(score)) = (cve_id, cvss) {
+                    cves.push((id.to_string(), score));
+                }
+            }
+        }
+        if cves.is_empty() {
+            // Fall back to output attribute if structured parsing found nothing
+            let out = script.attribute("output").unwrap_or("");
+            return Some(format!("  {id}: {}", summarize_script_output(out, 300)));
+        }
+        // Sort by CVSS descending, show top 5
+        cves.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        let top: Vec<String> = cves.iter().take(5).map(|(id, s)| format!("{id}({s})")).collect();
+        let summary = top.join(", ");
+        let extra = if cves.len() > 5 {
+            format!(" +{} more", cves.len() - 5)
+        } else {
+            String::new()
+        };
+        Some(format!("  vulners: {summary}{extra}"))
+    } else {
+        let out = script.attribute("output").unwrap_or("");
+        if out.is_empty() {
+            return None;
+        }
+        Some(format!("  {id}: {}", summarize_script_output(out, 300)))
+    }
+}
+
+/// Collect and format all `<script>` children of a node into compact lines.
+fn collect_scripts(parent: &roxmltree::Node) -> Vec<String> {
+    parent
+        .children()
+        .filter(|n| n.tag_name().name() == "script")
+        .filter_map(|s| format_nse_script(&s))
+        .collect()
+}
+
 /// Parse nmap XML output (`-oX -`) into a human-readable text summary.
 ///
 /// Extracts: command line, host addresses, port states with service/version,
-/// OS detection matches (top 3), and run statistics (elapsed time, host counts).
+/// NSE script results (per-port and host-level), OS detection matches (top 3),
+/// and run statistics (elapsed time, host counts).
+///
+/// For `vulners` scripts, parses the structured CVE table and shows the top 5
+/// entries by CVSS score. All other scripts are compressed to single-line
+/// summaries.
+///
+/// If the input contains non-XML content before the XML document (e.g. nmap
+/// warnings), the parser strips the prefix to find `<?xml` or `<nmaprun`.
+///
 /// Returns `None` if the input isn't valid nmap XML.
 pub fn parse_nmap_xml(xml: &str) -> Option<String> {
+    // Strip any non-XML prefix (nmap warnings, etc.)
+    let xml = xml
+        .find("<?xml")
+        .or_else(|| xml.find("<nmaprun"))
+        .map(|i| &xml[i..])
+        .unwrap_or(xml);
+
     let opts = roxmltree::ParsingOptions {
         allow_dtd: true,
         ..Default::default()
@@ -126,7 +224,8 @@ pub fn parse_nmap_xml(xml: &str) -> Option<String> {
             output.push_str(&format!("Status: {state}\n"));
         }
 
-        // Port table
+        // Port table + per-port scripts
+        let mut port_scripts: Vec<(String, Vec<String>)> = Vec::new();
         if let Some(ports) = host.children().find(|n| n.tag_name().name() == "ports") {
             output.push_str("\nPORT       STATE    SERVICE    VERSION\n");
             for port in ports.children().filter(|n| n.tag_name().name() == "port") {
@@ -159,6 +258,34 @@ pub fn parse_nmap_xml(xml: &str) -> Option<String> {
                 output.push_str(&format!(
                     "{portid}/{proto:<4}  {state:<8} {service_name:<10} {version}\n"
                 ));
+
+                // Collect per-port scripts
+                let scripts = collect_scripts(&port);
+                if !scripts.is_empty() {
+                    port_scripts.push((format!("{portid}/{proto}"), scripts));
+                }
+            }
+        }
+
+        // Print per-port script results
+        if !port_scripts.is_empty() {
+            output.push_str("\nScripts:\n");
+            for (port_label, scripts) in &port_scripts {
+                output.push_str(&format!(" {port_label}:\n"));
+                for line in scripts {
+                    output.push_str(&format!("{line}\n"));
+                }
+            }
+        }
+
+        // Host-level scripts (<hostscript>)
+        if let Some(hostscript) = host.children().find(|n| n.tag_name().name() == "hostscript") {
+            let scripts = collect_scripts(&hostscript);
+            if !scripts.is_empty() {
+                output.push_str("\nHost scripts:\n");
+                for line in &scripts {
+                    output.push_str(&format!("{line}\n"));
+                }
             }
         }
 
@@ -310,5 +437,126 @@ mod tests {
         assert!(text.contains("127.0.0.1"));
         assert!(text.contains("22"));
         assert!(text.contains("ssh"));
+    }
+
+    #[test]
+    fn parse_vuln_scan_with_scripts() {
+        // Realistic vuln scan XML with vulners, slowloris, http-enum, cookie-flags
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<nmaprun scanner="nmap" args="nmap -sV --script=vuln -p 80 10.0.0.1" start="1773050000" version="7.98">
+<host starttime="1773050000" endtime="1773050120">
+  <address addr="10.0.0.1" addrtype="ipv4"/>
+  <status state="up"/>
+  <ports>
+    <port protocol="tcp" portid="80">
+      <state state="open"/>
+      <service name="http" product="Apache" version="2.4.25"/>
+      <script id="vulners" output="cpe:/a:apache:http_server:2.4.25:&#xa;  CVE-2017-9798  7.5&#xa;  CVE-2021-44790  9.8&#xa;  CVE-2019-0211  7.8">
+        <table key="cpe:/a:apache:http_server:2.4.25">
+          <table>
+            <elem key="id">CVE-2021-44790</elem>
+            <elem key="cvss">9.8</elem>
+            <elem key="type">cve</elem>
+          </table>
+          <table>
+            <elem key="id">CVE-2019-0211</elem>
+            <elem key="cvss">7.8</elem>
+            <elem key="type">cve</elem>
+          </table>
+          <table>
+            <elem key="id">CVE-2017-9798</elem>
+            <elem key="cvss">7.5</elem>
+            <elem key="type">cve</elem>
+          </table>
+          <table>
+            <elem key="id">CVE-2021-26691</elem>
+            <elem key="cvss">7.5</elem>
+            <elem key="type">cve</elem>
+          </table>
+          <table>
+            <elem key="id">CVE-2020-11984</elem>
+            <elem key="cvss">7.5</elem>
+            <elem key="type">cve</elem>
+          </table>
+          <table>
+            <elem key="id">CVE-2018-1312</elem>
+            <elem key="cvss">6.8</elem>
+            <elem key="type">cve</elem>
+          </table>
+          <table>
+            <elem key="id">CVE-2017-15715</elem>
+            <elem key="cvss">6.8</elem>
+            <elem key="type">cve</elem>
+          </table>
+        </table>
+      </script>
+      <script id="http-slowloris-check" output="VULNERABLE:&#xa;  Slowloris DoS attack&#xa;    State: LIKELY VULNERABLE"/>
+      <script id="http-enum" output="/icons/: Potentially interesting directory&#xa;/manual/: Web server manual"/>
+      <script id="http-cookie-flags" output="/login.php: Set-Cookie: PHPSESSID - httponly flag not set"/>
+    </port>
+  </ports>
+  <hostscript>
+    <script id="clock-skew" output="mean: 0s, deviation: 0s, median: 0s"/>
+  </hostscript>
+</host>
+<runstats>
+  <finished elapsed="120.45"/>
+  <hosts up="1" down="0"/>
+</runstats>
+</nmaprun>"#;
+        let result = parse_nmap_xml(xml).unwrap();
+        println!("--- Vuln scan parsed output ---\n{result}");
+
+        // Port table still works
+        assert!(result.contains("80"));
+        assert!(result.contains("Apache 2.4.25"));
+
+        // Vulners: top 5 CVEs sorted by CVSS, with "+2 more"
+        assert!(result.contains("vulners:"));
+        assert!(result.contains("CVE-2021-44790(9.8)"));
+        assert!(result.contains("CVE-2019-0211(7.8)"));
+        assert!(result.contains("+2 more"));
+        // 6th and 7th CVEs should NOT appear in summary
+        assert!(!result.contains("CVE-2018-1312"));
+        assert!(!result.contains("CVE-2017-15715"));
+
+        // Other scripts compressed to single lines
+        assert!(result.contains("http-slowloris-check:"));
+        assert!(result.contains("http-enum:"));
+        assert!(result.contains("http-cookie-flags:"));
+
+        // Host-level scripts
+        assert!(result.contains("Host scripts:"));
+        assert!(result.contains("clock-skew:"));
+
+        // Output should be compact — well under 1000 chars
+        assert!(
+            result.len() < 1200,
+            "Parsed vuln output too large: {} chars",
+            result.len()
+        );
+    }
+
+    #[test]
+    fn parse_xml_with_warning_prefix() {
+        // nmap sometimes prints warnings before XML
+        let xml = "WARNING: No targets were specified\n\
+                   Starting Nmap 7.98\n\
+                   <?xml version=\"1.0\"?>\n\
+                   <nmaprun args=\"nmap -sV 10.0.0.1\">\n\
+                   <host><address addr=\"10.0.0.1\" addrtype=\"ipv4\"/></host>\n\
+                   </nmaprun>";
+        let result = parse_nmap_xml(xml);
+        assert!(result.is_some(), "Should strip non-XML prefix");
+        assert!(result.unwrap().contains("10.0.0.1"));
+    }
+
+    #[test]
+    fn summarize_long_output() {
+        let output = "Line one is here\nLine two\nLine three\nLine four";
+        let summary = summarize_script_output(output, 300);
+        assert!(summary.contains("Line one"));
+        assert!(summary.contains("+3 more lines"));
     }
 }

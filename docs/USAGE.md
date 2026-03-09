@@ -18,25 +18,54 @@ Install the scanning tools you want to use. All are optional — the server
 starts regardless, but tool calls will fail if the binary isn't installed.
 
 ```bash
-# Core tools (official repos)
+# Core tools (official repos — Arch Linux)
 sudo pacman -S nmap nikto whatweb testssl.sh sqlmap hydra masscan
 
 # AUR tools
 yay -S feroxbuster-bin ffuf-bin
 
-# Installed via Go/GitHub releases
-nuclei   # see https://github.com/projectdiscovery/nuclei
+# Nuclei — installed via Go or GitHub releases
+# Download the latest release from https://github.com/projectdiscovery/nuclei
+# or install with: go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+# After install, update templates: nuclei -ut
 ```
 
 `ping` is available by default on all Linux systems.
 
-Note: The Arch `testssl.sh` package installs the binary as `testssl`. If
-the tool config references `testssl.sh`, create a symlink:
-`sudo ln -s /usr/bin/testssl /usr/bin/testssl.sh`
+> **Arch note:** The `testssl.sh` package installs the binary as `testssl`.
+> If the tool config references `testssl.sh`, create a symlink:
+> `sudo ln -s /usr/bin/testssl /usr/bin/testssl.sh`
+
+---
 
 ## Connecting to an MCP Client
 
-Create `.mcp.json` in the project root (adjust paths to your system):
+The server communicates over stdio — stdout carries JSON-RPC, logs go to stderr.
+
+### Claude Code
+
+Create `.mcp.json` in the project root (or `~/.claude/.mcp.json` for global access):
+
+```json
+{
+  "mcpServers": {
+    "raven-nest": {
+      "command": "/absolute/path/to/raven-server",
+      "args": [],
+      "cwd": "/absolute/path/to/raven-nest-mcp"
+    }
+  }
+}
+```
+
+Restart Claude Code or start a new session. The server's tools appear
+automatically.
+
+### Generic MCP Clients
+
+Any MCP client that supports stdio transport works. Point the client at the
+binary with the working directory set to the repo root (so the config resolves
+correctly):
 
 ```json
 {
@@ -50,12 +79,47 @@ Create `.mcp.json` in the project root (adjust paths to your system):
 }
 ```
 
-Restart your MCP client or start a new session in the project directory.
-The server communicates over stdio — stdout carries JSON-RPC, logs go to stderr.
+### Local AI (ollmcp)
+
+When using local models (Ollama, llama.cpp), rename the server to avoid
+hyphens — many local models struggle with tool names containing hyphens:
+
+```json
+{
+  "mcpServers": {
+    "raven": {
+      "command": "/absolute/path/to/raven-server",
+      "args": []
+    }
+  }
+}
+```
+
+Launch: `ollmcp --model <model> -j ~/.mcphost.json`
+
+For small-context models (32K-64K), set `context_budget` in the config —
+see the [Configuration](#configuration) section.
+
+---
 
 ## Configuration
 
-Edit `config/default.toml` to customise behaviour:
+Edit `config/default.toml` to customise behaviour. The config file has three
+sections: `[safety]`, `[execution]`, and `[network]`.
+
+### Config Resolution Chain
+
+The server searches for config in this order, using the first one found:
+
+1. **`RAVEN_CONFIG` env var** — explicit file path (e.g. `RAVEN_CONFIG=/etc/raven.toml`)
+2. **Exe-relative** — `config/default.toml` relative to the binary (checks parent dir too, for `target/release/` layouts)
+3. **CWD** — `config/default.toml` in the current working directory
+4. **Built-in defaults** — hardcoded fallback if nothing else is found
+
+If all fail, the server starts with safe defaults (all 11 tools allowed, 600s
+timeout, output at `/tmp/raven-nest`).
+
+### `[safety]` — Tool Allowlisting and Limits
 
 ```toml
 [safety]
@@ -65,45 +129,100 @@ allowed_tools = [
     "sqlmap", "hydra", "masscan",
 ]
 max_output_chars = 50000
+# context_budget = 32768
 
-# Safety limits for dangerous tools (prevents LLM escalation)
-# sqlmap_max_level = 2    # 1-5, default 2
-# sqlmap_max_risk = 1     # 1-3, default 1
-# hydra_max_tasks = 4     # parallel tasks, default 4
-# masscan_max_rate = 1000 # packets/sec, default 1000
+# Safety limits for dangerous tools
+# sqlmap_max_level = 2
+# sqlmap_max_risk = 1
+# hydra_max_tasks = 4
+# masscan_max_rate = 1000
 
-# Optional: custom binary paths for tools not on $PATH
+# Custom binary paths
 # [safety.tool_paths]
 # nmap = "/opt/nmap-dev/bin/nmap"
+# nuclei = "/home/user/.local/bin/nuclei"
+```
 
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `allowed_tools` | string list | all 11 tools | Allowlisted tool binaries. Calls for unlisted tools are rejected before execution. Remove tools to restrict what the AI can invoke. |
+| `max_output_chars` | integer | 50000 | Truncation limit for subprocess output. When exceeded, keeps 70% from the start and 30% from the end with a marker in between. Uses char boundaries for UTF-8 safety. Overridden by `context_budget` when set. |
+| `context_budget` | integer | 0 (disabled) | Model context window size in characters. When > 0, derives output caps automatically so ~4 tool outputs fit in the context. See table below. |
+| `sqlmap_max_level` | integer (1-5) | 2 | Caps sqlmap `--level`. Higher levels add more injection vectors but are slower and noisier. |
+| `sqlmap_max_risk` | integer (1-3) | 1 | Caps sqlmap `--risk`. Risk 2+ may cause data modification; risk 3 adds OR-based payloads. |
+| `hydra_max_tasks` | integer | 4 | Max parallel threads for hydra brute-forcing. Prevents account lockout and network saturation. |
+| `masscan_max_rate` | integer | 1000 | Max packets/sec for masscan. High rates can disrupt networks — increase only with explicit authorisation. |
+| `tool_paths` | table | empty | Map of tool name to absolute binary path, for tools not on `$PATH`. Falls back to `$PATH` lookup if not specified. |
+
+#### Context Budget
+
+The `context_budget` setting is designed for local AI models with limited context
+windows. When set, it overrides `max_output_chars` and the HTTP response body
+cap proportionally:
+
+| `context_budget` | Tool output cap (`/4`) | HTTP body cap (`/6`) | Recommended for |
+|-----------------|----------------------|---------------------|-----------------|
+| 0 (disabled) | uses `max_output_chars` (50K) | 20,000 | Claude, GPT-4, large-context models |
+| 32768 | 8,192 | 5,461 | Qwen3 8B at default 32K context |
+| 65536 | 16,384 | 10,922 | Models with q8_0 KV cache doubling |
+| 131072 | 32,768 | 21,845 | Qwen3 14B, models with 128K context |
+
+**When to set this:** Only when using models with limited context windows. Leave
+at 0 (disabled) for Claude or other large-context models — `max_output_chars`
+alone handles truncation fine.
+
+### `[execution]` — Timeouts, Concurrency, Output
+
+```toml
 [execution]
 default_timeout_secs = 600
 max_concurrent_scans = 3
 output_dir = "/tmp/raven-nest"
 
-# Optional: per-tool timeout overrides (seconds)
+# Per-tool timeout overrides (seconds)
 # [execution.timeouts]
 # nmap = 900
 # nuclei = 1200
+# nikto = 600
+# testssl.sh = 900
 ```
 
-| Key | Purpose |
-|-----|---------|
-| `allowed_tools` | Allowlisted binaries. Tool calls for unlisted binaries are rejected. |
-| `max_output_chars` | Truncation limit for tool output (keeps first 70%, last 30%). Uses char boundaries for UTF-8 safety. |
-| `default_timeout_secs` | Kill subprocess after this many seconds. |
-| `max_concurrent_scans` | Max background scans running simultaneously. |
-| `output_dir` | Directory for reports, findings persistence, and scan output. Created automatically on startup. |
-| `sqlmap_max_level` | Caps sqlmap `--level` to prevent LLM from escalating aggressiveness. |
-| `sqlmap_max_risk` | Caps sqlmap `--risk` similarly. |
-| `hydra_max_tasks` | Max parallel threads for hydra brute-forcing. |
-| `masscan_max_rate` | Max packets/sec for masscan. |
-| `tool_paths` | Custom binary paths for tools not on `$PATH`. |
-| `execution.timeouts` | Per-tool timeout overrides in seconds. |
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `default_timeout_secs` | integer | 600 | Global subprocess timeout. The process is killed after this many seconds. |
+| `max_concurrent_scans` | integer | 3 | Max background scans (`launch_scan`) running simultaneously. Additional launches are rejected until a slot opens. |
+| `output_dir` | string | `/tmp/raven-nest` | Base directory for reports, findings, and scan output. Created automatically on startup. |
+| `timeouts` | table | empty | Per-tool timeout overrides in seconds. Falls back to `default_timeout_secs` for tools not listed. |
 
-Config resolution: `RAVEN_CONFIG` env var > exe-relative > CWD > built-in defaults.
+**When to change timeouts:** Vulnerability scans (`nuclei`, `nikto`, `testssl.sh`)
+and OS detection (`nmap -O`) can take several minutes on large targets. Increase
+their specific timeouts rather than raising the global default.
+
+### `[network]` — Proxy Configuration
+
+```toml
+[network]
+http_proxy = "http://127.0.0.1:8080"
+https_proxy = "http://127.0.0.1:8080"
+no_proxy = ["127.0.0.1", "localhost"]
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `http_proxy` | string | none | HTTP proxy URL. Injected as `HTTP_PROXY` and `http_proxy` env vars into all tool subprocesses. |
+| `https_proxy` | string | none | HTTPS proxy URL. Injected similarly. |
+| `no_proxy` | string list | empty | Hostnames/IPs that should bypass the proxy. |
+
+**When to set this:** Route traffic through a proxy like Burp Suite or ZAP for
+request inspection. Both upper- and lower-case env vars are set, so tools using
+either convention pick up the proxy automatically. The `http_request` tool also
+honours these proxy settings.
+
+---
 
 ## Tools Reference
+
+The server exposes 22 tools across 6 categories.
 
 ### Reconnaissance
 
@@ -116,7 +235,11 @@ Verify connectivity and measure latency.
 | `count` | no | Number of packets, 1-10 (default 4) |
 
 #### `run_nmap`
-Port scanning and service detection.
+Port scanning and service detection. Output is parsed from nmap's XML format
+into a structured summary (host addresses, port states with service/version,
+NSE script results per port and host-level, OS detection matches, run stats).
+For `vuln` scans, the `vulners` script output is compressed to the top 5 CVEs
+by CVSS score; other scripts are summarised to single-line entries.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -127,11 +250,12 @@ Port scanning and service detection.
 Scan type presets:
 - **quick** — `-T4 -F` (top 100 ports, aggressive timing)
 - **service** — `-sV` (version detection)
-- **os** — `-O` (OS fingerprinting, **requires root** — returns an error if not running as root)
+- **os** — `-O` (OS fingerprinting, **requires root**)
 - **vuln** — `-sV --script=vuln` (vulnerability scripts)
 
 #### `run_whatweb`
-Identify web technologies (CMS, frameworks, server software).
+Identify web technologies (CMS, frameworks, server software). Output is parsed
+to extract technology identification lines with bracket-notation tags.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -140,7 +264,8 @@ Identify web technologies (CMS, frameworks, server software).
 | `cookie` | no | Cookie string for authenticated scanning |
 
 #### `run_masscan`
-High-speed port scanning. **Requires root** — returns an error if not running as root.
+High-speed port scanning. **Requires root** — returns an error if not running
+as root. Output is parsed to extract discovered open ports.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -151,7 +276,8 @@ High-speed port scanning. **Requires root** — returns an error if not running 
 ### Vulnerability Scanning
 
 #### `run_nuclei`
-Template-based vulnerability scanning.
+Template-based vulnerability scanning. Output is parsed from JSONL format into
+compact lines: `[SEVERITY] template-id - name @ url (type)`.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -161,7 +287,8 @@ Template-based vulnerability scanning.
 | `cookie` | no | Cookie string for authenticated scanning |
 
 #### `run_nikto`
-Web server misconfiguration scanner.
+Web server misconfiguration scanner. Output is parsed to extract finding lines
+(prefixed with `+`), filtering out help text.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -174,35 +301,39 @@ Web server misconfiguration scanner.
 ### Web Fuzzing & Discovery
 
 #### `run_feroxbuster`
-Directory brute-forcing / content discovery.
+Directory brute-forcing / content discovery. Output is parsed to extract
+status-code + URL pairs, filtering out 404 responses.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `target` | yes | URL |
 | `wordlist` | no | Path to wordlist (default: raft-medium-directories.txt) |
 | `extensions` | no | File extensions to check (e.g. `php,html,js`) |
-| `threads` | no | Concurrent threads (default 50, reduced to 10 for localhost; max 200) |
+| `threads` | no | Concurrent threads (default 50; reduced to 10 for localhost targets; max 200) |
 | `status_codes` | no | Status codes to include (e.g. `200,301,403`) |
 | `cookie` | no | Cookie string for authenticated scanning |
 
 #### `run_ffuf`
-Web fuzzing with FUZZ keyword.
+Web fuzzing with FUZZ keyword. Output is parsed to extract result lines
+containing status codes, sizes, and word counts.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `url` | yes | URL containing `FUZZ` keyword (e.g. `https://example.com/FUZZ`) |
+| `url` | yes | URL containing `FUZZ` keyword (e.g. `http://example.com/FUZZ`) |
 | `wordlist` | no | Path to wordlist |
 | `method` | no | HTTP method (default `GET`) |
 | `headers` | no | Custom headers (comma-separated `Name: Value` pairs) |
 | `match_codes` | no | Match HTTP status codes (e.g. `200,301,302`) |
 | `filter_size` | no | Filter responses by size (bytes) |
-| `threads` | no | Concurrent threads (default 40, reduced to 10 for localhost; max 150) |
+| `threads` | no | Concurrent threads (default 40; reduced to 10 for localhost targets; max 150) |
 | `cookie` | no | Cookie string for authenticated fuzzing |
 
 ### Exploitation
 
 #### `run_sqlmap`
-SQL injection testing. Always runs in `--batch` mode (non-interactive).
+SQL injection testing. Always runs in `--batch` mode (non-interactive). Output
+is parsed to extract injection points (parameter/type/title/payload), DBMS
+info, and critical errors. Non-injectable verdicts are preserved.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -214,7 +345,8 @@ SQL injection testing. Always runs in `--batch` mode (non-interactive).
 | `technique` | no | SQLi technique (e.g. `BEUSTQ`) |
 
 #### `run_hydra`
-Authentication brute-forcing.
+Authentication brute-forcing. Output is parsed to extract discovered
+credentials and the summary line (valid passwords found/completed).
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -228,7 +360,9 @@ Authentication brute-forcing.
 ### TLS / SSL
 
 #### `run_testssl`
-SSL/TLS configuration audit.
+SSL/TLS configuration audit. Output is parsed to extract vulnerability
+assessments, certificate details (CN, SAN, issuer, expiry, trust, CT), and
+overall rating.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -240,7 +374,12 @@ SSL/TLS configuration audit.
 
 #### `http_request`
 Send crafted HTTP requests for manual endpoint testing. Cookies are
-automatically persisted across requests within the same session.
+automatically persisted across requests within the same session via a shared
+cookie jar (see [Session Features](#session-features)).
+
+HTML responses are automatically stripped of tags, scripts, and styles, with
+entity decoding applied. Only security-relevant headers are shown in the
+response (see [Output Processing](#output-processing)).
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -333,24 +472,156 @@ Remove a finding. The individual file is deleted from disk and the index is upda
 
 #### `generate_report`
 Generate a markdown pentest report from all saved findings. The report is
-automatically saved to `{output_dir}/report-{timestamp}.md`.
+automatically saved to `{output_dir}/report-{timestamp}.md`. Returns a brief
+summary (finding count by severity) instead of the full report content to
+conserve context.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `title` | no | Report title (default "Penetration Test Report") |
 
+---
+
 ## Safety Architecture
 
-Every tool call passes through six layers:
+Every tool call passes through multiple validation layers before any subprocess
+is spawned:
 
-1. **Allowlist** — binary must be in `config.safety.allowed_tools`
-2. **Input validation** — target must be a valid IP, hostname, CIDR, or URL (`http`/`https` only); shell metacharacters rejected
-3. **Argument building** — users pick presets, never raw CLI flags
-4. **Execution containment** — configurable timeout, `kill_on_drop` on all subprocesses
-5. **Output sanitisation** — truncation at `max_output_chars` (70% head / 30% tail)
-6. **Output quality assessment** — checks for empty results, missing tool completion markers, and rate-limit/WAF indicators; appends warnings when detected
+1. **Allowlist** — the tool binary must be in `config.safety.allowed_tools`. Calls
+   for unlisted tools are rejected immediately.
+
+2. **Input validation** — targets are validated against strict rules:
+   - Must be a valid IP (v4/v6), hostname, CIDR range, `host:port`, or
+     HTTP(S) URL.
+   - Shell metacharacters are rejected: `` ; | & $ ` ( ) { } < > ! \n ``
+   - Only `http://` and `https://` URL schemes are accepted.
+   - CIDR masks are range-checked (IPv4: /0-/32, IPv6: /0-/128).
+   - Hostnames: alphanumerics, hyphens, dots; max 253 chars; no
+     leading/trailing hyphens.
+
+3. **Argument building** — users pick presets (e.g. `scan_type: "service"`),
+   never raw CLI flags. The server translates presets into safe argument lists.
+
+4. **Parameter validation** — all 18 request structs use `deny_unknown_fields`,
+   which rejects any parameter the tool doesn't recognise. This catches LLM
+   parameter hallucination with clear error messages (e.g. "unknown field
+   `verbosity`"). Numeric parameters also accept string-encoded numbers
+   (e.g. `"2"` instead of `2`) via a lenient deserializer, handling a common
+   LLM serialisation quirk.
+
+5. **Safety caps** — dangerous tools have configurable upper limits that the
+   AI cannot exceed:
+   - sqlmap: `--level` clamped to `sqlmap_max_level`, `--risk` to `sqlmap_max_risk`
+   - hydra: `-t` (parallel tasks) clamped to `hydra_max_tasks`
+   - masscan: `--rate` clamped to `masscan_max_rate`
+
+6. **Execution containment** — configurable timeout per tool, `kill_on_drop` on
+   all subprocesses (no orphaned processes), concurrent scan limit enforced.
+
+7. **Output sanitisation** — truncation at `max_output_chars` (70% head / 30%
+   tail), with structured parsing to reduce noise before truncation.
+
+8. **Output quality assessment** — checks for empty results, missing tool
+   completion markers, and rate-limit/WAF indicators; appends warnings when
+   detected (e.g. "Output appears empty", "Possible rate limiting detected").
+
+---
+
+## Output Processing
+
+Tool output goes through a multi-stage pipeline before reaching the AI model:
+
+### Structured Parsers
+
+All 10 subprocess tools have output parsers that extract the essential
+information and discard noise. Parsers return `Option<String>` — if parsing
+fails, the raw output is used as a fallback.
+
+| Tool | Parser | What It Extracts |
+|------|--------|-----------------|
+| nmap | XML parser | Host addresses, port states (proto/port/state/service/version), NSE script results (per-port and host-level; vulners top-5 CVEs by CVSS score, other scripts compressed to one-line summaries), OS matches, run stats |
+| nuclei | JSONL parser | `[SEVERITY] template-id - name @ url (type)` per finding |
+| nikto | Line filter | Lines starting with `+` (findings); filters help text |
+| feroxbuster | Line filter | Status-code + URL pairs; filters 404s |
+| testssl | Section parser | Vulnerability assessments, certificate details (CN, SAN, issuer, expiry), rating |
+| sqlmap | Block parser | Injection points (parameter/type/title/payload), DBMS/OS/tech info, error messages |
+| hydra | Line filter | Discovered credentials (`login:` + `password:`), summary |
+| whatweb | Line filter | Technology lines starting with URLs and containing bracket tags |
+| masscan | Line filter | `Discovered open port` lines (port/proto/IP) |
+| ffuf | Line filter | Result lines containing `[Status:` with size/word counts |
+
+### HTTP Response Processing
+
+The `http_request` tool applies additional processing to HTTP responses:
+
+- **HTML stripping** — removes `<script>` and `<style>` blocks, strips all
+  HTML tags (inserting newlines for block elements), decodes HTML entities
+  (named like `&amp;`, numeric like `&#169;`), and collapses blank lines.
+- **Header filtering** — only security-relevant headers are shown:
+  `server`, `x-powered-by`, `set-cookie`, `content-type`, `location`,
+  `www-authenticate`, `x-frame-options`, `content-security-policy`,
+  `strict-transport-security`, `x-content-type-options`,
+  `access-control-allow-origin`, `x-xss-protection`.
+- **Body cap** — response bodies are truncated to the effective cap (default
+  20,000 chars; derived from `context_budget / 6` when set).
+
+### Truncation
+
+After parsing, output that still exceeds `max_output_chars` (or
+`context_budget / 4` when set) is truncated with a 70/30 split: the first
+70% of chars and last 30% are kept, with a marker in between showing how many
+chars were omitted.
+
+---
+
+## Session Features
+
+### Cookie Jar
+
+The `http_request` tool maintains a shared cookie jar that persists across
+requests within the same server session. This enables authenticated workflows:
+
+1. Send a login request via `http_request` (cookies are captured automatically).
+2. Subsequent `http_request` calls to the same domain include the session cookies.
+3. Session cookies are displayed in the response under `--- Session Cookies ---`.
+
+**Important:** Subprocess tools (sqlmap, nikto, feroxbuster, ffuf, nuclei,
+whatweb) run as separate processes and do **not** share the cookie jar. Pass
+cookies explicitly via each tool's `cookie` parameter for authenticated scanning.
+
+### Scan Spill-to-Disk
+
+Background scans (`launch_scan`) keep output in memory by default. When a
+scan's output exceeds **1 MB** (1,048,576 bytes), it is automatically spilled
+to disk at `{output_dir}/scans/{scan_id}.txt`. This prevents memory exhaustion
+from large scan outputs (e.g. full nuclei runs) while keeping small outputs
+fast. The `get_scan_results` tool reads from disk transparently when needed,
+supporting the same pagination interface.
+
+### Auto-Inline Small Outputs
+
+When `get_scan_status` is called on a completed scan, if the output is under
+10,000 characters, it is included directly in the status response. This saves
+a follow-up `get_scan_results` call for quick scans.
+
+### Localhost Thread Reduction
+
+When scanning `localhost`, `127.0.0.1`, or `[::1]`, thread-heavy tools
+automatically reduce their default concurrency to prevent self-DoS:
+
+| Tool | Default threads | Localhost threads | Max threads |
+|------|----------------|------------------|-------------|
+| feroxbuster | 50 | 10 | 200 |
+| ffuf | 40 | 10 | 150 |
+
+This only affects the default — explicit `threads` values are still honoured
+(up to the max).
+
+---
 
 ## Example Workflow
+
+### Basic Reconnaissance
 
 ```
 You: "Ping scanme.nmap.org to check if it's up"
@@ -367,4 +638,24 @@ Assistant: [calls save_finding with title, severity, description, target, tool]
 
 You: "Generate the pentest report"
 Assistant: [calls generate_report]
+```
+
+### Authenticated Scanning
+
+```
+You: "Log in to http://target.example.com/login with admin:password"
+Assistant: [calls http_request with url, method: "POST",
+           body: "username=admin&password=password"]
+→ Session cookies are captured automatically.
+
+You: "Now scan the authenticated area for SQL injection"
+Assistant: [reads session cookie from http_request response]
+           [calls run_sqlmap with target: "http://target.example.com/search?q=test",
+            cookie: "PHPSESSID=abc123"]
+→ Cookie passed explicitly because sqlmap runs as a subprocess.
+
+You: "Run nikto against the same target"
+Assistant: [calls run_nikto with target: "http://target.example.com",
+            cookie: "PHPSESSID=abc123"]
+→ Same cookie passed to nikto for authenticated scanning.
 ```
