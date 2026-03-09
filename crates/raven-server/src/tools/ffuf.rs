@@ -32,7 +32,9 @@ pub struct FfufRequest {
     pub match_codes: Option<String>,
     #[schemars(description = "Filter responses by size (bytes)")]
     pub filter_size: Option<String>,
-    #[schemars(description = "Number of concurrent threads (default 40, reduced to 10 for localhost)")]
+    #[schemars(
+        description = "Number of concurrent threads (default 40, reduced to 10 for localhost)"
+    )]
     #[serde(default, deserialize_with = "super::lenient::option_number")]
     pub threads: Option<u16>,
     #[schemars(description = "Cookie string for authenticated fuzzing (e.g. 'PHPSESSID=abc123')")]
@@ -57,7 +59,11 @@ pub async fn run(
     }
 
     // Reduce threads for localhost to prevent self-DoS
-    let default_threads: u16 = if super::is_localhost(&req.url) { 10 } else { 40 };
+    let default_threads: u16 = if super::is_localhost(&req.url) {
+        10
+    } else {
+        40
+    };
     let threads = req.threads.unwrap_or(default_threads).min(150);
 
     let wordlist = req.wordlist.as_deref().unwrap_or(DEFAULT_WORDLIST);

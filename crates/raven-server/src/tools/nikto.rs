@@ -8,9 +8,9 @@
 //! so the port argument is only added for bare hostnames.
 
 use raven_core::{config::RavenConfig, executor, safety};
-use rmcp::{Peer, RoleServer};
 use rmcp::model::{CallToolResult, Content};
 use rmcp::schemars;
+use rmcp::{Peer, RoleServer};
 
 /// MCP request schema for `run_nikto`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -38,9 +38,8 @@ pub async fn run(
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
-    let _ticker = peer.map(|p| {
-        crate::progress::ProgressTicker::start(p, "nikto".into(), req.target.clone())
-    });
+    let _ticker =
+        peer.map(|p| crate::progress::ProgressTicker::start(p, "nikto".into(), req.target.clone()));
 
     let is_url = req.target.starts_with("http://") || req.target.starts_with("https://");
     let mut args = vec!["-h".to_string(), req.target, "-nocheck".into()];
@@ -56,7 +55,7 @@ pub async fn run(
     }
 
     if let Some(ref cookie) = req.cookie {
-        args.extend(["-cookie".into(), cookie.clone()]);
+        args.extend(["-Add-header".into(), format!("Cookie: {cookie}")]);
     }
 
     // Tuning presets map to nikto's -T flag (test type bitmask)
@@ -72,6 +71,109 @@ pub async fn run(
         .await
         .map_err(crate::error::to_mcp)?;
 
-    let output = crate::error::format_result("nikto", &result);
+    let output = if result.success {
+        let mut out = parse_nikto_output(&result.stdout).unwrap_or_else(|| result.stdout.clone());
+        if let Some(ref warning) = result.warning {
+            out.push_str(&format!("\n\n⚠ {warning}"));
+        }
+        out
+    } else {
+        crate::error::format_result("nikto", &result)
+    };
     Ok(CallToolResult::success(vec![Content::text(output)]))
+}
+
+/// Parse nikto output, keeping only findings and target info.
+///
+/// Nikto lines starting with `+` are findings or target metadata.
+/// Everything else (banner, separator lines, blank lines) is discarded.
+pub fn parse_nikto_output(raw: &str) -> Option<String> {
+    let findings: Vec<&str> = raw
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with('+') && !line.contains("requires a value"))
+        .collect();
+
+    // If no target info found, this isn't valid scan output (e.g. help text)
+    let has_target = findings
+        .iter()
+        .any(|l| l.contains("Target IP") || l.contains("Target Hostname"));
+
+    if findings.is_empty() || !has_target {
+        None
+    } else {
+        Some(findings.join("\n"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_nikto_extracts_findings() {
+        let raw = r#"- Nikto v2.5.0
+---------------------------------------------------------------------------
++ Target IP:          192.168.1.1
++ Target Hostname:    target.local
++ Target Port:        80
+---------------------------------------------------------------------------
++ Server: Apache/2.4.25 (Debian)
++ /: The anti-clickjacking X-Frame-Options header is not present.
++ OSVDB-3092: /admin/: This might be interesting.
++ 7915 requests: 0 error(s) and 3 item(s) reported
+---------------------------------------------------------------------------
++ 1 host(s) tested"#;
+        let result = parse_nikto_output(raw).unwrap();
+        assert!(result.contains("+ Target IP:"));
+        assert!(result.contains("+ Server: Apache"));
+        assert!(result.contains("OSVDB-3092"));
+        assert!(result.contains("+ 1 host(s) tested"));
+        // Banner and separators stripped
+        assert!(!result.contains("Nikto v2.5.0"));
+        assert!(!result.contains("---"));
+    }
+
+    #[test]
+    fn parse_nikto_empty_returns_none() {
+        assert!(parse_nikto_output("").is_none());
+        assert!(parse_nikto_output("no plus-prefixed lines here").is_none());
+    }
+
+    #[test]
+    fn parse_nikto_rejects_help_text() {
+        // When nikto gets a bad flag it prints help, which includes "+ requires a value"
+        let help = r#"   Options:
+       -h+   Target host/URL
+       + requires a value
+       -p+   Port to use (default 80)
+       + requires a value"#;
+        assert!(
+            parse_nikto_output(help).is_none(),
+            "help text should not parse as valid scan output"
+        );
+    }
+
+    #[test]
+    fn cookie_uses_add_header_flag() {
+        // Verify the args builder produces -Add-header, not -cookie
+        let req = NiktoRequest {
+            target: "http://example.com".into(),
+            port: None,
+            tuning: None,
+            cookie: Some("PHPSESSID=abc123".into()),
+            timeout_secs: None,
+        };
+        let is_url = req.target.starts_with("http://") || req.target.starts_with("https://");
+        let mut args = vec!["-h".to_string(), req.target.clone(), "-nocheck".into()];
+        if !is_url {
+            args.extend(["-p".into(), "80".into()]);
+        }
+        if let Some(ref cookie) = req.cookie {
+            args.extend(["-Add-header".into(), format!("Cookie: {cookie}")]);
+        }
+        assert!(args.contains(&"-Add-header".to_string()));
+        assert!(args.contains(&"Cookie: PHPSESSID=abc123".to_string()));
+        assert!(!args.iter().any(|a| a == "-cookie"));
+    }
 }

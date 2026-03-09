@@ -4,10 +4,7 @@
 //! seconds while a tool is executing. It uses RAII auto-cancel: when the
 //! ticker is dropped (tool handler returns), the background task stops.
 
-use rmcp::{
-    Peer, RoleServer,
-    model::LoggingMessageNotificationParam,
-};
+use rmcp::{Peer, RoleServer, model::LoggingMessageNotificationParam};
 use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 

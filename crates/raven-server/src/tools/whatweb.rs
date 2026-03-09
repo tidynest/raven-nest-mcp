@@ -38,7 +38,12 @@ pub async fn run(
         _ => "1", // stealthy (default)
     };
 
-    let mut args = vec!["-a".to_string(), level.into(), "--color=never".into(), req.target];
+    let mut args = vec![
+        "-a".to_string(),
+        level.into(),
+        "--color=never".into(),
+        req.target,
+    ];
     if let Some(ref cookie) = req.cookie {
         args.extend(["--cookie".into(), cookie.clone()]);
     }

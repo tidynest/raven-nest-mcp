@@ -46,7 +46,7 @@ Best-to-worst for Raven Nest tool calling, based on the
 
 | Model | Size | VRAM (8GB fit?) | Tool F1 | Notes |
 |-------|------|-----------------|---------|-------|
-| Qwen3 8B (dense) | ~5 GB | Yes | 0.933 | Best balance of speed, accuracy, and VRAM fit. ~40 tok/s in VRAM. |
+| Qwen3 8B (dense) | ~5 GB | Yes | 0.933 | Tested and recommended. Zero param hallucination, correct tool semantics. ~40 tok/s. Context exhausts after 3-4 large tool outputs at 32K. |
 | Qwen3 14B (dense) | ~10 GB | No (CPU offload) | 0.971 | Near GPT-4 accuracy. ~8 tok/s with partial offload. |
 | Qwen3-Coder 32B | ~20 GB | No (RAM) | Excellent | Community gold standard for MCP/agent tool calling. |
 | Granite 3.3 8B (IBM) | ~5 GB | Yes | Good | Designed for tool use. Companion Guardian model for hallucination detection. |
@@ -106,21 +106,52 @@ strings like `"abc"` still produce a clear parse error.
 
 ### Context Window Exhaustion
 
-Local models have limited context (typically 32K tokens). Raven Nest's
-tool outputs can be large — a full pentest report can exceed 20K
-characters, consuming most of the context in one go.
+Local models have limited context (typically 32K tokens). Raven Nest
+includes several built-in mitigations to reduce context consumption:
 
-**Symptoms:** model enters repetition loops, forgets tool names, or
-generates incoherent output after receiving a large tool response.
+**Built-in output parsers** — tool outputs are parsed into compact
+summaries instead of raw verbose output:
+- **sqlmap** — extracts injection points, DBMS info; strips progress lines
+- **nuclei** — parses JSONL into `[severity] template — name @ url` table
+- **nikto** — keeps only finding lines (prefixed with `+`)
+- **feroxbuster** — extracts `status URL` pairs, filters 404s
+- **testssl** — extracts vulnerability assessments and certificate info
+- **nmap** — parses XML into structured port/service table (existing)
 
-**Workarounds:**
+**HTTP response reduction:**
+- HTML responses are automatically stripped to plain text (scripts, styles,
+  tags removed); HTML entities (`&copy;`, `&#169;`) decoded to characters
+- HTML comments (`<!-- ... -->`) fully stripped, no residual `-->` fragments
+- Only security-relevant response headers are returned (server,
+  set-cookie, content-type, location, etc.)
+- Response body capped at 20K characters
+
+**Report generation** returns a severity breakdown summary + file path
+instead of the full markdown report content.
+
+**Server instructions** are trimmed to essentials (~600 chars vs ~1500).
+
+**Symptoms of exhaustion:** the model returns an empty response
+("No content response received" in ollmcp), enters repetition loops,
+forgets tool names, or generates incoherent output after receiving a
+large tool response.
+
+**Live-tested context budget (Qwen3 8B, 32K context):**
+- 3-4 tool calls with large outputs (nikto, sqlmap) before exhaustion
+- Thinking mode accelerates exhaustion — disable it for simple tool calls
+- After clearing context (`cc` in ollmcp), the model must re-authenticate
+  since the session cookie is lost from context
+
+**Additional workarounds:**
 - Use `list_findings` (compact one-line-per-finding) instead of reading
   full report files
 - Use `get_finding` to retrieve individual findings by ID rather than
   loading everything at once
 - Keep loop limits modest (10-15) to prevent runaway context growth
-- Avoid asking the model to "summarize everything" — it will try to
-  reproduce the entire output
+- Batch multiple steps into a single prompt to maximise work per context
+  fill — Qwen3 8B can chain 5-6 tool calls in one multi-step prompt
+- When the model goes silent, type `cc` to clear context and re-prompt
+  for remaining steps (re-authenticate first)
 
 ### Tool Discovery Failures
 
@@ -199,12 +230,167 @@ Keep responses concise. Do not repeat raw tool output — summarize key
 findings instead.
 ```
 
+## Automating a Pentest Session
+
+### One-Time Setup
+
+```bash
+# Build the server
+cargo build --release
+
+# Install ollmcp
+pipx install ollmcp
+
+# Configure MCP server definition
+cat > ~/.mcphost.json << 'EOF'
+{
+  "mcpServers": {
+    "raven": {
+      "command": "/path/to/raven-server",
+      "args": [],
+      "cwd": "/path/to/raven-nest-mcp"
+    }
+  }
+}
+EOF
+
+# Configure ollmcp (system prompt, context, loop limit)
+# See ~/.config/ollmcp/config.json — set num_ctx: 32768, loopLimit: 15
+
+# Launch ollmcp once and disable HIL confirmations permanently:
+# Type: hil → d → y, then save-config (sc)
+```
+
+### Per-Session Workflow
+
+```bash
+ollmcp --model qwen3:8b -j ~/.mcphost.json
+```
+
+Give a single comprehensive prompt that batches all steps:
+
+```
+Login to bWAPP at localhost (bee/bug). Run nikto with quick tuning and
+sqlmap on http://localhost/sqli_1.php?title=test&action=search.
+Save any SQL injection findings and generate a final report.
+```
+
+Qwen3 8B chains 5-6 tool calls autonomously: login → nikto → sqlmap →
+save_finding → generate_report. When it goes silent (context full),
+type `cc` to clear context and re-prompt for remaining steps.
+
+### Current Limitations
+
+- **Context exhaustion** is the main bottleneck — clearing context loses
+  the session cookie, requiring re-authentication
+- **No non-interactive mode** — ollmcp requires a TTY; you cannot pipe
+  prompts from a script
+- **Thinking mode** can waste token budget on short prompts — disable it
+  (`tm`) for simple tool invocations, re-enable for multi-step reasoning
+
+### Scaling to Larger Models
+
+All Ollama models support layer splitting between GPU (VRAM) and CPU
+(RAM) via `OLLAMA_NUM_GPU_LAYERS`. This lets you run models larger than
+your VRAM:
+
+```bash
+# Run 32B model: 20 layers on GPU, rest on CPU
+OLLAMA_NUM_GPU_LAYERS=20 ollama run qwen3-coder:32b
+```
+
+Upgrade path for 8 GB VRAM + 32 GB RAM:
+
+| Model | Context | VRAM Use | Speed | Improvement |
+|-------|---------|----------|-------|-------------|
+| Qwen3 8B (current) | 32K | 5 GB (full GPU) | ~40 tok/s | Baseline — exhausts after 3-4 tools |
+| Qwen3 14B dense | 128K | 8 GB (GPU) + 2 GB (RAM) | ~8 tok/s | 4x context, near-perfect tool F1 |
+| Devstral Small 2 24B | 128K | 8 GB (GPU) + 6 GB (RAM) | ~6 tok/s | Agentic coding model, native tool calling |
+| Qwen3-Coder 32B | 128K | 8 GB (GPU) + 12 GB (RAM) | ~3-5 tok/s | Gold standard for MCP, no context exhaustion |
+
+Larger context (128K) eliminates the biggest pain point: models can
+chain 15+ tool calls without going silent, enabling full automated
+pentest sessions without manual intervention.
+
+## Live Testing Results (2026-03-09)
+
+Tested against bWAPP (localhost:80) via ollmcp + Qwen3 8B. All 7 context
+reduction bugfixes verified end-to-end with the local model driving tool
+calls.
+
+### Fixes Verified
+
+| Fix | Issue | Test | Result |
+|-----|-------|------|--------|
+| 1 | nikto `-cookie` flag doesn't exist | nikto ran with real findings (32 items), not help text | Pass |
+| 2 | sqlmap "resumed" injection points lost | All 4 injection types preserved in resumed output | Pass |
+| 3 | nikto help text parsed as finding | No `+ requires a value` lines, all real findings | Pass |
+| 4 | HTML comments not stripped | Zero `-->` residue in http_request body | Pass |
+| 5 | HTML entities not decoded | `© 2014` decoded correctly (not `&copy;`) | Pass |
+| 6 | feroxbuster includes 404s | 220 URLs discovered, zero 404 entries | Pass |
+| 7 | Empty report has trailing `: ` | Clean `0 finding(s)` output | Pass |
+
+### Interventions Required
+
+7 manual interventions were needed during the session:
+
+| # | Issue | Root Cause |
+|---|-------|------------|
+| 1 | HIL confirmation dialogs | ollmcp defaults to HIL=on; required 3 inputs to disable |
+| 2 | Qwen3 silent on portal.php fetch | Thinking mode consumed all output tokens |
+| 3 | Qwen3 silent on feroxbuster prompt | Context exhausted after 4 tool calls |
+| 4 | Qwen3 silent on "Generate report" x2 | Thinking mode + short prompt = zero response budget |
+| 5 | Qwen3 silent with thinking off | Prompt with quotes confused the model; rephrasing fixed it |
+
+### Tools Exercised
+
+7 of 22 tools were exercised: `ping_target`, `http_request`, `run_nikto`,
+`run_sqlmap`, `run_feroxbuster`, `save_finding`, `generate_report`.
+
+Not tested (not part of the fix verification scope): `run_nmap`,
+`run_nuclei`, `run_whatweb`, `run_ffuf`, `run_testssl`, `run_hydra`,
+`run_masscan`, background scan management, finding management tools.
+
+### Key Observations
+
+- Qwen3 8B produces zero parameter hallucination — `deny_unknown_fields`
+  was never triggered
+- Multi-step prompts work better than sequential single-step prompts —
+  the model chains tool calls efficiently when given all steps upfront
+- Context exhaustion is predictable: 32K fills after nikto (~2K) +
+  sqlmap (~1.5K) + feroxbuster (~3K) + accumulated prompt/response tokens
+- Disabling thinking mode recovers ~30% of context budget for simple tasks
+
+## Improvement Roadmap
+
+### Context Efficiency (highest impact)
+- Add filtered 404 count to feroxbuster output (e.g. "220 URLs, 42
+  filtered") for coverage context without extra tokens
+- Consider an adaptive output budget — detect model context size from
+  server instructions and truncate more aggressively for smaller models
+- Group nikto findings by category (headers, directories, outdated
+  software) instead of one-per-line to reduce token count
+
+### Automation
+- Document ollmcp config for pre-disabling HIL and setting thinking mode
+- Investigate programmatic interfaces (non-TTY) for scripted pentesting
+- Consider a "session resume" mechanism that preserves cookies across
+  context clears
+
+### Tool Coverage
+- Test remaining tools (nmap, nuclei, whatweb, ffuf, testssl, hydra,
+  masscan, background scans) through ollmcp
+- Add output parsers for tools that don't have them yet (hydra, whatweb,
+  masscan, ffuf)
+
 ## Resource Considerations
 
 | Model | VRAM | Disk | Inference Speed |
 |-------|------|------|----------------|
-| Qwen 3.5 35B-A3B (Q4) | ~22 GB | ~23 GB | Moderate (MoE architecture, only 3B active) |
-| Qwen 2.5 Coder 14B (Q4) | ~10 GB | ~9 GB | Fast but doesn't support tool calling |
+| Qwen3 8B (dense) | ~5 GB | ~5 GB | ~40 tok/s (tested, recommended) |
+| Qwen3 14B (dense) | ~10 GB | ~10 GB | ~8 tok/s with partial offload |
+| Qwen 3.5 35B-A3B (Q4) | ~22 GB | ~23 GB | Moderate (MoE, only 3B active) |
+| Qwen3-Coder 32B | ~20 GB | ~20 GB | ~3-5 tok/s with layer splitting |
 
 Running both Ollama and Raven Nest simultaneously is lightweight — the MCP
 server is a single Rust binary with minimal memory footprint. The LLM is

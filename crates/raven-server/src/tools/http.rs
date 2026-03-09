@@ -12,11 +12,11 @@
 //!
 //! Response bodies larger than [`MAX_RESPONSE_BODY`] (100KB) are truncated.
 
+use reqwest::cookie::CookieStore;
 use rmcp::{
     model::{CallToolResult, Content},
     schemars,
 };
-use reqwest::cookie::CookieStore;
 use std::{collections::HashMap, time::Duration};
 
 /// MCP request schema for `http_request`.
@@ -46,8 +46,26 @@ pub struct HttpRequest {
     pub follow_redirects: Option<bool>,
 }
 
-/// Maximum response body size before truncation (100KB).
-const MAX_RESPONSE_BODY: usize = 100_000;
+/// Maximum response body size before truncation (20KB, reduced from 100KB
+/// to prevent context exhaustion on models with smaller windows).
+const MAX_RESPONSE_BODY: usize = 20_000;
+
+/// Security-relevant response headers to keep in output.
+/// All other headers are discarded to reduce context consumption.
+const SECURITY_HEADERS: &[&str] = &[
+    "server",
+    "x-powered-by",
+    "set-cookie",
+    "content-type",
+    "location",
+    "www-authenticate",
+    "x-frame-options",
+    "content-security-policy",
+    "strict-transport-security",
+    "x-content-type-options",
+    "access-control-allow-origin",
+    "x-xss-protection",
+];
 
 /// Execute an HTTP request using reqwest with proxy and cookie jar support.
 pub async fn run(
@@ -84,17 +102,20 @@ pub async fn run(
         .cookie_provider(cookie_jar.clone());
 
     if let Some(ref proxy_url) = config.network.http_proxy {
-        let proxy = reqwest::Proxy::http(proxy_url)
-            .map_err(|e| rmcp::ErrorData::internal_error(format!("invalid http_proxy: {e}"), None))?;
+        let proxy = reqwest::Proxy::http(proxy_url).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("invalid http_proxy: {e}"), None)
+        })?;
         builder = builder.proxy(proxy);
     }
     if let Some(ref proxy_url) = config.network.https_proxy {
-        let proxy = reqwest::Proxy::https(proxy_url)
-            .map_err(|e| rmcp::ErrorData::internal_error(format!("invalid https_proxy: {e}"), None))?;
+        let proxy = reqwest::Proxy::https(proxy_url).map_err(|e| {
+            rmcp::ErrorData::internal_error(format!("invalid https_proxy: {e}"), None)
+        })?;
         builder = builder.proxy(proxy);
     }
 
-    let client = builder.build()
+    let client = builder
+        .build()
         .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
 
     let method = req.method.as_deref().unwrap_or("GET").to_uppercase();
@@ -115,8 +136,10 @@ pub async fn run(
     }
 
     if let Some(body) = req.body {
-        let has_content_type = req.headers.as_ref()
-            .map_or(false, |h| h.keys().any(|k| k.eq_ignore_ascii_case("content-type")));
+        let has_content_type = req
+            .headers
+            .as_ref()
+            .is_some_and(|h| h.keys().any(|k| k.eq_ignore_ascii_case("content-type")));
         if !has_content_type {
             request = request.header("content-type", "application/x-www-form-urlencoded");
         }
@@ -131,9 +154,21 @@ pub async fn run(
     let elapsed = start.elapsed();
 
     let status = response.status();
+    let content_type = response
+        .headers()
+        .get("content-type")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_lowercase();
+
+    // Filter to security-relevant headers only
     let resp_headers: Vec<String> = response
         .headers()
         .iter()
+        .filter(|(k, _)| {
+            let name = k.as_str().to_lowercase();
+            SECURITY_HEADERS.iter().any(|h| name == *h)
+        })
         .map(|(k, v)| format!("{k}: {}", v.to_str().unwrap_or("<binary>")))
         .collect();
 
@@ -142,12 +177,24 @@ pub async fn run(
         .await
         .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
 
-    // Truncate large response bodies to prevent overwhelming the MCP client
-    let body = if body_bytes.len() > MAX_RESPONSE_BODY {
-        let truncated = String::from_utf8_lossy(&body_bytes[..MAX_RESPONSE_BODY]);
-        format!("{truncated}\n\n--- truncated at {MAX_RESPONSE_BODY} bytes ---\n")
+    // Convert body to text, stripping HTML if applicable
+    let is_html = content_type.contains("text/html");
+    let raw_body = String::from_utf8_lossy(&body_bytes);
+    let body_text = if is_html {
+        strip_html(&raw_body)
     } else {
-        String::from_utf8_lossy(&body_bytes).into_owned()
+        raw_body.into_owned()
+    };
+
+    // Truncate after processing
+    let body = if body_text.len() > MAX_RESPONSE_BODY {
+        format!(
+            "{}\n\n--- truncated at {} chars ---",
+            &body_text[..MAX_RESPONSE_BODY],
+            MAX_RESPONSE_BODY
+        )
+    } else {
+        body_text
     };
 
     // Surface session cookies from the jar so models can pass them to subprocess tools
@@ -170,4 +217,220 @@ pub async fn run(
     }
 
     Ok(CallToolResult::success(vec![Content::text(output)]))
+}
+
+/// Strip HTML to readable plain text.
+///
+/// Removes `<script>` and `<style>` blocks, strips remaining tags (inserting
+/// newlines for block elements), decodes common HTML entities, and collapses
+/// repeated whitespace. Not a full parser — optimised for reducing HTML
+/// response size in context-constrained environments.
+fn strip_html(html: &str) -> String {
+    // Phase 1: Remove script/style blocks and HTML comments
+    let mut cleaned = String::from(html);
+    for tag in &["script", "style"] {
+        loop {
+            let lower = cleaned.to_lowercase();
+            let open = format!("<{tag}");
+            let close = format!("</{tag}>");
+            let Some(start) = lower.find(&open) else {
+                break;
+            };
+            let Some(end) = lower[start..].find(&close) else {
+                break;
+            };
+            cleaned = format!(
+                "{}{}",
+                &cleaned[..start],
+                &cleaned[start + end + close.len()..]
+            );
+        }
+    }
+    // Strip HTML comments (<!-- ... -->)
+    loop {
+        let Some(start) = cleaned.find("<!--") else {
+            break;
+        };
+        let Some(end) = cleaned[start..].find("-->") else {
+            break;
+        };
+        cleaned = format!("{}{}", &cleaned[..start], &cleaned[start + end + 3..]);
+    }
+
+    // Phase 2: Strip tags, inserting newlines for block elements
+    let mut result = String::with_capacity(cleaned.len() / 3);
+    let mut in_tag = false;
+    let mut tag_buf = String::new();
+
+    for ch in cleaned.chars() {
+        if ch == '<' {
+            in_tag = true;
+            tag_buf.clear();
+            continue;
+        }
+        if in_tag {
+            if ch == '>' {
+                in_tag = false;
+                let lower_tag = tag_buf.to_lowercase();
+                let name = lower_tag
+                    .split_whitespace()
+                    .next()
+                    .unwrap_or("")
+                    .trim_start_matches('/');
+                if matches!(
+                    name,
+                    "p" | "div"
+                        | "br"
+                        | "li"
+                        | "tr"
+                        | "h1"
+                        | "h2"
+                        | "h3"
+                        | "h4"
+                        | "h5"
+                        | "h6"
+                        | "hr"
+                        | "table"
+                        | "blockquote"
+                        | "option"
+                        | "select"
+                        | "dt"
+                        | "dd"
+                ) {
+                    result.push('\n');
+                }
+            } else {
+                tag_buf.push(ch);
+            }
+            continue;
+        }
+        result.push(ch);
+    }
+
+    // Phase 3: Decode HTML entities (named + numeric decimal)
+    let decoded = result
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&#39;", "'")
+        .replace("&apos;", "'")
+        .replace("&nbsp;", " ")
+        .replace("&copy;", "\u{00A9}")
+        .replace("&reg;", "\u{00AE}")
+        .replace("&trade;", "\u{2122}")
+        .replace("&hellip;", "\u{2026}")
+        .replace("&ndash;", "\u{2013}")
+        .replace("&mdash;", "\u{2014}");
+
+    // Decode &#NNN; numeric entities in a single forward pass
+    let decoded = {
+        let mut out = String::with_capacity(decoded.len());
+        let mut remaining = decoded.as_str();
+        while let Some(pos) = remaining.find("&#") {
+            out.push_str(&remaining[..pos]);
+            let after = &remaining[pos + 2..];
+            if let Some(semi) = after.find(';') {
+                let digits = &after[..semi];
+                if let Ok(cp) = digits.parse::<u32>()
+                    && let Some(ch) = char::from_u32(cp)
+                {
+                    out.push(ch);
+                    remaining = &after[semi + 1..];
+                    continue;
+                }
+            }
+            // Malformed — keep `&#` literal and advance past it
+            out.push_str("&#");
+            remaining = after;
+        }
+        out.push_str(remaining);
+        out
+    };
+
+    // Phase 4: Collapse blank lines
+    let mut final_out = String::with_capacity(decoded.len());
+    let mut blank_count = 0;
+    for line in decoded.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            blank_count += 1;
+            if blank_count <= 1 {
+                final_out.push('\n');
+            }
+        } else {
+            blank_count = 0;
+            final_out.push_str(trimmed);
+            final_out.push('\n');
+        }
+    }
+
+    final_out.trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strip_html_removes_scripts_and_styles() {
+        let html = "<html><head><style>body{color:red}</style></head><body><script>alert(1)</script><p>Hello</p></body></html>";
+        let text = strip_html(html);
+        assert!(text.contains("Hello"));
+        assert!(!text.contains("alert"));
+        assert!(!text.contains("color:red"));
+        assert!(!text.contains("<p>"));
+    }
+
+    #[test]
+    fn strip_html_decodes_entities() {
+        let html = "&amp; &lt;tag&gt; &quot;quoted&quot;";
+        let text = strip_html(html);
+        assert!(text.contains("& <tag> \"quoted\""));
+    }
+
+    #[test]
+    fn strip_html_inserts_newlines_for_blocks() {
+        let html = "<div>one</div><div>two</div>";
+        let text = strip_html(html);
+        assert!(text.contains("one\n"));
+        assert!(text.contains("two"));
+    }
+
+    #[test]
+    fn strip_html_collapses_whitespace() {
+        let html = "<p>line1</p>\n\n\n\n<p>line2</p>";
+        let text = strip_html(html);
+        // Should not have more than one consecutive blank line
+        assert!(!text.contains("\n\n\n"));
+    }
+
+    #[test]
+    fn strip_html_removes_comments() {
+        let html = "<!-- banner -->Hello<!-- end -->, world";
+        let text = strip_html(html);
+        assert_eq!(text, "Hello, world");
+        assert!(!text.contains("-->"));
+        assert!(!text.contains("<!--"));
+    }
+
+    #[test]
+    fn strip_html_decodes_extended_entities() {
+        let html = "&copy; 2024 &ndash; All rights reserved &hellip;";
+        let text = strip_html(html);
+        assert!(text.contains('\u{00A9}'));
+        assert!(text.contains('\u{2013}'));
+        assert!(text.contains('\u{2026}'));
+        assert!(!text.contains("&copy;"));
+    }
+
+    #[test]
+    fn strip_html_decodes_numeric_entities() {
+        let html = "&#169; &#8212; &#65;";
+        let text = strip_html(html);
+        assert!(text.contains('\u{00A9}')); // &#169; = ©
+        assert!(text.contains('\u{2014}')); // &#8212; = —
+        assert!(text.contains('A')); // &#65; = A
+        assert!(!text.contains("&#"));
+    }
 }

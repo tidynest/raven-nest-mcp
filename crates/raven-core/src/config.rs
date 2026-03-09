@@ -89,7 +89,7 @@ pub struct ExecutionConfig {
 /// When set, [`executor::run`](crate::executor::run) sets both upper- and
 /// lower-case environment variables (`HTTP_PROXY`/`http_proxy`) so that tools
 /// using either convention pick up the proxy.
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct NetworkConfig {
     /// HTTP proxy URL (e.g. `http://proxy:3128`).
@@ -99,16 +99,6 @@ pub struct NetworkConfig {
     /// Hostnames/IPs that should bypass the proxy.
     #[serde(default)]
     pub no_proxy: Vec<String>,
-}
-
-impl Default for NetworkConfig {
-    fn default() -> Self {
-        Self {
-            http_proxy: None,
-            https_proxy: None,
-            no_proxy: Vec::new(),
-        }
-    }
 }
 
 impl ExecutionConfig {

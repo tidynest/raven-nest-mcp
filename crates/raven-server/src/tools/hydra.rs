@@ -30,7 +30,9 @@ pub struct HydraRequest {
     #[schemars(description = "Number of parallel tasks (capped by config)")]
     #[serde(default, deserialize_with = "super::lenient::option_number")]
     pub tasks: Option<u16>,
-    #[schemars(description = "Form attack string for http-post-form/http-get-form (e.g. '/login:user=^USER^&pass=^PASS^:F=incorrect')")]
+    #[schemars(
+        description = "Form attack string for http-post-form/http-get-form (e.g. '/login:user=^USER^&pass=^PASS^:F=incorrect')"
+    )]
     pub form_params: Option<String>,
 }
 
@@ -42,9 +44,8 @@ pub async fn run(
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
-    let _ticker = peer.map(|p| {
-        crate::progress::ProgressTicker::start(p, "hydra".into(), req.target.clone())
-    });
+    let _ticker =
+        peer.map(|p| crate::progress::ProgressTicker::start(p, "hydra".into(), req.target.clone()));
 
     // Cap parallel tasks to prevent excessive brute-force throughput
     let tasks = req

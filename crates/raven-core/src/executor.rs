@@ -160,11 +160,11 @@ pub async fn run(
     }
 
     let output = tokio::time::timeout(timeout, cmd.output())
-    .await
-    .map_err(|_| {
-        PentestError::CommandTimeout(format!("{tool} time out after {}s", timeout.as_secs()))
-    })?
-    .map_err(|e| PentestError::CommandFailed(format!("{tool}: {e}")))?;
+        .await
+        .map_err(|_| {
+            PentestError::CommandTimeout(format!("{tool} time out after {}s", timeout.as_secs()))
+        })?
+        .map_err(|e| PentestError::CommandFailed(format!("{tool}: {e}")))?;
 
     let stdout = safety::truncate_output(
         &String::from_utf8_lossy(&output.stdout),
@@ -199,9 +199,13 @@ mod tests {
         cmd.env("HTTP_PROXY", proxy);
         cmd.env("http_proxy", proxy);
         let envs: Vec<_> = cmd.get_envs().collect();
-        assert!(envs.iter().any(|(k, v)| *k == "HTTP_PROXY"
-            && *v == Some(std::ffi::OsStr::new(proxy))));
-        assert!(envs.iter().any(|(k, v)| *k == "http_proxy"
-            && *v == Some(std::ffi::OsStr::new(proxy))));
+        assert!(
+            envs.iter()
+                .any(|(k, v)| *k == "HTTP_PROXY" && *v == Some(std::ffi::OsStr::new(proxy)))
+        );
+        assert!(
+            envs.iter()
+                .any(|(k, v)| *k == "http_proxy" && *v == Some(std::ffi::OsStr::new(proxy)))
+        );
     }
 }

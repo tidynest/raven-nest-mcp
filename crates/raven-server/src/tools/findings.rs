@@ -182,7 +182,30 @@ pub fn generate_report(
         return Ok(CallToolResult::success(vec![Content::text(report)]));
     }
 
-    let output = format!("Report saved to: {}\n\n{report}", path.display());
+    // Return a compact summary instead of the full report to save context.
+    // The full report is on disk for the operator to review.
+    let mut severity_counts = std::collections::HashMap::<&str, usize>::new();
+    for f in &refs {
+        let sev = match f.severity {
+            Severity::Critical => "critical",
+            Severity::High => "high",
+            Severity::Medium => "medium",
+            Severity::Low => "low",
+            Severity::Info => "info",
+        };
+        *severity_counts.entry(sev).or_default() += 1;
+    }
+    let breakdown: Vec<String> = ["critical", "high", "medium", "low", "info"]
+        .iter()
+        .filter_map(|s| severity_counts.get(s).map(|c| format!("{c} {s}")))
+        .collect();
+
+    let summary = if refs.is_empty() {
+        "0 finding(s)".to_string()
+    } else {
+        format!("{} finding(s): {}", refs.len(), breakdown.join(", "))
+    };
+    let output = format!("Report saved to: {}\n{summary}", path.display());
     Ok(CallToolResult::success(vec![Content::text(output)]))
 }
 

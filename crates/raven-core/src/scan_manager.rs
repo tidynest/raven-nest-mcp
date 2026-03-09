@@ -47,9 +47,9 @@ impl ScanOutput {
     fn size(&self) -> usize {
         match self {
             ScanOutput::Memory(s) => s.len(),
-            ScanOutput::Disk(path) => {
-                std::fs::metadata(path).map(|m| m.len() as usize).unwrap_or(0)
-            }
+            ScanOutput::Disk(path) => std::fs::metadata(path)
+                .map(|m| m.len() as usize)
+                .unwrap_or(0),
         }
     }
 }
@@ -198,8 +198,8 @@ impl ScanManager {
 
                         // Spill large outputs to disk to prevent unbounded memory growth
                         entry.output = Some(if output_str.len() > SPILL_THRESHOLD {
-                            let scan_dir = std::path::Path::new(&config.execution.output_dir)
-                                .join("scans");
+                            let scan_dir =
+                                std::path::Path::new(&config.execution.output_dir).join("scans");
                             let _ = std::fs::create_dir_all(&scan_dir);
                             let path = scan_dir.join(format!("{scan_id}.txt"));
                             match std::fs::write(&path, &output_str) {
@@ -271,7 +271,9 @@ impl ScanManager {
     /// Used by `raven-server::tools::scans::status` for auto-inline.
     pub fn output(&self, id: &str) -> Result<Option<String>, PentestError> {
         let scans = self.lock_scans()?;
-        let Some(entry) = scans.get(id) else { return Ok(None) };
+        let Some(entry) = scans.get(id) else {
+            return Ok(None);
+        };
         match &entry.output {
             None => Ok(None),
             Some(ScanOutput::Memory(s)) => Ok(Some(s.clone())),
@@ -298,10 +300,11 @@ impl ScanManager {
         let content = match &entry.output {
             None => return Ok(None),
             Some(ScanOutput::Memory(s)) => std::borrow::Cow::Borrowed(s.as_str()),
-            Some(ScanOutput::Disk(path)) => std::borrow::Cow::Owned(
-                std::fs::read_to_string(path)
-                    .map_err(|e| PentestError::CommandFailed(format!("read spilled output: {e}")))?,
-            ),
+            Some(ScanOutput::Disk(path)) => {
+                std::borrow::Cow::Owned(std::fs::read_to_string(path).map_err(|e| {
+                    PentestError::CommandFailed(format!("read spilled output: {e}"))
+                })?)
+            }
         };
 
         let chars: Vec<char> = content.chars().collect();

@@ -75,7 +75,11 @@ impl RavenServer {
 
     #[tool(
         description = "Ping a target to verify connectivity and measure latency",
-        annotations(read_only_hint = true, destructive_hint = false, open_world_hint = true)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = true
+        )
     )]
     async fn ping_target(
         &self,
@@ -86,7 +90,11 @@ impl RavenServer {
 
     #[tool(
         description = "Run whatweb to identify web technologies",
-        annotations(read_only_hint = true, destructive_hint = false, open_world_hint = true)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = true
+        )
     )]
     async fn run_whatweb(
         &self,
@@ -108,7 +116,11 @@ impl RavenServer {
 
     #[tool(
         description = "Run ffuf for web fuzzing with FUZZ keyword substitution",
-        annotations(read_only_hint = true, destructive_hint = false, open_world_hint = true)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = true
+        )
     )]
     async fn run_ffuf(
         &self,
@@ -119,7 +131,11 @@ impl RavenServer {
 
     #[tool(
         description = "Run masscan for high-speed port scanning (requires root)",
-        annotations(read_only_hint = true, destructive_hint = false, open_world_hint = true)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = true
+        )
     )]
     async fn run_masscan(
         &self,
@@ -132,7 +148,11 @@ impl RavenServer {
 
     #[tool(
         description = "Run an nmap scan with preset configurations",
-        annotations(read_only_hint = true, destructive_hint = false, open_world_hint = true)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = true
+        )
     )]
     async fn run_nmap(
         &self,
@@ -144,7 +164,11 @@ impl RavenServer {
 
     #[tool(
         description = "Run nuclei template-based vulnerability scanner",
-        annotations(read_only_hint = true, destructive_hint = false, open_world_hint = true)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = true
+        )
     )]
     async fn run_nuclei(
         &self,
@@ -156,7 +180,11 @@ impl RavenServer {
 
     #[tool(
         description = "Run nikto web server scanner",
-        annotations(read_only_hint = true, destructive_hint = false, open_world_hint = true)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = true
+        )
     )]
     async fn run_nikto(
         &self,
@@ -168,7 +196,11 @@ impl RavenServer {
 
     #[tool(
         description = "Run testssl.sh for SSL/TLS configuration auditing",
-        annotations(read_only_hint = true, destructive_hint = false, open_world_hint = true)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = true
+        )
     )]
     async fn run_testssl(
         &self,
@@ -180,7 +212,11 @@ impl RavenServer {
 
     #[tool(
         description = "Run feroxbuster for directory and content discovery",
-        annotations(read_only_hint = true, destructive_hint = false, open_world_hint = true)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = true
+        )
     )]
     async fn run_feroxbuster(
         &self,
@@ -229,7 +265,11 @@ impl RavenServer {
 
     #[tool(
         description = "Check the status of a background scan",
-        annotations(read_only_hint = true, destructive_hint = false, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     fn get_scan_status(
         &self,
@@ -240,7 +280,11 @@ impl RavenServer {
 
     #[tool(
         description = "Get results from a completed scan (supports pagination)",
-        annotations(read_only_hint = true, destructive_hint = false, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     fn get_scan_results(
         &self,
@@ -262,7 +306,11 @@ impl RavenServer {
 
     #[tool(
         description = "List all scans and their status",
-        annotations(read_only_hint = true, destructive_hint = false, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     fn list_scans(&self) -> Result<CallToolResult, rmcp::ErrorData> {
         crate::tools::scans::list_scans(&self.scan_manager)
@@ -283,7 +331,11 @@ impl RavenServer {
 
     #[tool(
         description = "Get details of a specific finding",
-        annotations(read_only_hint = true, destructive_hint = false, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     fn get_finding(
         &self,
@@ -294,7 +346,11 @@ impl RavenServer {
 
     #[tool(
         description = "List all findings sorted by severity",
-        annotations(read_only_hint = true, destructive_hint = false, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     fn list_findings(&self) -> Result<CallToolResult, rmcp::ErrorData> {
         crate::tools::findings::list_findings(&self.finding_store)
@@ -313,7 +369,11 @@ impl RavenServer {
 
     #[tool(
         description = "Generate a markdown pentest report from all findings",
-        annotations(read_only_hint = true, destructive_hint = false, open_world_hint = false)
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
     )]
     fn generate_report(
         &self,
@@ -342,35 +402,17 @@ const SERVER_INSTRUCTIONS: &str = "\
 Raven Nest - pentesting toolkit.
 
 ## Workflow
-1. Use ping_target to verify connectivity before scanning.
-2. Use dedicated tools instead of launch_scan:
-   - Recon: run_nmap, run_masscan (root), run_whatweb
-   - Web: run_nuclei, run_nikto, run_feroxbuster, run_ffuf
-   - Exploitation: run_sqlmap, run_hydra
-   - TLS: run_testssl
-3. Targets: bare hostnames/IPs for nmap/ping/masscan; full URLs for nuclei, nikto, whatweb, feroxbuster, ffuf, sqlmap.
-4. Start with less aggressive scans (stealthy/passive modes first).
-5. Check scan output for empty results or rate-limit indicators before saving findings.
-6. Save findings with save_finding, then generate_report for the final report.
+1. ping_target first to verify connectivity.
+2. Use dedicated tools (not launch_scan): nmap, masscan (root), whatweb for recon; nuclei, nikto, feroxbuster, ffuf for web; sqlmap, hydra for exploitation; testssl for TLS.
+3. Targets: bare hostnames/IPs for nmap/ping/masscan; full URLs for web tools.
+4. Start with less aggressive scans first.
+5. Check output for empty/rate-limited results before saving findings.
+6. save_finding for each vuln, then generate_report.
 
 ## Tool Timing
 - Fast (1-5s): ping_target, run_whatweb, http_request, run_ffuf, run_masscan
 - Medium (5-30s): run_nmap (quick/service)
 - Slow (30-300s): run_nmap (os/vuln), run_nuclei, run_nikto, run_testssl, run_feroxbuster, run_sqlmap, run_hydra
 
-## Parallelism
-Run these in parallel for faster sessions:
-- run_nmap + run_whatweb (recon phase)
-- run_nuclei + run_nikto (web vuln phase)
-- run_testssl alongside any web scanner
-Do NOT parallelise run_sqlmap + run_hydra (both are resource-intensive and may interfere).
-
 ## Authenticated Scanning
-- http_request has a cookie jar that persists across http_request calls within a session.
-- Scanning tools (sqlmap, nikto, nuclei, feroxbuster, ffuf, whatweb) run as subprocesses and do NOT share this jar.
-- After authenticating with http_request, pass the session cookie explicitly via each tool's `cookie` parameter.
-
-## Background Scans (launch_scan)
-- get_scan_status returns results inline when scan is complete and output < 10K chars — no need to call get_scan_results separately.
-- Polling strategy: first poll after 10s (nmap/whatweb) or 30s (nuclei/nikto/testssl), then every 15-30s.
-- list_scans shows elapsed time for all scans.";
+http_request cookie jar persists within a session. Subprocess tools (sqlmap, nikto, etc.) do NOT share it — pass cookies via each tool's `cookie` parameter.";

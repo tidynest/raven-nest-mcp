@@ -170,8 +170,9 @@ fn generate_report_produces_markdown() {
     )
     .unwrap();
     let text = extract_text(&result.content);
-    assert!(text.contains("# Test Report"));
-    assert!(text.contains("XSS"));
+    assert!(text.contains("Report saved to:"));
+    assert!(text.contains("1 finding(s)"));
+    assert!(text.contains("1 high"));
 }
 
 #[test]
@@ -188,5 +189,6 @@ fn generate_report_uses_default_title() {
     )
     .unwrap();
     let text = extract_text(&result.content);
-    assert!(text.contains("# Penetration Test Report"));
+    assert!(text.contains("Report saved to:"));
+    assert!(text.contains("0 finding(s)"));
 }
