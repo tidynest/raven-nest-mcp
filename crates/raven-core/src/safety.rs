@@ -169,6 +169,7 @@ mod tests {
             sqlmap_max_risk: 1,
             hydra_max_tasks: 4,
             masscan_max_rate: 1000,
+            context_budget: 0,
         }
     }
 

@@ -54,6 +54,11 @@ pub struct SafetyConfig {
     /// Max masscan packet rate (packets/sec). Default 1000 — prevents network saturation.
     #[serde(default = "default_masscan_max_rate")]
     pub masscan_max_rate: u32,
+    /// Model context window size in characters. When set (> 0), derives
+    /// `max_output_chars` and HTTP body cap proportionally so that ~4 tool
+    /// outputs fit within the budget. `0` disables (uses `max_output_chars` as-is).
+    #[serde(default)]
+    pub context_budget: usize,
 }
 
 fn default_sqlmap_max_level() -> u8 {
@@ -118,6 +123,24 @@ impl SafetyConfig {
             .get(tool)
             .map(|s| s.as_str())
             .unwrap_or(tool)
+    }
+
+    /// Effective subprocess output cap: `context_budget / 4` when set, else `max_output_chars`.
+    pub fn effective_max_output_chars(&self) -> usize {
+        if self.context_budget > 0 {
+            self.context_budget / 4
+        } else {
+            self.max_output_chars
+        }
+    }
+
+    /// Effective HTTP response body cap: `context_budget / 6` when set, else 20,000.
+    pub fn effective_max_response_body(&self) -> usize {
+        if self.context_budget > 0 {
+            self.context_budget / 6
+        } else {
+            20_000
+        }
     }
 }
 
@@ -193,6 +216,7 @@ impl Default for RavenConfig {
                 sqlmap_max_risk: default_sqlmap_max_risk(),
                 hydra_max_tasks: default_hydra_max_tasks(),
                 masscan_max_rate: default_masscan_max_rate(),
+                context_budget: 0,
             },
             execution: ExecutionConfig {
                 default_timeout_secs: 600,
@@ -241,6 +265,7 @@ mod tests {
             sqlmap_max_risk: default_sqlmap_max_risk(),
             hydra_max_tasks: default_hydra_max_tasks(),
             masscan_max_rate: default_masscan_max_rate(),
+            context_budget: 0,
         }
     }
 
@@ -312,5 +337,24 @@ mod tests {
         let cfg: RavenConfig = toml::from_str(toml_str).unwrap();
         assert_eq!(cfg.network.http_proxy.as_deref(), Some("http://proxy:3128"));
         assert_eq!(cfg.network.no_proxy, vec!["localhost", "127.0.0.1"]);
+    }
+
+    #[test]
+    fn context_budget_zero_uses_defaults() {
+        let cfg = test_safety_config(HashMap::new());
+        assert_eq!(cfg.effective_max_output_chars(), 50_000);
+        assert_eq!(cfg.effective_max_response_body(), 20_000);
+    }
+
+    #[test]
+    fn context_budget_derives_caps() {
+        let mut cfg = test_safety_config(HashMap::new());
+        cfg.context_budget = 32_768;
+        assert_eq!(cfg.effective_max_output_chars(), 8_192); // 32768 / 4
+        assert_eq!(cfg.effective_max_response_body(), 5_461); // 32768 / 6
+
+        cfg.context_budget = 131_072;
+        assert_eq!(cfg.effective_max_output_chars(), 32_768);
+        assert_eq!(cfg.effective_max_response_body(), 21_845);
     }
 }

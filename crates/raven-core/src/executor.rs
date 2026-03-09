@@ -168,7 +168,7 @@ pub async fn run(
 
     let stdout = safety::truncate_output(
         &String::from_utf8_lossy(&output.stdout),
-        config.safety.max_output_chars,
+        config.safety.effective_max_output_chars(),
     );
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
