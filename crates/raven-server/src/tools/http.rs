@@ -25,7 +25,7 @@ use std::{collections::HashMap, time::Duration};
 pub struct HttpRequest {
     #[schemars(description = "Full URL (must start with http:// or https://)")]
     pub url: String,
-
+    
     #[schemars(description = "HTTP method: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS")]
     pub method: Option<String>,
 

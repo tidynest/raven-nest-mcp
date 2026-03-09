@@ -1177,9 +1177,7 @@ dependencies = [
 name = "raven-core"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "serde",
- "serde_json",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
@@ -1197,7 +1195,6 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
- "thiserror 2.0.18",
  "tracing",
  "uuid",
 ]
@@ -1221,7 +1218,6 @@ dependencies = [
  "tokio-util",
  "tracing",
  "tracing-subscriber",
- "uuid",
 ]
 
 [[package]]

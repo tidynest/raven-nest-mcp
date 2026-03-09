@@ -1,7 +1,7 @@
 //! Finding management handlers (save, get, list, delete, report generation).
 //!
 //! These handlers bridge the MCP interface to [`FindingStore`] for persistence
-//! and [`markdown::generate_report`](raven_report::markdown::generate_report)
+//! and [`markdown::generate_report`](markdown::generate_report)
 //! for report output. The store is protected by `RwLock` — reads (list, get)
 //! take a shared lock, writes (save, delete) take an exclusive lock.
 //!
@@ -153,7 +153,7 @@ pub fn delete_finding(
     Ok(CallToolResult::success(vec![Content::text(text)]))
 }
 
-/// Generate a markdown report from all stored findings and save it to disk.
+/// Generate a Markdown report from all stored findings and save it to disk.
 ///
 /// The report is both returned in the MCP response and persisted to
 /// `{output_dir}/report-{timestamp}.md`. If disk write fails, the report
@@ -168,7 +168,7 @@ pub fn generate_report(
         .map_err(|_| rmcp::ErrorData::internal_error("store lock poisoned", None))?;
 
     let all = store.load_all();
-    let refs: Vec<&raven_report::finding::Finding> = all.iter().collect();
+    let refs: Vec<&Finding> = all.iter().collect();
     let title = req.title.as_deref().unwrap_or("Penetration Test Report");
     let report = markdown::generate_report(&refs, title);
 
@@ -231,7 +231,7 @@ mod tests {
 
     #[test]
     fn parse_severity_rejects_invalid() {
-        assert!(parse_severity("hgih").is_err());
+        assert!(parse_severity("urgent").is_err());
         assert!(parse_severity("").is_err());
         assert!(parse_severity("severe").is_err());
         assert!(parse_severity("1").is_err());
@@ -239,8 +239,8 @@ mod tests {
 
     #[test]
     fn parse_severity_error_message() {
-        let err = parse_severity("hgih").unwrap_err();
+        let err = parse_severity("urgent").unwrap_err();
         assert!(err.message.contains("invalid severity"));
-        assert!(err.message.contains("hgih"));
+        assert!(err.message.contains("urgent"));
     }
 }

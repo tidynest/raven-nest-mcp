@@ -95,7 +95,11 @@ pub async fn run(
 /// OS detection matches (top 3), and run statistics (elapsed time, host counts).
 /// Returns `None` if the input isn't valid nmap XML.
 pub fn parse_nmap_xml(xml: &str) -> Option<String> {
-    let doc = roxmltree::Document::parse(xml).ok()?;
+    let opts = roxmltree::ParsingOptions {
+        allow_dtd: true,
+        ..Default::default()
+    };
+    let doc = roxmltree::Document::parse_with_options(xml, opts).ok()?;
     let root = doc.root_element();
 
     if root.tag_name().name() != "nmaprun" {
@@ -267,5 +271,44 @@ mod tests {
         let xml = r#"<?xml version="1.0"?><nmaprun/>"#;
         // No hosts, no runstats — output is empty
         assert!(parse_nmap_xml(xml).is_none());
+    }
+
+    #[test]
+    fn parse_real_localhost_xml_with_doctype() {
+        // Real nmap output from `nmap -T4 -F -oX - 127.0.0.1`
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<?xml-stylesheet href="file:///usr/bin/../share/nmap/nmap.xsl" type="text/xsl"?>
+<!-- Nmap 7.98 scan initiated as: nmap -T4 -F -oX - 127.0.0.1 -->
+<nmaprun scanner="nmap" args="nmap -T4 -F -oX - 127.0.0.1" start="1773049936" version="7.98">
+<scaninfo type="connect" protocol="tcp" numservices="100" services="7,9,13,21-23"/>
+<verbose level="0"/>
+<debugging level="0"/>
+<hosthint><status state="up" reason="unknown-response" reason_ttl="0"/>
+<address addr="127.0.0.1" addrtype="ipv4"/>
+<hostnames/>
+</hosthint>
+<host starttime="1773049936" endtime="1773049936"><status state="up" reason="syn-ack" reason_ttl="0"/>
+<address addr="127.0.0.1" addrtype="ipv4"/>
+<hostnames><hostname name="localhost" type="PTR"/></hostnames>
+<ports><extraports state="closed" count="97">
+<extrareasons reason="conn-refused" count="97" proto="tcp" ports="7,9,13"/>
+</extraports>
+<port protocol="tcp" portid="22"><state state="open" reason="syn-ack" reason_ttl="0"/><service name="ssh" method="table" conf="3"/></port>
+<port protocol="tcp" portid="80"><state state="open" reason="syn-ack" reason_ttl="0"/><service name="http" method="table" conf="3"/></port>
+<port protocol="tcp" portid="631"><state state="open" reason="syn-ack" reason_ttl="0"/><service name="ipp" method="table" conf="3"/></port>
+</ports>
+<times srtt="94" rttvar="97" to="100000"/>
+</host>
+<runstats><finished time="1773049936" elapsed="0.02" exit="success"/><hosts up="1" down="0" total="1"/></runstats>
+</nmaprun>"#;
+        let result = parse_nmap_xml(xml);
+        println!("Result: {result:?}");
+        assert!(result.is_some(), "Parser returned None on real nmap XML!");
+        let text = result.unwrap();
+        println!("--- Parsed output ---\n{text}");
+        assert!(text.contains("127.0.0.1"));
+        assert!(text.contains("22"));
+        assert!(text.contains("ssh"));
     }
 }
