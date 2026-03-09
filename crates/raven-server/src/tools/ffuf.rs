@@ -104,6 +104,89 @@ pub async fn run(
         .await
         .map_err(crate::error::to_mcp)?;
 
-    let output = crate::error::format_result("ffuf", &result);
+    let output = if result.success {
+        let mut out =
+            parse_ffuf_output(&result.stdout).unwrap_or_else(|| result.stdout.clone());
+        if let Some(ref warning) = result.warning {
+            out.push_str(&format!("\n\n⚠ {warning}"));
+        }
+        out
+    } else {
+        crate::error::format_result("ffuf", &result)
+    };
     Ok(CallToolResult::success(vec![Content::text(output)]))
+}
+
+/// Parse ffuf output, extracting fuzzing results.
+///
+/// Result lines contain `[Status: NNN,` with the matched word, HTTP status,
+/// response size, and word/line counts. The ASCII banner, config header,
+/// and progress lines are discarded.
+pub fn parse_ffuf_output(raw: &str) -> Option<String> {
+    let results: Vec<&str> = raw
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.contains("[Status:"))
+        .collect();
+
+    if results.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "{} result(s) found:\n{}",
+            results.len(),
+            results.join("\n")
+        ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_ffuf_extracts_results() {
+        let raw = r#"        /'___\  /'___\           /'___\
+       /\ \__/ /\ \__/  __  __  /\ \__/
+       \ \ ,__\\ \ ,__\/\ \/\ \ \ \ ,__\
+        \ \ \_/ \ \ \_/\ \ \_\ \ \ \ \_/
+         \ \_\   \ \_\  \ \____/  \ \_\
+          \/_/    \/_/   \/___/    \/_/
+
+       v2.1.0
+________________________________________________
+
+ :: Method           : GET
+ :: URL              : http://10.0.0.1/FUZZ
+ :: Wordlist         : FUZZ: /usr/share/seclists/Discovery/Web-Content/raft-medium-words.txt
+________________________________________________
+
+admin                   [Status: 301, Size: 0, Words: 1, Lines: 1, Duration: 23ms]
+index.html              [Status: 200, Size: 1256, Words: 156, Lines: 42, Duration: 15ms]
+server-status           [Status: 403, Size: 277, Words: 20, Lines: 10, Duration: 12ms]
+:: Progress: [63087/63087] :: Job [1/1] :: 500 req/sec :: Duration: [0:02:06] :: Errors: 0 ::"#;
+        let result = parse_ffuf_output(raw).unwrap();
+        assert!(result.contains("3 result(s) found:"));
+        assert!(result.contains("admin"));
+        assert!(result.contains("[Status: 301,"));
+        assert!(result.contains("index.html"));
+        assert!(result.contains("[Status: 200,"));
+        assert!(!result.contains("/'___\\"));
+        assert!(!result.contains(":: Progress:"));
+        assert!(!result.contains(":: Method"));
+    }
+
+    #[test]
+    fn parse_ffuf_no_results_returns_none() {
+        let raw = r#"       v2.1.0
+ :: Method           : GET
+ :: URL              : http://10.0.0.1/FUZZ
+:: Progress: [63087/63087] :: Job [1/1] :: 500 req/sec :: Duration: [0:02:06] :: Errors: 0 ::"#;
+        assert!(parse_ffuf_output(raw).is_none());
+    }
+
+    #[test]
+    fn parse_ffuf_empty_returns_none() {
+        assert!(parse_ffuf_output("").is_none());
+    }
 }

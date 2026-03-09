@@ -85,6 +85,93 @@ pub async fn run(
         .await
         .map_err(crate::error::to_mcp)?;
 
-    let output = crate::error::format_result("hydra", &result);
+    let output = if result.success {
+        let mut out =
+            parse_hydra_output(&result.stdout).unwrap_or_else(|| result.stdout.clone());
+        if let Some(ref warning) = result.warning {
+            out.push_str(&format!("\n\n⚠ {warning}"));
+        }
+        out
+    } else {
+        crate::error::format_result("hydra", &result)
+    };
     Ok(CallToolResult::success(vec![Content::text(output)]))
+}
+
+/// Parse hydra output, extracting found credentials and the summary line.
+///
+/// Credential lines contain both `login:` and `password:` keywords.
+/// The summary line matches "valid password found" or "successfully completed".
+/// All other lines (status updates, data info) are discarded.
+pub fn parse_hydra_output(raw: &str) -> Option<String> {
+    let mut creds = Vec::new();
+    let mut summary = None;
+
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.contains("login:") && trimmed.contains("password:") {
+            creds.push(trimmed);
+        } else if trimmed.contains("valid password") || trimmed.contains("successfully completed")
+        {
+            summary = Some(trimmed);
+        }
+    }
+
+    if creds.is_empty() && summary.is_none() {
+        return None;
+    }
+
+    let mut out = String::new();
+    if !creds.is_empty() {
+        out.push_str(&format!("{} credential(s) found:\n", creds.len()));
+        for c in &creds {
+            out.push_str(c);
+            out.push('\n');
+        }
+    }
+    if let Some(s) = summary {
+        out.push_str(s);
+        out.push('\n');
+    }
+    Some(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_hydra_extracts_credentials() {
+        let raw = r#"Hydra v9.5 (c) 2023 by van Hauser/THC
+[DATA] max 4 tasks per 1 server, overall 4 tasks, 100 login tries
+[DATA] attacking ssh://10.0.0.1:22/
+[22][ssh] host: 10.0.0.1   login: admin   password: password123
+[22][ssh] host: 10.0.0.1   login: root   password: toor
+[STATUS] 100.00 tries/min, 100 tries in 00:01h, 0 to do in 00:00h, 4 active
+1 of 1 target successfully completed, 2 valid passwords found"#;
+        let result = parse_hydra_output(raw).unwrap();
+        assert!(result.contains("2 credential(s) found:"));
+        assert!(result.contains("login: admin"));
+        assert!(result.contains("password: password123"));
+        assert!(result.contains("login: root"));
+        assert!(result.contains("2 valid passwords found"));
+        assert!(!result.contains("[DATA]"));
+        assert!(!result.contains("[STATUS]"));
+    }
+
+    #[test]
+    fn parse_hydra_no_creds_returns_summary() {
+        let raw = r#"[DATA] attacking ssh://10.0.0.1:22/
+[STATUS] 50.00 tries/min, 50 tries in 00:01h, 50 to do
+1 of 1 target successfully completed, 0 valid passwords found"#;
+        let result = parse_hydra_output(raw).unwrap();
+        assert!(result.contains("0 valid passwords found"));
+        assert!(!result.contains("[DATA]"));
+    }
+
+    #[test]
+    fn parse_hydra_empty_returns_none() {
+        assert!(parse_hydra_output("").is_none());
+        assert!(parse_hydra_output("some random text\nno credentials here").is_none());
+    }
 }
