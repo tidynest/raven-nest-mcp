@@ -9,7 +9,7 @@ max_output_chars = 50000
 # Model context window (characters). When > 0, overrides max_output_chars
 # and HTTP body cap to fit ~4 tool outputs per session.
 # Examples: 32768 (Qwen 8B), 65536 (with q8_0 KV cache), 131072 (Qwen 14B)
-# context_budget = 32768
+context_budget = 65536
 
 # Safety limits for dangerous tools (prevents LLM escalation)
 # sqlmap_max_level = 2    # 1-5, default 2

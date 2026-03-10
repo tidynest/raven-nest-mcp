@@ -46,10 +46,10 @@ Best-to-worst for Raven Nest tool calling, based on the
 
 | Model | Size | VRAM (8GB fit?) | Tool F1 | Notes |
 |-------|------|-----------------|---------|-------|
-| Qwen3 8B (dense) | ~5 GB | Yes | 0.933 | Tested and recommended. Zero param hallucination, correct tool semantics. ~40 tok/s. Context exhausts after 3-4 large tool outputs at 32K. |
-| Qwen3 14B (dense) | ~10 GB | No (CPU offload) | 0.971 | Tested. Correct tool selection and cookie passthrough in batch mode. Fabricates in interactive mode (same as Qwen3.5). ~8 tok/s with partial offload. |
+| Qwen3 8B @64K (dense) | ~5 GB | Yes | 0.933 | **Daily driver.** Zero param hallucination, no interactive fabrication. 8/8 batch steps at 64K context. ~40 tok/s. |
+| Qwen3.5 9B @49K (dense) | ~6.6 GB | Yes (tight, 7.3/8.2 GB) | ~0.93+ | **Best batch model.** 6+ granular findings, professional reports. Batch-only — fabricates in interactive mode. ~30 tok/s. |
+| Qwen3 14B (dense) | ~10 GB | No (CPU offload) | 0.971 | Tested. Correct tool selection in batch mode. Fabricates in interactive. ~8 tok/s with partial offload. |
 | Qwen3-Coder 32B | ~20 GB | No (RAM) | Excellent | Community gold standard for MCP/agent tool calling. |
-| Granite 3.3 8B (IBM) | ~5 GB | Yes | Good | Designed for tool use. Companion Guardian model for hallucination detection. |
 | Mistral Small 3.1 24B | ~14 GB | No (CPU offload) | Good | Native tool calling, competitive with Llama 3.3 70B in general benchmarks. |
 | Hermes 3 8B | ~5 GB | Yes | Moderate | Fine-tuned for function calling but uses own template, not Ollama native. |
 
@@ -58,12 +58,16 @@ in structured output generation, reducing parameter name hallucination.
 
 ### Tested Models
 
-| Model | Size | Tool Calling | Notes |
-|-------|------|-------------|-------|
-| Qwen3 14B (dense) | 9 GB | Good (batch) | Correct tool selection, excellent cookie handling, sqlmap finds 4 injection types. Fails in interactive single-step mode (fabrication). 40K context. |
-| Qwen 3.5 35B-A3B (MoE) | 23 GB | Good (batch) | Excellent in batch mode, fabricates in single-step interactive. MoE routing inconsistency. 32K context. |
-| Qwen 2.5 Coder 14B | 9 GB | Broken | Outputs tool calls as JSON text instead of using the tool-calling API — never executes tools. |
-| Qwen 2.5 Coder 7B/1.5B | 4.7/1.3 GB | Untested | Likely too small for reliable multi-tool orchestration. |
+| Model | Size | Tool Calling | Verdict |
+|-------|------|-------------|---------|
+| Qwen3 8B @64K | 5 GB | Excellent | **Daily driver** — no fabrication in interactive mode, 8/8 batch steps, 0 param hallucination. Saves 1 finding per run. |
+| Qwen3.5 9B @49K | 6.6 GB | Excellent (batch) | **Best batch model** — 6 findings, professional reports. Fabricates in interactive mode. VRAM tight (7.3/8.2 GB). |
+| Qwen3 14B | 9 GB | Good (batch) | Correct tool selection, sqlmap finds 4 injection types. Fabricates in interactive. ~8 tok/s. |
+| Qwen3.5 35B-A3B (MoE) | 23 GB | Good (batch) | Excellent in batch mode, fabricates in single-step interactive. 32K context. |
+| Granite 3.3 8B | 5 GB | **Incompatible** | Tool-call format not supported by ollmcp — outputs tool names as plain text instead of structured API calls. |
+| Devstral 24B | 14 GB | **Not recommended** | ~90s/call (CPU offload), frequent empty responses, incorrect tool mapping. |
+| Qwen3-Coder 32B | 18 GB | **Not recommended** | Overly autonomous — scans everything but saves 0 findings. Ollama XML crash. ~60s/call. |
+| Qwen 2.5 Coder 14B | 9 GB | Broken | Outputs tool calls as JSON text instead of using the tool-calling API. |
 
 ### Models to Avoid
 
@@ -137,8 +141,10 @@ instead of the full markdown report content.
 forgets tool names, or generates incoherent output after receiving a
 large tool response.
 
-**Live-tested context budget (Qwen3 8B, 32K context):**
-- 3-4 tool calls with large outputs (nikto, sqlmap) before exhaustion
+**Live-tested context budgets:**
+- Qwen3 8B at 32K: 3-4 tool calls before exhaustion
+- Qwen3 8B at 64K (q8_0 KV cache): **8/8 steps with no exhaustion** — context problem solved
+- Qwen3.5 9B at 49K: 8/8 steps, but thinking mode causes empty responses (VRAM-limited)
 - Thinking mode accelerates exhaustion — disable it for simple tool calls
 - After clearing context (`cc` in ollmcp), the model must re-authenticate
   since the session cookie is lost from context
@@ -264,30 +270,49 @@ EOF
 
 ### Per-Session Workflow
 
+**Interactive (Qwen3 8B @64K):**
 ```bash
 ollmcp --model qwen3:8b -j ~/.mcphost.json
+# In ollmcp config: num_ctx=65536, context_budget=65536 in default.toml
+```
+
+**Batch pentesting (Qwen3.5 9B @49K):**
+```bash
+ollmcp --model qwen3.5:9b -j ~/.mcphost.json
+# In ollmcp config: num_ctx=49152, context_budget=49152 in default.toml
 ```
 
 Give a single comprehensive prompt that batches all steps:
 
 ```
-Login to bWAPP at localhost (bee/bug). Run nikto with quick tuning and
-sqlmap on http://localhost/sqli_1.php?title=test&action=search.
-Save any SQL injection findings and generate a final report.
+Perform a full pentest of bWAPP at localhost. Execute these steps in order,
+passing the session cookie to each scanning tool:
+1. Login: POST to http://localhost/login.php with body
+   "login=bee&password=bug&security_level=0&form=submit"
+2. run_whatweb on http://localhost with the cookie
+3. run_nmap on localhost ports 22,80,443
+4. run_nikto on localhost with the cookie
+5. run_feroxbuster on http://localhost with the cookie
+6. run_sqlmap on http://localhost/sqli_1.php?title=test&action=search with the cookie
+7. run_nuclei on http://localhost with the cookie
+8. Save each vulnerability as a finding, then generate a report
 ```
 
-Qwen3 8B chains 5-6 tool calls autonomously: login → nikto → sqlmap →
-save_finding → generate_report. When it goes silent (context full),
-type `cc` to clear context and re-prompt for remaining steps.
+At 64K context, Qwen3 8B completes all 8 steps without exhaustion.
+Qwen3.5 9B produces 6+ granular findings with professional reports.
 
 ### Current Limitations
 
-- **Context exhaustion** is the main bottleneck — clearing context loses
-  the session cookie, requiring re-authentication
+- **Interactive fabrication** — all Qwen3.5 variants fabricate tool
+  outputs in interactive single-step mode. Use Qwen3 8B for interactive,
+  Qwen3.5 9B for batch only
+- **Qwen3 8B finding granularity** — saves only 1 summarized finding per
+  batch instead of individual findings for each vulnerability
 - **No non-interactive mode** — ollmcp requires a TTY; you cannot pipe
   prompts from a script
 - **Thinking mode** can waste token budget on short prompts — disable it
-  (`tm`) for simple tool invocations, re-enable for multi-step reasoning
+  (`tm`) for simple tool invocations. At tight VRAM (Qwen3.5 9B), thinking
+  mode causes empty responses
 
 ### Scaling to Larger Models
 
@@ -302,31 +327,35 @@ OLLAMA_NUM_GPU_LAYERS=20 ollama run qwen3-coder:32b
 
 Upgrade path for 8 GB VRAM + 32 GB RAM:
 
-| Model | Context | VRAM Use | Speed | Improvement |
-|-------|---------|----------|-------|-------------|
-| Qwen3 8B (current) | 32K | 5 GB (full GPU) | ~40 tok/s | Baseline — exhausts after 3-4 tools |
-| Qwen3 14B dense | 128K | 8 GB (GPU) + 2 GB (RAM) | ~8 tok/s | 4x context, near-perfect tool F1 |
-| Devstral Small 2 24B | 128K | 8 GB (GPU) + 6 GB (RAM) | ~6 tok/s | Agentic coding model, native tool calling |
-| Qwen3-Coder 32B | 128K | 8 GB (GPU) + 12 GB (RAM) | ~3-5 tok/s | Gold standard for MCP, no context exhaustion |
+| Model | Context | VRAM Use | Speed | Use Case |
+|-------|---------|----------|-------|----------|
+| Qwen3 8B @64K | 64K | ~5 GB (full GPU) | ~40 tok/s | **Daily driver** — interactive + batch, no fabrication |
+| Qwen3.5 9B @49K | 49K | ~7.3 GB (tight) | ~30 tok/s | **Best batch** — 6+ findings, professional reports |
+| Qwen3 14B | 40K+ | GPU + CPU split | ~8 tok/s | Batch-only, CVE hallucination, not recommended |
+| Devstral Small 2 24B | 128K | GPU + CPU split | ~6 tok/s | Not recommended — empty responses, slow |
+| Qwen3-Coder 32B | 128K | GPU + CPU split | ~3-5 tok/s | Not recommended — no finding discipline |
 
 Larger context (128K) eliminates the biggest pain point: models can
 chain 15+ tool calls without going silent, enabling full automated
 pentest sessions without manual intervention.
 
-## Live Testing Results (2026-03-09)
+## Live Testing Results (2026-03-10)
 
 ### Model Comparison Summary
 
-| Metric | Qwen3 8B (32K) | Qwen3.5 35B-A3B (32K) | Qwen3 14B (40K) |
-|--------|---------------|----------------------|-----------------|
-| Architecture | Dense | MoE (3B active) | Dense |
-| Batch mode | Good (5-6 tool chains) | Excellent (15+ tools) | Decent (9-17 tools) |
-| Interactive mode | Reliable | Fabricates | Fabricates after 3 calls |
-| Cookie passthrough | Correct | Correct | Correct |
-| Param hallucination | Zero | Minor | 1 (fabricated CVE) |
-| Findings saved | Yes (with prompting) | Yes (autonomous) | Rarely (1 of ~50 found) |
-| Context exhaustion | After 3-4 large outputs | No | No |
-| Recommendation | Best for 8GB VRAM | Best for batch accuracy | Not recommended over 8B |
+| Metric | Qwen3 8B @64K | Qwen3.5 9B @49K | Qwen3 14B @40K | Qwen3.5 35B-A3B @32K |
+|--------|--------------|-----------------|---------------|---------------------|
+| Architecture | Dense 8B | Dense 9B | Dense 14B | MoE 35B (3B active) |
+| Batch mode | 8/8 steps | 8/8 steps, 6 findings | 9-17 tools | 15+ tools |
+| Interactive mode | **No fabrication** | Fabricates at call #2 | Fabricates at call #3 | Fabricates |
+| Cookie passthrough | Correct | Correct | Correct | Correct |
+| Param hallucination | Zero | Zero (structured) | 1 (CVE) | Minor |
+| Findings saved | 1 per run | 6 per run | 0-1 per run | 3-5 per run |
+| Report quality | Poor (1 finding) | **Professional** | Poor | Good |
+| Context exhaustion | None at 64K | None at 49K | None | None |
+| VRAM usage | ~5 GB | 7.3 GB (tight) | CPU offload | CPU offload |
+| Speed | ~40 tok/s | ~30 tok/s | ~8 tok/s | MoE variable |
+| Recommendation | **Daily driver** | **Best batch** | Not recommended | Batch-only |
 
 ### Qwen3 8B (Dense, 32K context)
 
