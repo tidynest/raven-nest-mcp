@@ -46,7 +46,6 @@ pub struct HttpRequest {
     pub follow_redirects: Option<bool>,
 }
 
-
 /// Security-relevant response headers to keep in output.
 /// All other headers are discarded to reduce context consumption.
 const SECURITY_HEADERS: &[&str] = &[

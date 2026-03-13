@@ -94,7 +94,11 @@ pub async fn run(
 /// Keeps the first line (trimmed) and appends how many additional lines were
 /// omitted. If the first line exceeds `max_len`, it is truncated with "…".
 fn summarize_script_output(output: &str, max_len: usize) -> String {
-    let lines: Vec<&str> = output.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+    let lines: Vec<&str> = output
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect();
     if lines.is_empty() {
         return String::new();
     }
@@ -123,7 +127,10 @@ fn format_nse_script(script: &roxmltree::Node) -> Option<String> {
         // Parse structured vulners output: <table key="cpe:..."><table><elem key="id">...</elem><elem key="cvss">...</elem></table>...</table>
         let mut cves: Vec<(String, f32)> = Vec::new();
         for outer_table in script.children().filter(|n| n.tag_name().name() == "table") {
-            for entry in outer_table.children().filter(|n| n.tag_name().name() == "table") {
+            for entry in outer_table
+                .children()
+                .filter(|n| n.tag_name().name() == "table")
+            {
                 let cve_id = entry
                     .children()
                     .find(|e| e.tag_name().name() == "elem" && e.attribute("key") == Some("id"))
@@ -145,7 +152,11 @@ fn format_nse_script(script: &roxmltree::Node) -> Option<String> {
         }
         // Sort by CVSS descending, show top 5
         cves.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        let top: Vec<String> = cves.iter().take(5).map(|(id, s)| format!("{id}({s})")).collect();
+        let top: Vec<String> = cves
+            .iter()
+            .take(5)
+            .map(|(id, s)| format!("{id}({s})"))
+            .collect();
         let summary = top.join(", ");
         let extra = if cves.len() > 5 {
             format!(" +{} more", cves.len() - 5)
@@ -279,7 +290,10 @@ pub fn parse_nmap_xml(xml: &str) -> Option<String> {
         }
 
         // Host-level scripts (<hostscript>)
-        if let Some(hostscript) = host.children().find(|n| n.tag_name().name() == "hostscript") {
+        if let Some(hostscript) = host
+            .children()
+            .find(|n| n.tag_name().name() == "hostscript")
+        {
             let scripts = collect_scripts(&hostscript);
             if !scripts.is_empty() {
                 output.push_str("\nHost scripts:\n");

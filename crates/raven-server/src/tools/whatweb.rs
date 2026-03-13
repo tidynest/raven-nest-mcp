@@ -53,8 +53,7 @@ pub async fn run(
         .map_err(crate::error::to_mcp)?;
 
     let output = if result.success {
-        let mut out =
-            parse_whatweb_output(&result.stdout).unwrap_or_else(|| result.stdout.clone());
+        let mut out = parse_whatweb_output(&result.stdout).unwrap_or_else(|| result.stdout.clone());
         if let Some(ref warning) = result.warning {
             out.push_str(&format!("\n\n⚠ {warning}"));
         }
