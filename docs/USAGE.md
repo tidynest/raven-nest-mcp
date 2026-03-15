@@ -36,6 +36,28 @@ yay -S feroxbuster-bin ffuf-bin
 > If the tool config references `testssl.sh`, create a symlink:
 > `sudo ln -s /usr/bin/testssl /usr/bin/testssl.sh`
 
+### Wordlists
+
+`feroxbuster` and `ffuf` default to [SecLists](https://github.com/danielmiessler/SecLists)
+wordlists. Install them for fuzzing to work out of the box:
+
+```bash
+# Arch Linux
+sudo pacman -S seclists
+
+# Debian/Ubuntu
+sudo apt install seclists
+
+# Manual (any distro)
+git clone https://github.com/danielmiessler/SecLists.git /usr/share/seclists
+```
+
+Default wordlist paths:
+- **feroxbuster** — `/usr/share/seclists/Discovery/Web-Content/raft-medium-directories.txt`
+- **ffuf** — `/usr/share/seclists/Discovery/Web-Content/raft-medium-words.txt`
+
+You can override these per-call via the `wordlist` parameter.
+
 ---
 
 ## Connecting to an MCP Client
@@ -311,6 +333,12 @@ error if neither is available. Output is parsed to extract discovered open ports
 | `ports` | yes | Port spec (e.g. `80,443` or `0-65535`) |
 | `rate` | no | Packets/sec (clamped to `masscan_max_rate` config, default 100) |
 
+> **Limitation:** masscan uses raw SYN packets that bypass the kernel TCP
+> stack. It **cannot scan localhost** (`127.0.0.1`) or Docker bridge IPs
+> (`172.17.x.x`) — the kernel short-circuits loopback traffic, and Docker's
+> iptables NAT rules don't apply to raw packets. Use nmap for local/Docker
+> targets. masscan works correctly against targets on real network interfaces.
+
 ### Vulnerability Scanning
 
 #### `run_nuclei`
@@ -335,6 +363,11 @@ Web server misconfiguration scanner. Output is parsed to extract finding lines
 | `tuning` | no | `quick` (default), `thorough`, `injection`, `fileupload` |
 | `cookie` | no | Cookie string for authenticated scanning |
 | `timeout_secs` | no | Override default timeout |
+
+> **URL vs hostname:** When `target` is a full URL (starts with `http://`),
+> the `port` parameter is ignored — nikto v2.6+ rejects the `-p` flag when
+> given a URL. Use the port in the URL instead (e.g. `http://localhost:3000`).
+> When `target` is a bare hostname, `-p` is added automatically.
 
 ### Web Fuzzing & Discovery
 
@@ -408,6 +441,13 @@ overall rating.
 | `severity` | no | Minimum severity to report |
 | `quick` | no | Quick mode (`--quiet --sneaky`, fewer checks) |
 
+The `severity` parameter accepts any case (`high`, `HIGH`, `High`) and is
+normalised internally. Invalid values (e.g. `urgent`) are silently ignored.
+
+> **Non-TLS targets:** If the target has no TLS service, testssl returns
+> minimal output or a connection error. This is expected — the tool is
+> designed for TLS analysis only.
+
 ### HTTP Testing
 
 #### `http_request`
@@ -431,7 +471,22 @@ response (see [Output Processing](#output-processing)).
 
 ### Background Scans
 
-For long-running scans, use the launch/poll pattern:
+For long-running scans, use the launch/poll pattern. A scan transitions
+through these states:
+
+```
+launch_scan → Running → Completed (success)
+                      → Failed (non-zero exit or timeout)
+              cancel_scan → Cancelled
+```
+
+The server enforces a concurrency cap (default 3, set via
+`max_concurrent_scans`). Launching a scan when all slots are occupied
+returns an error — cancel or wait for a running scan to finish first.
+
+During execution, the server sends progress notifications every 15 seconds
+to keep the MCP client informed. These are JSON-RPC notifications (no `id`
+field) that clients should handle or ignore gracefully.
 
 #### `launch_scan`
 Start a scan in the background, returns a scan ID immediately. The target is
@@ -517,6 +572,70 @@ conserve context.
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `title` | no | Report title (default "Penetration Test Report") |
+
+> **Persistence:** Findings are stored as individual JSON files at
+> `{output_dir}/findings/{uuid}.json` and survive server restarts. The
+> server loads all existing findings from disk on startup. Reports are
+> written to `{output_dir}/report-{timestamp}.md` and are never deleted
+> automatically.
+
+---
+
+## Input Validation Reference
+
+The `validate_target` function accepts targets in these formats:
+
+| Format | Example | Accepted by |
+|--------|---------|-------------|
+| IPv4 | `192.168.1.1` | all tools |
+| IPv6 | `::1`, `fe80::1` | all tools |
+| CIDR v4 | `10.0.0.0/24` (prefix 0-32) | nmap, masscan |
+| CIDR v6 | `fe80::/10` (prefix 0-128) | nmap |
+| Hostname | `scan.example.com` | all tools |
+| host:port | `example.com:443` | testssl |
+| HTTP URL | `http://example.com/path?q=1&r=2` | web tools, http_request |
+| HTTPS URL | `https://example.com` | web tools, http_request |
+
+**Rejected:**
+- Empty strings
+- Shell metacharacters: `` ; | & $ ` ( ) { } < > ! \n ``
+- Non-HTTP URL schemes (`ftp://`, `file://`, etc.)
+- CIDR prefix out of range (`/33` for IPv4, `/129` for IPv6)
+- Hostnames longer than 253 characters
+- Hostname labels starting or ending with hyphens (`-evil.com`, `test-.com`)
+- Empty hostname labels (`a..b`)
+
+URL query strings are allowed to contain `&` — it is safe because tool
+arguments are passed directly to `Command::arg()`, not through a shell.
+
+### Lenient Deserialization
+
+All optional numeric parameters accept both JSON numbers and string-encoded
+numbers. This handles a common LLM quirk where models serialize `2` as `"2"`.
+
+Fields with lenient deserialization: `count` (ping), `port` (nikto),
+`threads` (feroxbuster, ffuf), `rate` (masscan), `level` (sqlmap),
+`risk` (sqlmap), `tasks` (hydra), `timeout_secs` (nikto, http_request,
+launch_scan), `offset` (get_scan_results), `limit` (get_scan_results),
+`cvss` (save_finding).
+
+Invalid strings (e.g. `"abc"`) produce a clear parse error. `null` and
+omitted fields both resolve to `None` (the default is used).
+
+### Error Message Formats
+
+When the server rejects a request, errors follow predictable formats:
+
+| Cause | Error message example |
+|-------|---------------------|
+| Unknown parameter | `unknown field 'verbosity', expected one of 'target', 'ports', 'scan_type'` |
+| Empty target | `invalid target: empty target` |
+| Shell metachar | `invalid target: forbidden character: ';'` |
+| Tool not allowed | `tool not allowed: burpsuite` |
+| Invalid CIDR | `invalid target: 192.168.1.0/33` |
+| Root required | `masscan requires root privileges — either run the server as root or add "masscan" to sudo_tools in config` |
+| Timeout | `command timed out after nmap time out after 600s` |
+| Tool exit error | `nmap failed (exit exit status: 1): <stderr output>` |
 
 ---
 
@@ -698,3 +817,103 @@ Assistant: [calls run_nikto with target: "http://target.example.com",
             cookie: "PHPSESSID=abc123"]
 → Same cookie passed to nikto for authenticated scanning.
 ```
+
+---
+
+## Testing
+
+A comprehensive test harness at `tests/manual_test_harness.py` covers 297
+test cases across all 22 tools. It spawns the MCP server as a subprocess
+and communicates via JSON-RPC 2.0 over stdin/stdout.
+
+```bash
+# Run all phases
+python3 -u tests/manual_test_harness.py all
+
+# Run specific phases
+python3 -u tests/manual_test_harness.py phase0          # ping_target
+python3 -u tests/manual_test_harness.py phase1          # nmap, whatweb, masscan, testssl
+python3 -u tests/manual_test_harness.py phase2          # nuclei, nikto, feroxbuster, ffuf
+python3 -u tests/manual_test_harness.py phase3          # sqlmap, hydra
+python3 -u tests/manual_test_harness.py phase4          # http_request
+python3 -u tests/manual_test_harness.py phase5          # background scan lifecycle
+python3 -u tests/manual_test_harness.py phase6          # findings CRUD + report generation
+python3 -u tests/manual_test_harness.py phase7          # cross-cutting validation
+python3 -u tests/manual_test_harness.py phase0 phase4   # multiple phases
+```
+
+Use `-u` (unbuffered) when piping output to avoid buffering delays.
+
+Phases 2-3 run actual scans against live targets (bWAPP, Juice Shop) and
+take 30-60 minutes total. Phases 0, 4-7 complete in under 5 minutes.
+
+See `tests/TEST_RESULTS.md` for the latest results.
+
+---
+
+## Troubleshooting
+
+### masscan finds nothing on localhost
+
+masscan uses raw SYN packets that bypass the kernel TCP stack. It cannot
+scan `127.0.0.1`, `::1`, or Docker bridge IPs (`172.17.x.x`). Use nmap
+for local targets. masscan is designed for scanning remote hosts on real
+network interfaces.
+
+### nikto times out
+
+nikto full scans can take 5-10+ minutes depending on the target. The
+default timeout is 600 seconds. If nikto consistently times out:
+
+- Use `tuning: "quick"` (default) instead of `"thorough"`
+- Set a higher timeout: `timeout_secs: 900`
+- Or increase the per-tool timeout in config: `[execution.timeouts] nikto = 900`
+
+### nuclei takes very long
+
+nuclei runs all templates by default, which can take 2-5 minutes. To
+speed it up:
+
+- Filter by severity: `severity: "high"` (skips info/low/medium templates)
+- Filter by tags: `tags: "cve"` (only CVE-related templates)
+- Both can be combined: `severity: "high", tags: "cve"`
+
+### feroxbuster/ffuf "file not found" error
+
+The default wordlists point to SecLists paths under `/usr/share/seclists/`.
+Install SecLists (see [Wordlists](#wordlists)) or specify a custom path
+via the `wordlist` parameter.
+
+### "tool not allowed" error
+
+The tool binary isn't in the `allowed_tools` list in `config/default.toml`.
+Add it to the list and restart the server.
+
+### "unknown field" error
+
+All request structs use `deny_unknown_fields`. This means misspelled or
+extra parameters are rejected. Check the exact parameter names in the
+[Tools Reference](#tools-reference). Common mistakes:
+- `target` vs `url` — nmap/ping/masscan use `target`; sqlmap/ffuf/http_request use `url`
+- `data` vs `body` — sqlmap uses `data`; http_request uses `body`
+
+### testssl returns minimal output
+
+The target likely doesn't have TLS configured. testssl only analyses
+SSL/TLS — it won't produce meaningful results for plain HTTP services.
+
+### Quality warnings in output
+
+The server appends warnings when output quality is suspect:
+- **"returned minimal output (N chars)"** — tool produced less than 50
+  characters. The scan may have failed silently or the target returned
+  nothing.
+- **"output missing expected completion indicators"** — the tool ran but
+  didn't include its normal completion marker (e.g. nmap's "Nmap done").
+  Results may be incomplete.
+- **"target may be rate-limiting requests"** — output contains indicators
+  like "429", "blocked", or "access denied". Consider reducing scan
+  aggressiveness or adding delays.
+- **"exited with error (code N) and produced no output"** — the tool
+  returned a non-zero exit code with empty stdout. Check that the tool
+  is installed correctly and the target is reachable.
