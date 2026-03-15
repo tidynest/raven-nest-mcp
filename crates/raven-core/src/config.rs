@@ -59,6 +59,11 @@ pub struct SafetyConfig {
     /// outputs fit within the budget. `0` disables (uses `max_output_chars` as-is).
     #[serde(default)]
     pub context_budget: usize,
+    /// Tools that should be invoked via `sudo` for privilege escalation.
+    /// The operator must configure passwordless sudo for these binaries
+    /// (e.g. via `/etc/sudoers.d/raven-nest`).
+    #[serde(default)]
+    pub sudo_tools: Vec<String>,
 }
 
 fn default_sqlmap_max_level() -> u8 {
@@ -132,6 +137,11 @@ impl SafetyConfig {
         } else {
             self.max_output_chars
         }
+    }
+
+    /// Whether a tool should be invoked via `sudo` for privilege escalation.
+    pub fn needs_sudo(&self, tool: &str) -> bool {
+        self.sudo_tools.iter().any(|t| t == tool)
     }
 
     /// Effective HTTP response body cap: `context_budget / 6` when set, else 20,000.
@@ -217,6 +227,7 @@ impl Default for RavenConfig {
                 hydra_max_tasks: default_hydra_max_tasks(),
                 masscan_max_rate: default_masscan_max_rate(),
                 context_budget: 0,
+                sudo_tools: Vec::new(),
             },
             execution: ExecutionConfig {
                 default_timeout_secs: 600,
@@ -266,6 +277,7 @@ mod tests {
             hydra_max_tasks: default_hydra_max_tasks(),
             masscan_max_rate: default_masscan_max_rate(),
             context_budget: 0,
+            sudo_tools: Vec::new(),
         }
     }
 

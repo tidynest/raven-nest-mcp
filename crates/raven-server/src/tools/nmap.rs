@@ -41,11 +41,13 @@ pub async fn run(
     let _ticker =
         peer.map(|p| crate::progress::ProgressTicker::start(p, "nmap".into(), req.target.clone()));
 
-    // OS detection requires root for raw sockets
+    // OS detection requires root for raw sockets.
+    // Skip check when sudo is configured for nmap.
     // SAFETY: geteuid is a trivial read-only syscall with no invariants
-    if req.scan_type.as_deref() == Some("os") && unsafe { libc::geteuid() } != 0 {
+    let is_root = unsafe { libc::geteuid() } == 0;
+    if req.scan_type.as_deref() == Some("os") && !is_root && !config.safety.needs_sudo("nmap") {
         return Err(rmcp::ErrorData::invalid_params(
-            "scan_type 'os' requires root privileges (nmap -O needs raw sockets)",
+            "scan_type 'os' requires root privileges — either run the server as root or add \"nmap\" to sudo_tools in config",
             None,
         ));
     }
@@ -55,7 +57,13 @@ pub async fn run(
         Some("service") => vec!["-sV".into()],
         Some("os") => vec!["-O".into()],
         Some("vuln") => vec!["-sV".into(), "--script=vuln".into()],
-        _ => vec!["-T4".into(), "-F".into()], // quick (default)
+        _ => {
+	    let mut a = vec!["-T4".into()];
+	    if req.ports.is_none() {
+	        a.push("-F".into());
+	    }
+	    a
+	}
     };
 
     // Request XML output to stdout for structured parsing

@@ -112,6 +112,9 @@ fn validate_hostname(host: &str) -> Result<(), PentestError> {
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '.')
         && !host.starts_with('-')
         && !host.ends_with('-')
+        && host
+            .split('.')
+            .all(|label| !label.is_empty() && !label.starts_with('-') && !label.ends_with('-'))
     {
         Ok(())
     } else {
@@ -170,6 +173,7 @@ mod tests {
             hydra_max_tasks: 4,
             masscan_max_rate: 1000,
             context_budget: 0,
+            sudo_tools: Vec::new(),
         }
     }
 

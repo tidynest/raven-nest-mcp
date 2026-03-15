@@ -115,6 +115,13 @@ pub async fn run(
         .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
 
     let method = req.method.as_deref().unwrap_or("GET").to_uppercase();
+    const ALLOWED_METHODS: &[&str] = &["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
+    if !ALLOWED_METHODS.contains(&method.as_str()) {
+        return Err(rmcp::ErrorData::invalid_params(
+            format!("unsupported HTTP method: {method}"),
+            None,
+        ));
+    }
     let method: reqwest::Method = method
         .parse()
         .map_err(|_| rmcp::ErrorData::invalid_params("invalid HTTP method", None))?;

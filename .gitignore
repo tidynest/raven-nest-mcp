@@ -10,3 +10,4 @@ findings/
 .worktrees/
 docs/plans/
 docs/archive/
+__pycache__/

@@ -17,6 +17,10 @@ context_budget = 65536
 # hydra_max_tasks = 4     # parallel tasks, default 4
 # masscan_max_rate = 1000 # packets/sec, default 1000
 
+# Tools invoked via sudo for privilege escalation.
+# Requires passwordless sudo — see /etc/sudoers.d/raven-nest
+sudo_tools = ["masscan", "nmap"]
+
 # Optional: custom binary paths for tools not on $PATH
 # [safety.tool_paths]
 # nmap = "/opt/nmap-dev/bin/nmap"

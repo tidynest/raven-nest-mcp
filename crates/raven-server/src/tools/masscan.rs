@@ -36,11 +36,13 @@ pub async fn run(
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
-    // masscan requires root for raw sockets (SYN scanning)
+    // masscan requires root for raw sockets (SYN scanning).
+    // Skip check when sudo is configured for this tool.
     // SAFETY: geteuid is a trivial read-only syscall with no invariants
-    if unsafe { libc::geteuid() } != 0 {
+    let is_root = unsafe { libc::geteuid() } == 0;
+    if !is_root && !config.safety.needs_sudo("masscan") {
         return Err(rmcp::ErrorData::invalid_params(
-            "masscan requires root privileges (raw socket access)",
+            "masscan requires root privileges — either run the server as root or add \"masscan\" to sudo_tools in config",
             None,
         ));
     }
