@@ -153,6 +153,7 @@ max_output_chars = 50000
 | `hydra_max_tasks` | integer | 4 | Max parallel threads for hydra brute-forcing. Prevents account lockout and network saturation. |
 | `masscan_max_rate` | integer | 1000 | Max packets/sec for masscan. High rates can disrupt networks — increase only with explicit authorisation. |
 | `tool_paths` | table | empty | Map of tool name to absolute binary path, for tools not on `$PATH`. Falls back to `$PATH` lookup if not specified. |
+| `sudo_tools` | string list | `[]` | Tools invoked via `sudo` for privilege escalation. See [sudo_tools](#sudo_tools--privilege-escalation) below. |
 
 #### Context Budget
 
@@ -170,6 +171,43 @@ cap proportionally:
 **When to set this:** Only when using models with limited context windows. Leave
 at 0 (disabled) for Claude or other large-context models — `max_output_chars`
 alone handles truncation fine.
+
+#### `sudo_tools` — Privilege Escalation
+
+Some tools require root privileges:
+- **masscan** — raw socket access for SYN scanning
+- **nmap** with `scan_type: "os"` — raw sockets for OS fingerprinting
+
+Instead of running the entire server as root, you can grant passwordless `sudo`
+for just these binaries:
+
+1. Install the sudoers drop-in (included in the repo):
+
+```bash
+sudo install -m 0440 config/sudoers-raven-nest /etc/sudoers.d/raven-nest
+```
+
+2. Enable in `config/default.toml`:
+
+```toml
+[safety]
+sudo_tools = ["masscan", "nmap"]
+```
+
+3. Verify:
+
+```bash
+sudo -n nmap --version     # should print version without password prompt
+sudo -n masscan --version   # same
+```
+
+When a tool is listed in `sudo_tools`, the executor invokes it as
+`sudo /usr/bin/nmap <args>` instead of `nmap <args>`. The tool handlers skip
+their root-privilege check when sudo is configured.
+
+The included `config/sudoers-raven-nest` file grants the `bakri` user
+passwordless sudo for `/usr/bin/masscan` and `/usr/bin/nmap` only. Edit the
+username and paths for your environment.
 
 ### `[execution]` — Timeouts, Concurrency, Output
 
@@ -250,7 +288,7 @@ by CVSS score; other scripts are summarised to single-line entries.
 Scan type presets:
 - **quick** — `-T4 -F` (top 100 ports, aggressive timing)
 - **service** — `-sV` (version detection)
-- **os** — `-O` (OS fingerprinting, **requires root**)
+- **os** — `-O` (OS fingerprinting, requires root or `sudo_tools` config)
 - **vuln** — `-sV --script=vuln` (vulnerability scripts)
 
 #### `run_whatweb`
@@ -264,8 +302,8 @@ to extract technology identification lines with bracket-notation tags.
 | `cookie` | no | Cookie string for authenticated scanning |
 
 #### `run_masscan`
-High-speed port scanning. **Requires root** — returns an error if not running
-as root. Output is parsed to extract discovered open ports.
+High-speed port scanning. Requires root or `sudo_tools` config — returns an
+error if neither is available. Output is parsed to extract discovered open ports.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
@@ -384,7 +422,7 @@ response (see [Output Processing](#output-processing)).
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `url` | yes | Full URL (`http://` or `https://` only) |
-| `method` | no | HTTP method (default `GET`) |
+| `method` | no | `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS` (default `GET`). Other methods are rejected. |
 | `headers` | no | Key-value header pairs |
 | `body` | no | Request body string |
 | `auth_token` | no | Bearer token for Authorization header |
@@ -497,7 +535,8 @@ is spawned:
    - Only `http://` and `https://` URL schemes are accepted.
    - CIDR masks are range-checked (IPv4: /0-/32, IPv6: /0-/128).
    - Hostnames: alphanumerics, hyphens, dots; max 253 chars; no
-     leading/trailing hyphens.
+     leading/trailing hyphens; per-label validation (each dot-separated
+     label must not start or end with a hyphen, and must not be empty).
 
 3. **Argument building** — users pick presets (e.g. `scan_type: "service"`),
    never raw CLI flags. The server translates presets into safe argument lists.
