@@ -86,8 +86,7 @@ pub async fn run(
         .map_err(crate::error::to_mcp)?;
 
     let output = if result.success {
-        let mut out =
-            parse_hydra_output(&result.stdout).unwrap_or_else(|| result.stdout.clone());
+        let mut out = parse_hydra_output(&result.stdout).unwrap_or_else(|| result.stdout.clone());
         if let Some(ref warning) = result.warning {
             out.push_str(&format!("\n\n⚠ {warning}"));
         }
@@ -111,8 +110,7 @@ pub fn parse_hydra_output(raw: &str) -> Option<String> {
         let trimmed = line.trim();
         if trimmed.contains("login:") && trimmed.contains("password:") {
             creds.push(trimmed);
-        } else if trimmed.contains("valid password") || trimmed.contains("successfully completed")
-        {
+        } else if trimmed.contains("valid password") || trimmed.contains("successfully completed") {
             summary = Some(trimmed);
         }
     }

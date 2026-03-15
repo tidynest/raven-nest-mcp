@@ -27,7 +27,7 @@ pub enum PentestError {
     CommandFailed(String),
 
     /// The tool exceeded its configured timeout and was killed.
-    #[error("command timed out after {0}s")]
+    #[error("command timed out after {0}")]
     CommandTimeout(String),
 
     /// Configuration file could not be read or parsed.
