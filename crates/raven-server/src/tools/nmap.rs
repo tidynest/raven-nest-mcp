@@ -58,12 +58,12 @@ pub async fn run(
         Some("os") => vec!["-O".into()],
         Some("vuln") => vec!["-sV".into(), "--script=vuln".into()],
         _ => {
-	    let mut a = vec!["-T4".into()];
-	    if req.ports.is_none() {
-	        a.push("-F".into());
-	    }
-	    a
-	}
+            let mut a = vec!["-T4".into()];
+            if req.ports.is_none() {
+                a.push("-F".into());
+            }
+            a
+        }
     };
 
     // Request XML output to stdout for structured parsing
