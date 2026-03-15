@@ -141,7 +141,15 @@ pub async fn run(
         Duration::from_secs(timeout.unwrap_or_else(|| config.execution.timeout_for(tool)));
     let binary = config.safety.resolve_tool_binary(tool);
 
-    let mut cmd = Command::new(binary);
+    // Prepend sudo for tools that need privilege escalation (e.g. masscan, nmap -O).
+    // Requires passwordless sudo configured for these binaries.
+    let mut cmd = if config.safety.needs_sudo(tool) {
+        let mut c = Command::new("sudo");
+        c.arg(binary);
+        c
+    } else {
+        Command::new(binary)
+    };
     cmd.args(args).kill_on_drop(true);
 
     // Inject proxy env vars (both cases for tool compatibility)
@@ -168,13 +176,22 @@ pub async fn run(
 
     let stdout = safety::truncate_output(
         &String::from_utf8_lossy(&output.stdout),
-        config.safety.max_output_chars,
+        config.safety.effective_max_output_chars(),
     );
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
-    // Only assess quality on successful exits — failed commands already surface their errors
+    // Assess quality: successful exits get full analysis; failed exits with
+    // empty output are flagged so tool handlers can surface the failure.
     let (quality, warning) = if output.status.success() {
         assess_quality(tool, &stdout, &stderr)
+    } else if stdout.len() < MIN_OUTPUT_LEN {
+        (
+            OutputQuality::Empty,
+            Some(format!(
+                "{tool} exited with error (code {:?}) and produced no output",
+                output.status.code()
+            )),
+        )
     } else {
         (OutputQuality::Complete, None)
     };

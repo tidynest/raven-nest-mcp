@@ -53,6 +53,19 @@ Every tool call passes through six layers:
 
 Dangerous tools have additional caps: sqlmap level/risk, hydra task count, and masscan packet rate are all configurable maximums that prevent escalation beyond operator-approved limits.
 
+Tools requiring root (masscan, nmap OS detection) can be run via passwordless `sudo` without elevating the entire server — see `sudo_tools` in the [configuration docs](docs/USAGE.md#sudo_tools--privilege-escalation).
+
+## Testing
+
+A comprehensive MCP test harness (`tests/manual_test_harness.py`) covers 297 test cases across all 22 tools — parameter validation, injection prevention, lenient deserialization, scan lifecycle, findings CRUD, and output truncation.
+
+```bash
+python3 -u tests/manual_test_harness.py all     # full suite
+python3 -u tests/manual_test_harness.py phase0   # single phase
+```
+
+See `tests/TEST_RESULTS.md` for the latest results.
+
 ## Project Structure
 
 ```
@@ -62,6 +75,10 @@ crates/
   raven-server/   # MCP server, tool handlers
 config/
   default.toml    # Default configuration
+  sudoers-raven-nest  # Sudoers drop-in for masscan/nmap privilege escalation
+tests/
+  manual_test_harness.py  # MCP integration test harness (297 tests)
+  TEST_RESULTS.md         # Latest test results
 ```
 
 ## License

@@ -10,7 +10,7 @@
 //! - Session cookie persistence via a shared [`Jar`](reqwest::cookie::Jar)
 //!   that survives across requests within a session.
 //!
-//! Response bodies larger than [`MAX_RESPONSE_BODY`] (100KB) are truncated.
+//! Response body cap is derived from `context_budget` config (default 20KB).
 
 use reqwest::cookie::CookieStore;
 use rmcp::{
@@ -25,7 +25,7 @@ use std::{collections::HashMap, time::Duration};
 pub struct HttpRequest {
     #[schemars(description = "Full URL (must start with http:// or https://)")]
     pub url: String,
-    
+
     #[schemars(description = "HTTP method: GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS")]
     pub method: Option<String>,
 
@@ -45,10 +45,6 @@ pub struct HttpRequest {
     #[schemars(description = "Follow redirects (default true)")]
     pub follow_redirects: Option<bool>,
 }
-
-/// Maximum response body size before truncation (20KB, reduced from 100KB
-/// to prevent context exhaustion on models with smaller windows).
-const MAX_RESPONSE_BODY: usize = 20_000;
 
 /// Security-relevant response headers to keep in output.
 /// All other headers are discarded to reduce context consumption.
@@ -119,6 +115,13 @@ pub async fn run(
         .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
 
     let method = req.method.as_deref().unwrap_or("GET").to_uppercase();
+    const ALLOWED_METHODS: &[&str] = &["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"];
+    if !ALLOWED_METHODS.contains(&method.as_str()) {
+        return Err(rmcp::ErrorData::invalid_params(
+            format!("unsupported HTTP method: {method}"),
+            None,
+        ));
+    }
     let method: reqwest::Method = method
         .parse()
         .map_err(|_| rmcp::ErrorData::invalid_params("invalid HTTP method", None))?;
@@ -187,11 +190,12 @@ pub async fn run(
     };
 
     // Truncate after processing
-    let body = if body_text.len() > MAX_RESPONSE_BODY {
+    let max_body = config.safety.effective_max_response_body();
+    let body = if body_text.len() > max_body {
         format!(
             "{}\n\n--- truncated at {} chars ---",
-            &body_text[..MAX_RESPONSE_BODY],
-            MAX_RESPONSE_BODY
+            &body_text[..max_body],
+            max_body
         )
     } else {
         body_text
