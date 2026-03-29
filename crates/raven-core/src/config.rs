@@ -25,6 +25,8 @@ pub struct RavenConfig {
     pub execution: ExecutionConfig,
     #[serde(default)]
     pub network: NetworkConfig,
+    #[serde(default)]
+    pub metasploit: MetasploitConfig,
 }
 
 /// Controls which tools may run and how aggressively they operate.
@@ -64,6 +66,11 @@ pub struct SafetyConfig {
     /// (e.g. via `/etc/sudoers.d/raven-nest`).
     #[serde(default)]
     pub sudo_tools: Vec<String>,
+    /// Expected tool calls per session. Used by the session budget tracker to
+    /// plan output allocation. Higher values yield smaller per-call caps.
+    /// Default 10 — typical pentest workflow is 6-12 tool calls.
+    #[serde(default = "default_expected_tool_calls")]
+    pub expected_tool_calls: usize,
 }
 
 fn default_sqlmap_max_level() -> u8 {
@@ -77,6 +84,9 @@ fn default_hydra_max_tasks() -> u16 {
 }
 fn default_masscan_max_rate() -> u32 {
     1000
+}
+fn default_expected_tool_calls() -> usize {
+    10
 }
 
 /// Execution environment: timeouts, concurrency, and filesystem paths.
@@ -109,6 +119,53 @@ pub struct NetworkConfig {
     /// Hostnames/IPs that should bypass the proxy.
     #[serde(default)]
     pub no_proxy: Vec<String>,
+}
+
+/// Metasploit Framework RPC integration — disabled by default.
+///
+/// When enabled, the server connects to a running `msfrpcd` instance via
+/// MessagePack RPC. The operator must start msfrpcd separately.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct MetasploitConfig {
+    /// Master switch — MSF tools only registered when true.
+    pub enabled: bool,
+    /// msfrpcd host (default 127.0.0.1).
+    pub host: String,
+    /// msfrpcd port (default 55553).
+    pub port: u16,
+    /// RPC username (default "msf").
+    pub username: String,
+    /// RPC password — operator MUST change this.
+    pub password: String,
+    /// Use SSL for RPC connection (msfrpcd default).
+    pub ssl: bool,
+    /// Max results returned by module search.
+    pub max_search_results: usize,
+    /// Max concurrent exploit executions.
+    pub max_concurrent_exploits: usize,
+    /// Regex patterns for blocked MSF modules.
+    #[serde(default)]
+    pub blocked_modules: Vec<String>,
+    /// Require double-call confirmation for exploit execution.
+    pub require_confirmation: bool,
+}
+
+impl Default for MetasploitConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            host: "127.0.0.1".into(),
+            port: 55553,
+            username: "msf".into(),
+            password: "changeme".into(),
+            ssl: true,
+            max_search_results: 20,
+            max_concurrent_exploits: 1,
+            blocked_modules: Vec::new(),
+            require_confirmation: true,
+        }
+    }
 }
 
 impl ExecutionConfig {
@@ -219,6 +276,12 @@ impl Default for RavenConfig {
                     "sqlmap".into(),
                     "hydra".into(),
                     "masscan".into(),
+                    "subfinder".into(),
+                    "wpscan".into(),
+                    "enum4linux-ng".into(),
+                    "dalfox".into(),
+                    "dnsrecon".into(),
+                    "john".into(),
                 ],
                 max_output_chars: 50_000,
                 tool_paths: HashMap::new(),
@@ -228,6 +291,7 @@ impl Default for RavenConfig {
                 masscan_max_rate: default_masscan_max_rate(),
                 context_budget: 0,
                 sudo_tools: Vec::new(),
+                expected_tool_calls: default_expected_tool_calls(),
             },
             execution: ExecutionConfig {
                 default_timeout_secs: 600,
@@ -236,6 +300,7 @@ impl Default for RavenConfig {
                 timeouts: HashMap::new(),
             },
             network: NetworkConfig::default(),
+            metasploit: MetasploitConfig::default(),
         }
     }
 }
@@ -278,6 +343,7 @@ mod tests {
             masscan_max_rate: default_masscan_max_rate(),
             context_budget: 0,
             sudo_tools: Vec::new(),
+            expected_tool_calls: default_expected_tool_calls(),
         }
     }
 

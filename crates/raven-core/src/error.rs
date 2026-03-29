@@ -37,4 +37,12 @@ pub enum PentestError {
     /// Low-level I/O error (file system, process pipes, etc.).
     #[error("transparent")]
     Io(#[from] std::io::Error),
+
+    /// Metasploit RPC daemon is not running or unreachable.
+    #[error("msfrpcd not available: {0}")]
+    MsfNotRunning(String),
+
+    /// Metasploit RPC call returned an error.
+    #[error("msf rpc error: {0}")]
+    MsfRpcError(String),
 }

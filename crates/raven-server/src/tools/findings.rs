@@ -39,6 +39,8 @@ pub struct SaveFindingRequest {
     pub cvss: Option<f32>,
     #[schemars(description = "CVE identifier (e.g. CVE-2024-1234)")]
     pub cve: Option<String>,
+    #[schemars(description = "OWASP Top 10 category (e.g. 'A03:2021 Injection')")]
+    pub owasp_category: Option<String>,
 }
 
 /// MCP request schema for `get_finding` and `delete_finding`.
@@ -83,6 +85,7 @@ pub fn save_finding(
     finding.remediation = req.remediation;
     finding.cvss = req.cvss;
     finding.cve = req.cve;
+    finding.owasp_category = req.owasp_category;
 
     let id = store
         .write()

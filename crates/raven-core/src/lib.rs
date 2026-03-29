@@ -15,5 +15,6 @@
 pub mod config;
 pub mod error;
 pub mod executor;
+pub mod msf_client;
 pub mod safety;
 pub mod scan_manager;

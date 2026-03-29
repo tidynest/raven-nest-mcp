@@ -104,6 +104,26 @@ fn assess_quality(tool: &str, stdout: &str, stderr: &str) -> (OutputQuality, Opt
         }
         "nikto" => stdout.contains("host(s) tested") || stdout.contains("Target"),
         "whatweb" => stdout.contains("http") || stdout.contains("HTTP"),
+        "subfinder" => {
+            stdout.contains("subdomain") || stdout.contains("Found") || stdout.lines().count() > 1
+        }
+        "wpscan" => {
+            stdout.contains("Scan Aborted")
+                || stdout.contains("WordPress")
+                || stdout.contains("URL")
+        }
+        "enum4linux-ng" => {
+            stdout.contains("ENUM4LINUX") || stdout.contains("Target") || stdout.lines().count() > 3
+        }
+        "dalfox" => {
+            stdout.contains("XSS") || stdout.contains("inject_type") || stdout.contains("payload")
+        }
+        "dnsrecon" => {
+            stdout.contains("type") || stdout.contains("address") || stdout.starts_with('[')
+        }
+        "john" => {
+            stdout.contains("password") || stdout.contains("cracked") || stdout.contains("Session")
+        }
         _ => true,
     };
 

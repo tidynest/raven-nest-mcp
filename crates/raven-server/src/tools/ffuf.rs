@@ -122,19 +122,29 @@ pub async fn run(
 /// response size, and word/line counts. The ASCII banner, config header,
 /// and progress lines are discarded.
 pub fn parse_ffuf_output(raw: &str) -> Option<String> {
-    let results: Vec<&str> = raw
+    // Strip ANSI escape codes (ffuf emits cursor control sequences like ESC[2K)
+    let cleaned = super::strip_ansi(raw);
+    let results: Vec<String> = cleaned
         .lines()
         .map(str::trim)
         .filter(|line| line.contains("[Status:"))
+        .map(String::from)
         .collect();
 
     if results.is_empty() {
         None
     } else {
+        let total = results.len();
+        let cap = 40;
+        let shown: Vec<_> = results.into_iter().take(cap).collect();
+        let extra = if total > cap {
+            format!("\n+{} more result(s)", total - cap)
+        } else {
+            String::new()
+        };
         Some(format!(
-            "{} result(s) found:\n{}",
-            results.len(),
-            results.join("\n")
+            "{total} result(s) found:\n{}{extra}",
+            shown.join("\n")
         ))
     }
 }

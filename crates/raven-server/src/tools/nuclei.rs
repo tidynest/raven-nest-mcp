@@ -85,7 +85,16 @@ pub fn parse_nuclei_jsonl(raw: &str) -> Option<String> {
             continue;
         }
 
-        if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
+        // Try parsing as JSON. If truncation broke the line, try adding a closing brace.
+        let v = serde_json::from_str::<serde_json::Value>(trimmed)
+            .or_else(|_| {
+                // Truncated JSON — try to salvage by closing the object
+                let salvaged = format!("{trimmed}}}");
+                serde_json::from_str::<serde_json::Value>(&salvaged)
+            })
+            .ok();
+
+        if let Some(v) = v {
             let template = v
                 .get("template-id")
                 .and_then(|v| v.as_str())
@@ -103,6 +112,11 @@ pub fn parse_nuclei_jsonl(raw: &str) -> Option<String> {
             let matched = v.get("matched-at").and_then(|v| v.as_str()).unwrap_or("");
             let kind = v.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
+            // Skip if we couldn't extract the essential fields
+            if template == "unknown" && name.is_empty() {
+                continue;
+            }
+
             findings.push(format!(
                 "[{severity}] {template} — {name} @ {matched} ({kind})"
             ));
@@ -112,11 +126,15 @@ pub fn parse_nuclei_jsonl(raw: &str) -> Option<String> {
     if findings.is_empty() {
         None
     } else {
-        Some(format!(
-            "{} finding(s):\n{}",
-            findings.len(),
-            findings.join("\n")
-        ))
+        let total = findings.len();
+        let cap = 25;
+        let shown: Vec<_> = findings.into_iter().take(cap).collect();
+        let extra = if total > cap {
+            format!("\n+{} more finding(s)", total - cap)
+        } else {
+            String::new()
+        };
+        Some(format!("{total} finding(s):\n{}{extra}", shown.join("\n")))
     }
 }
 

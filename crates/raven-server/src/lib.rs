@@ -12,6 +12,7 @@
 //! - [`error`] — Maps [`PentestError`](raven_core::error::PentestError) variants
 //!   to MCP error codes and formats tool output with quality warnings.
 
+pub mod budget;
 pub mod error;
 pub mod progress;
 pub mod server;

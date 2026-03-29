@@ -94,10 +94,17 @@ pub fn parse_masscan_output(raw: &str) -> Option<String> {
     if ports.is_empty() {
         None
     } else {
+        let total = ports.len();
+        let cap = 50;
+        let shown: Vec<_> = ports.into_iter().take(cap).collect();
+        let extra = if total > cap {
+            format!("\n+{} more port(s)", total - cap)
+        } else {
+            String::new()
+        };
         Some(format!(
-            "{} open port(s) found:\n{}",
-            ports.len(),
-            ports.join("\n")
+            "{total} open port(s) found:\n{}{extra}",
+            shown.join("\n")
         ))
     }
 }

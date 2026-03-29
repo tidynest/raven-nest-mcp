@@ -131,10 +131,17 @@ pub fn parse_feroxbuster_output(raw: &str) -> Option<String> {
     if results.is_empty() {
         None
     } else {
+        let total = results.len();
+        let cap = 40;
+        let shown: Vec<_> = results.into_iter().take(cap).collect();
+        let extra = if total > cap {
+            format!("\n+{} more URL(s)", total - cap)
+        } else {
+            String::new()
+        };
         Some(format!(
-            "{} URL(s) discovered:\n{}",
-            results.len(),
-            results.join("\n")
+            "{total} URL(s) discovered:\n{}{extra}",
+            shown.join("\n")
         ))
     }
 }

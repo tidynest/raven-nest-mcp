@@ -96,36 +96,8 @@ pub async fn run(
 
 /// Strip ANSI escape sequences from tool output.
 ///
-/// Sqlmap (and other tools) emit terminal control codes even in batch mode.
-/// These waste context tokens and confuse text parsing.
-fn strip_ansi(s: &str) -> String {
-    let mut out = String::with_capacity(s.len());
-    let mut chars = s.chars().peekable();
-    while let Some(ch) = chars.next() {
-        if ch == '\x1b' {
-            // CSI sequence: ESC [ ... final_byte
-            if chars.peek() == Some(&'[') {
-                chars.next();
-                while let Some(&c) = chars.peek() {
-                    chars.next();
-                    if c.is_ascii_alphabetic() || c == '~' {
-                        break;
-                    }
-                }
-            } else if matches!(chars.peek(), Some(&'(' | &')' | &'*' | &'+')) {
-                // Charset designation: ESC ( X — consume designator + charset
-                chars.next();
-                chars.next();
-            } else {
-                // Other escape: ESC + one char
-                chars.next();
-            }
-        } else {
-            out.push(ch);
-        }
-    }
-    out
-}
+/// Re-export shared ANSI stripper for backward compatibility with tests.
+use super::strip_ansi;
 
 /// Extract the log-level tag from a sqlmap line, ignoring the timestamp prefix.
 ///

@@ -218,6 +218,19 @@ pub async fn run(
 
     if !cookies_line.is_empty() {
         output.push_str(&format!("\n\n--- Session Cookies ---\n{cookies_line}"));
+
+        // Persist cookies to disk for session resume after context clears
+        let cookie_file =
+            std::path::PathBuf::from(&config.execution.output_dir).join("session_cookies.json");
+        let data = serde_json::json!({
+            "url": req.url,
+            "cookies": cookies_line,
+            "timestamp": chrono::Utc::now().to_rfc3339()
+        });
+        let _ = std::fs::write(
+            &cookie_file,
+            serde_json::to_string_pretty(&data).unwrap_or_default(),
+        );
     }
 
     Ok(CallToolResult::success(vec![Content::text(output)]))
