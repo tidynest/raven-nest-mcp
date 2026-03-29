@@ -19,16 +19,19 @@ starts regardless, but tool calls will fail if the binary isn't installed.
 
 ```bash
 # Core tools (official repos — Arch Linux)
-sudo pacman -S nmap nikto whatweb testssl.sh sqlmap hydra masscan wpscan
+sudo pacman -S nmap nikto whatweb testssl.sh sqlmap hydra masscan wpscan john
 
 # AUR tools
-yay -S feroxbuster-bin ffuf-bin enum4linux-ng
+yay -S feroxbuster-bin ffuf-bin enum4linux-ng dalfox-bin
 
 # Go tools (ProjectDiscovery)
 # Install nuclei and subfinder via Go or GitHub releases:
 # go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
 # go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
 # After install, update nuclei templates: nuclei -ut
+
+# Python tools
+# pip install dnsrecon
 ```
 
 `ping` is available by default on all Linux systems.
@@ -139,7 +142,7 @@ The server searches for config in this order, using the first one found:
 3. **CWD** — `config/default.toml` in the current working directory
 4. **Built-in defaults** — hardcoded fallback if nothing else is found
 
-If all fail, the server starts with safe defaults (all 14 tools allowed, 600s
+If all fail, the server starts with safe defaults (all tools allowed, 600s
 timeout, output at `/tmp/raven-nest`).
 
 ### `[safety]` — Tool Allowlisting and Limits
@@ -151,6 +154,7 @@ allowed_tools = [
     "testssl.sh", "feroxbuster", "ffuf",
     "sqlmap", "hydra", "masscan",
     "subfinder", "wpscan", "enum4linux-ng",
+    "dalfox", "dnsrecon", "john",
 ]
 max_output_chars = 50000
 # context_budget = 65536
@@ -170,7 +174,7 @@ max_output_chars = 50000
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `allowed_tools` | string list | all 14 tools | Allowlisted tool binaries. Calls for unlisted tools are rejected before execution. Remove tools to restrict what the AI can invoke. |
+| `allowed_tools` | string list | all tools | Allowlisted tool binaries. Calls for unlisted tools are rejected before execution. Remove tools to restrict what the AI can invoke. |
 | `max_output_chars` | integer | 50000 | Truncation limit for subprocess output. When exceeded, keeps 70% from the start and 30% from the end with a marker in between. Uses char boundaries for UTF-8 safety. Overridden by `context_budget` when set. |
 | `context_budget` | integer | 0 (disabled) | Model context window size in characters. When > 0, derives output caps automatically so ~4 tool outputs fit in the context. See table below. |
 | `sqlmap_max_level` | integer (1-5) | 2 | Caps sqlmap `--level`. Higher levels add more injection vectors but are slower and noisier. |
@@ -228,19 +232,22 @@ accordingly. If you typically run longer sessions, increase this value.
 #### Parser Result Caps
 
 Output parsers cap results to prevent any single tool from consuming excessive
-context, regardless of the budget tracker:
+context, regardless of the budget tracker. These caps are dynamically scaled by
+the budget system (Full = 100%, Compact = 50%, Minimal = 25%, minimum 3):
 
-| Parser | Max results | Overflow |
-|--------|-------------|----------|
+| Parser | Max results (Full mode) | Overflow |
+|--------|-------------------------|----------|
 | nuclei | 25 findings | "+N more finding(s)" |
 | nikto | 30 findings | "+N more finding(s)" |
 | feroxbuster | 40 URLs | "+N more URL(s)" |
 | ffuf | 40 results | "+N more result(s)" |
 | masscan | 50 ports | "+N more port(s)" |
-| nmap | 10 hosts | "(+N more hosts — use get_scan_results for full output)" |
-| subfinder | 50 subdomains | "+N more subdomain(s)" |
+| nmap | 10 hosts | "(+N more hosts)" |
+| subfinder | 50 subdomains | "+N more" |
 | wpscan | 20 plugins, 10 users | truncated with count |
-| enum4linux-ng | 20 items per section | truncated with count |
+| enum4linux-ng | 20 items per section | truncated per section |
+| dalfox | 20 XSS findings | "+N more" |
+| dnsrecon | 30 DNS records | "+N more" |
 
 These caps are applied before the budget tracker's per-call enforcement.
 
@@ -277,9 +284,7 @@ When a tool is listed in `sudo_tools`, the executor invokes it as
 `sudo /usr/bin/nmap <args>` instead of `nmap <args>`. The tool handlers skip
 their root-privilege check when sudo is configured.
 
-The included `config/sudoers-raven-nest` file grants the `bakri` user
-passwordless sudo for `/usr/bin/masscan` and `/usr/bin/nmap` only. Edit the
-username and paths for your environment.
+Edit the username and paths in the sudoers file for your environment.
 
 ### `[execution]` — Timeouts, Concurrency, Output
 
@@ -363,17 +368,51 @@ require_confirmation = true
 
 ## Tools Reference
 
-The server exposes 31 tools across 9 categories.
+The server exposes up to 34 tools across 8 categories. Tool count depends on
+configuration — Metasploit tools (6) are only registered when `metasploit.enabled = true`.
 
-### Reconnaissance
+### Tool Timing Overview
+
+| Category | Tools | Expected Duration |
+|----------|-------|-------------------|
+| **Fast** (1-5s) | `ping_target`, `run_whatweb`, `http_request`, `run_ffuf`, `run_masscan`, `run_subfinder`, `run_dalfox` | Immediate results |
+| **Medium** (5-30s) | `run_nmap` (quick/service), `run_wpscan`, `run_dnsrecon`, `msf_search`, `msf_module_info` | Wait for completion |
+| **Slow** (30-300s) | `run_nmap` (os/vuln), `run_nuclei`, `run_nikto`, `run_testssl`, `run_feroxbuster`, `run_sqlmap`, `run_hydra`, `run_enum4linux_ng`, `run_john`, `msf_exploit` | Consider `launch_scan` for background execution |
+
+---
+
+### Utility
 
 #### `ping_target`
-Verify connectivity and measure latency.
+Verify target connectivity and measure latency. Typically the first tool in a session.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `target` | yes | IP address or hostname |
-| `count` | no | Number of packets, 1-10 (default 4) |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `target` | string | yes | IP address or hostname |
+| `count` | integer | no | Number of ICMP packets, 1-10 (default 4) |
+
+#### `http_request`
+Send crafted HTTP requests for manual endpoint testing. Cookies are
+automatically persisted across requests within the same session via a shared
+cookie jar (see [Session Features](#session-features)).
+
+HTML responses are automatically stripped of tags, scripts, and styles, with
+entity decoding applied. Only security-relevant headers are shown in the
+response (see [Output Processing](#output-processing)).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `url` | string | yes | Full URL (`http://` or `https://` only) |
+| `method` | string | no | `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS` (default `GET`) |
+| `headers` | object | no | Request headers as key-value pairs |
+| `body` | string | no | Request body string |
+| `auth_token` | string | no | Bearer token for Authorization header |
+| `timeout_secs` | integer | no | Timeout in seconds (default 30, max 120) |
+| `follow_redirects` | boolean | no | Follow redirects (default true) |
+
+---
+
+### Reconnaissance
 
 #### `run_nmap`
 Port scanning and service detection. Output is parsed from nmap's XML format
@@ -382,14 +421,14 @@ NSE script results per port and host-level, OS detection matches, run stats).
 For `vuln` scans, the `vulners` script output is compressed to the top 5 CVEs
 by CVSS score; other scripts are summarised to single-line entries.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `target` | yes | IP, hostname, or CIDR range |
-| `ports` | no | Port spec (e.g. `80,443` or `1-1000`) |
-| `scan_type` | no | `quick` (default), `service`, `os`, `vuln` |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `target` | string | yes | IP, hostname, or CIDR range |
+| `ports` | string | no | Port spec (e.g. `80,443` or `1-1000`) |
+| `scan_type` | string | no | `quick` (default), `service`, `os`, `vuln` |
 
 Scan type presets:
-- **quick** — `-T4 -F` (top 100 ports, aggressive timing)
+- **quick** — `-T4 -F` (top 100 ports, aggressive timing). When `ports` is specified, `-F` is omitted.
 - **service** — `-sV` (version detection)
 - **os** — `-O` (OS fingerprinting, requires root or `sudo_tools` config)
 - **vuln** — `-sV --script=vuln` (vulnerability scripts)
@@ -398,21 +437,21 @@ Scan type presets:
 Identify web technologies (CMS, frameworks, server software). Output is parsed
 to extract technology identification lines with bracket-notation tags.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `target` | yes | URL or hostname |
-| `aggression` | no | `stealthy` (default), `passive`, `aggressive` |
-| `cookie` | no | Cookie string for authenticated scanning |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `target` | string | yes | URL or hostname |
+| `aggression` | string | no | `stealthy` (default, level 1), `passive` (level 2), `aggressive` (level 4) |
+| `cookie` | string | no | Cookie string for authenticated scanning (e.g. `PHPSESSID=abc123`) |
 
 #### `run_masscan`
 High-speed port scanning. Requires root or `sudo_tools` config — returns an
 error if neither is available. Output is parsed to extract discovered open ports.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `target` | yes | IP, hostname, or CIDR range |
-| `ports` | yes | Port spec (e.g. `80,443` or `0-65535`) |
-| `rate` | no | Packets/sec (clamped to `masscan_max_rate` config, default 100) |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `target` | string | yes | IP, hostname, or CIDR range (e.g. `10.0.0.0/24`) |
+| `ports` | string | yes | Port spec (e.g. `80,443` or `0-65535`) |
+| `rate` | integer | no | Packets/sec (clamped to `masscan_max_rate` config, default 100) |
 
 > **Limitation:** masscan uses raw SYN packets that bypass the kernel TCP
 > stack. It **cannot scan localhost** (`127.0.0.1`) or Docker bridge IPs
@@ -425,111 +464,164 @@ Passive subdomain enumeration via certificate transparency logs, DNS databases,
 and search engine scraping. Does not actively probe the target — purely passive.
 Output is parsed from JSONL format into `host (source)` lines.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `target` | yes | Domain to enumerate (e.g. `example.com`) |
-| `sources` | no | Comma-separated source filter (e.g. `crtsh,hackertarget`) |
-| `timeout_secs` | no | Scan timeout in seconds |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `target` | string | yes | Domain to enumerate (e.g. `example.com`) |
+| `sources` | string | no | Comma-separated source filter (e.g. `crtsh,hackertarget`) |
+| `timeout_secs` | integer | no | Scan timeout in seconds |
 
 > **Internet access required:** subfinder queries online APIs (crt.sh,
 > HackerTarget, etc.). It won't find subdomains for purely local targets.
 
-### SMB / Active Directory
+#### `run_dnsrecon`
+DNS enumeration with support for standard lookups, zone transfers, and SRV
+record discovery. Output is parsed from JSON format into `TYPE NAME VALUE`
+record lines.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `target` | string | yes | Domain to enumerate |
+| `scan_type` | string | no | `standard` (default), `zone_transfer`, `srv` |
+| `timeout_secs` | integer | no | Timeout in seconds |
 
 #### `run_enum4linux_ng`
 SMB and Active Directory enumeration. Discovers shares, users, groups,
 password policies, and OS information. Useful for internal pentests against
-Windows/Samba environments.
+Windows/Samba environments. Uses `-A` (all simple enumeration) by default.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `target` | yes | Target IP or hostname |
-| `username` | no | SMB username for authenticated enumeration |
-| `password` | no | SMB password |
-| `timeout_secs` | no | Scan timeout in seconds |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `target` | string | yes | Target IP or hostname |
+| `username` | string | no | SMB username for authenticated enumeration |
+| `password` | string | no | SMB password |
+| `timeout_secs` | integer | no | Scan timeout in seconds |
 
 Output is parsed into sections: OS info, shares, users, groups, and password
 policy. Each section is capped at 20 items.
 
-### Vulnerability Scanning
+---
+
+### Web Scanning
 
 #### `run_nuclei`
 Template-based vulnerability scanning. Output is parsed from JSONL format into
 compact lines: `[SEVERITY] template-id - name @ url (type)`.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `target` | yes | URL or hostname |
-| `severity` | no | `info`, `low`, `medium`, `high`, `critical` |
-| `tags` | no | Template tags (e.g. `cve,oast`) |
-| `cookie` | no | Cookie string for authenticated scanning |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `target` | string | yes | URL or hostname |
+| `severity` | string | no | Severity filter: `info`, `low`, `medium`, `high`, `critical` |
+| `tags` | string | no | Template tags to include (e.g. `cve,oast`) |
+| `cookie` | string | no | Cookie string for authenticated scanning (e.g. `PHPSESSID=abc123`) |
 
 #### `run_nikto`
 Web server misconfiguration scanner. Output is parsed to extract finding lines
 (prefixed with `+`), filtering out help text.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `target` | yes | Hostname or URL |
-| `port` | no | Port number (default 80) |
-| `tuning` | no | `quick` (default), `thorough`, `injection`, `fileupload` |
-| `cookie` | no | Cookie string for authenticated scanning |
-| `timeout_secs` | no | Override default timeout |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `target` | string | yes | Hostname or URL |
+| `port` | integer | no | Port number (default 80). Ignored when `target` is a full URL. |
+| `tuning` | string | no | `quick` (default), `thorough`, `injection`, `fileupload` |
+| `cookie` | string | no | Cookie string for authenticated scanning (e.g. `PHPSESSID=abc123`) |
+| `timeout_secs` | integer | no | Scan timeout in seconds (default 600) |
+
+Tuning presets map to nikto's `-T` flag:
+- **quick** — `-T 1234` (interesting files, misconfigs, info disclosure, XSS)
+- **thorough** — `-T 123456789abc` (all test categories)
+- **injection** — `-T 9` (SQL/command injection tests)
+- **fileupload** — `-T 0` (file upload tests)
 
 > **URL vs hostname:** When `target` is a full URL (starts with `http://`),
 > the `port` parameter is ignored — nikto v2.6+ rejects the `-p` flag when
 > given a URL. Use the port in the URL instead (e.g. `http://localhost:3000`).
-> When `target` is a bare hostname, `-p` is added automatically.
+> When `target` is a bare hostname, `-p` is added automatically. Port 443
+> automatically enables SSL.
 
 #### `run_wpscan`
 WordPress vulnerability scanner. Enumerates plugins, themes, and users, then
 cross-references against the WPVulnDB vulnerability database. Output is parsed
 from JSON into a structured summary of versions, vulnerabilities, and users.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `target` | yes | WordPress site URL |
-| `enumerate` | no | `quick` (default: vulnerable plugins/themes/users) or `thorough` (all plugins/themes/users + config backups + DB exports) |
-| `api_token` | no | WPVulnDB API token for full vulnerability data |
-| `cookie` | no | Cookie string for authenticated scanning |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `target` | string | yes | WordPress site URL |
+| `enumerate` | string | no | `quick` (default) or `thorough` |
+| `api_token` | string | no | WPVulnDB API token for full vulnerability data |
+| `cookie` | string | no | Cookie string for authenticated scanning |
 
 Enumerate presets:
-- **quick** — `-enumerate vp,vt,u` (vulnerable plugins, vulnerable themes, users)
-- **thorough** — `-enumerate vp,vt,u,ap,at,cb,dbe` (all plugins, all themes, users, config backups, DB exports)
+- **quick** — `--enumerate vp,vt,u` (vulnerable plugins, vulnerable themes, users)
+- **thorough** — `--enumerate vp,vt,u,ap,at,cb,dbe` (all plugins, all themes, users, config backups, DB exports)
 
 > **API token:** Without a WPVulnDB API token, wpscan still identifies
 > versions and plugins but cannot look up their known vulnerabilities.
 > Register at https://wpscan.com/ for a free API key.
 
-### Web Fuzzing & Discovery
+#### `run_dalfox`
+XSS vulnerability scanning via parameter analysis and injection testing. Output
+is parsed from JSON into compact finding lines with injection type, parameter,
+and payload.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `target` | string | yes | URL to test for XSS |
+| `parameters` | string | no | Comma-separated parameter names to test (e.g. `q,search`) |
+| `cookie` | string | no | Cookie string for authenticated scanning |
+| `timeout_secs` | integer | no | Timeout in seconds |
+
+#### `run_testssl`
+SSL/TLS configuration audit. Output is parsed to extract vulnerability
+assessments, certificate details (CN, SAN, issuer, expiry, trust, CT), and
+overall rating.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `target` | string | yes | Hostname, host:port, or URL |
+| `quick` | boolean | no | Quick mode (`--quiet --sneaky`, fewer checks) |
+| `severity` | string | no | Minimum severity to report: `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` |
+
+The `severity` parameter accepts any case (`high`, `HIGH`, `High`) and is
+normalised internally. Invalid values are silently ignored.
+
+> **Non-TLS targets:** If the target has no TLS service, testssl returns
+> minimal output or a connection error. This is expected — the tool is
+> designed for TLS analysis only.
+
+---
+
+### Web Fuzzing and Discovery
 
 #### `run_feroxbuster`
 Directory brute-forcing / content discovery. Output is parsed to extract
 status-code + URL pairs, filtering out 404 responses.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `target` | yes | URL |
-| `wordlist` | no | Path to wordlist (default: raft-medium-directories.txt) |
-| `extensions` | no | File extensions to check (e.g. `php,html,js`) |
-| `threads` | no | Concurrent threads (default 50; reduced to 10 for localhost targets; max 200) |
-| `status_codes` | no | Status codes to include (e.g. `200,301,403`) |
-| `cookie` | no | Cookie string for authenticated scanning |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `target` | string | yes | Target URL (e.g. `http://example.com`) |
+| `wordlist` | string | no | Path to wordlist (default: raft-medium-directories.txt) |
+| `extensions` | string | no | File extensions to check (e.g. `php,html,js`) |
+| `threads` | integer | no | Concurrent threads (default 50; 10 for localhost; max 200) |
+| `status_codes` | string | no | HTTP status codes to include (e.g. `200,301,403`) |
+| `cookie` | string | no | Cookie string for authenticated scanning (e.g. `PHPSESSID=abc123`) |
 
 #### `run_ffuf`
-Web fuzzing with FUZZ keyword. Output is parsed to extract result lines
-containing status codes, sizes, and word counts.
+Web fuzzing with FUZZ keyword substitution. The URL must contain the `FUZZ`
+keyword — requests are rejected without it. Output is parsed to extract result
+lines containing status codes, sizes, and word counts.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `url` | yes | URL containing `FUZZ` keyword (e.g. `http://example.com/FUZZ`) |
-| `wordlist` | no | Path to wordlist |
-| `method` | no | HTTP method (default `GET`) |
-| `headers` | no | Custom headers (comma-separated `Name: Value` pairs) |
-| `match_codes` | no | Match HTTP status codes (e.g. `200,301,302`) |
-| `filter_size` | no | Filter responses by size (bytes) |
-| `threads` | no | Concurrent threads (default 40; reduced to 10 for localhost targets; max 150) |
-| `cookie` | no | Cookie string for authenticated fuzzing |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `url` | string | yes | URL containing `FUZZ` keyword (e.g. `http://example.com/FUZZ`) |
+| `wordlist` | string | no | Path to wordlist (default: raft-medium-words.txt) |
+| `method` | string | no | HTTP method (default `GET`) |
+| `headers` | string | no | Custom headers (comma-separated `Name: Value` pairs) |
+| `match_codes` | string | no | Match HTTP status codes (e.g. `200,301,302`) |
+| `filter_size` | string | no | Filter responses by size in bytes |
+| `threads` | integer | no | Concurrent threads (default 40; 10 for localhost; max 150) |
+| `cookie` | string | no | Cookie string for authenticated fuzzing (e.g. `PHPSESSID=abc123`) |
+
+---
 
 ### Exploitation
 
@@ -538,86 +630,46 @@ SQL injection testing. Always runs in `--batch` mode (non-interactive). Output
 is parsed to extract injection points (parameter/type/title/payload), DBMS
 info, and critical errors. Non-injectable verdicts are preserved.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `target` | yes | URL with injectable parameter |
-| `data` | no | POST data |
-| `cookie` | no | Cookie header value |
-| `level` | no | Test level 1-5 (clamped to `sqlmap_max_level` config) |
-| `risk` | no | Risk level 1-3 (clamped to `sqlmap_max_risk` config) |
-| `technique` | no | SQLi technique (e.g. `BEUSTQ`) |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `url` | string | yes | URL with injectable parameter |
+| `data` | string | no | POST body data (e.g. `user=test&pass=test`) |
+| `cookie` | string | no | Cookie string for authenticated testing |
+| `level` | integer | no | Test level 1-5 (default 1, clamped to `sqlmap_max_level` config) |
+| `risk` | integer | no | Risk level 1-3 (default 1, clamped to `sqlmap_max_risk` config) |
+| `technique` | string | no | SQL injection techniques: `B`oolean, `E`rror, `U`nion, `S`tacked, `T`ime, `Q`uery (e.g. `BEUSTQ`) |
 
 #### `run_hydra`
-Authentication brute-forcing. Output is parsed to extract discovered
-credentials and the summary line (valid passwords found/completed).
+Authentication brute-forcing. Stops on first valid credential (`-f` flag).
+Output is parsed to extract discovered credentials and the summary line.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `target` | yes | Target host |
-| `service` | yes | Service to attack (e.g. `ssh`, `ftp`, `http-post-form`) |
-| `userlist` | yes | Path to username list |
-| `passlist` | yes | Path to password list |
-| `tasks` | no | Parallel tasks (clamped to `hydra_max_tasks` config) |
-| `form_params` | no* | Form attack string for `http-post-form`/`http-get-form` (e.g. `'/login:user=^USER^&pass=^PASS^:F=incorrect'`). **Required** when service is a form type. |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `target` | string | yes | Target IP or hostname |
+| `service` | string | yes | Service to attack (e.g. `ssh`, `ftp`, `http-post-form`) |
+| `port` | integer | no | Target port (default: service default) |
+| `userlist` | string | yes | Path to username list file |
+| `passlist` | string | yes | Path to password list file |
+| `tasks` | integer | no | Parallel tasks (default 4, clamped to `hydra_max_tasks` config) |
+| `form_params` | string | conditional | Form attack string for `http-post-form`/`http-get-form`. **Required** when service is a form type. Format: `/login:user=^USER^&pass=^PASS^:F=incorrect` |
 
-### TLS / SSL
-
-#### `run_testssl`
-SSL/TLS configuration audit. Output is parsed to extract vulnerability
-assessments, certificate details (CN, SAN, issuer, expiry, trust, CT), and
-overall rating.
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `target` | yes | Hostname, host:port, or URL |
-| `severity` | no | Minimum severity to report |
-| `quick` | no | Quick mode (`--quiet --sneaky`, fewer checks) |
-
-The `severity` parameter accepts any case (`high`, `HIGH`, `High`) and is
-normalised internally. Invalid values (e.g. `urgent`) are silently ignored.
-
-> **Non-TLS targets:** If the target has no TLS service, testssl returns
-> minimal output or a connection error. This is expected — the tool is
-> designed for TLS analysis only.
-
-### XSS Scanning
-
-#### `run_dalfox`
-XSS vulnerability scanning. Output is parsed to extract injection findings
-with parameter names and payloads.
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `target` | yes | URL to test for XSS |
-| `parameters` | no | Comma-separated parameter names to test (e.g. `q,search`) |
-| `cookie` | no | Cookie string for authenticated scanning |
-| `timeout_secs` | no | Timeout in seconds |
-
-### DNS Reconnaissance
-
-#### `run_dnsrecon`
-DNS enumeration with support for standard lookups, zone transfers, and SRV
-record discovery. Output is parsed to extract DNS records in `TYPE NAME VALUE`
-format.
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `target` | yes | Domain to enumerate |
-| `scan_type` | no | `standard` (default), `zone_transfer`, `srv` |
-| `timeout_secs` | no | Timeout in seconds |
+---
 
 ### Password Cracking
 
 #### `run_john`
-John the Ripper password hash cracking. Runtime is capped at 600 seconds.
-Output is parsed to extract cracked credentials.
+John the Ripper password hash cracking. Runtime is capped via `--max-run-time`
+to prevent runaway sessions. Output is parsed to extract cracked credentials
+and session status.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `hash_file` | yes | Path to hash file |
-| `wordlist` | no | Path to wordlist file |
-| `format` | no | Hash format (e.g. `raw-md5`, `bcrypt`, `sha512crypt`) |
-| `max_run_time` | no | Max runtime in seconds (default 300, max 600) |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `hash_file` | string | yes | Path to hash file (shell metacharacters rejected) |
+| `wordlist` | string | no | Path to wordlist file |
+| `format` | string | no | Hash format (e.g. `raw-md5`, `bcrypt`, `sha512crypt`) |
+| `max_run_time` | integer | no | Max runtime in seconds (default 300, max 600) |
+
+---
 
 ### Metasploit Framework
 
@@ -626,95 +678,89 @@ Metasploit integration is **disabled by default** and requires a running
 safety model, and troubleshooting.
 
 #### `msf_search`
-Search for exploit, auxiliary, and post-exploitation modules.
+Search for exploit, auxiliary, and post-exploitation modules. Results show
+module path, rank, and description.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `query` | yes | Search query (e.g. `cve:2021-44228`, `type:exploit smb`) |
-| `limit` | no | Max results (default 20) |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `query` | string | yes | Search query (e.g. `cve:2021-44228`, `type:exploit smb`) |
+| `limit` | integer | no | Max results (default 20) |
 
 #### `msf_module_info`
-Get details about a module — description, required options, compatible payloads.
+Get details about a module — description, references (CVEs, EDB IDs), required
+options with defaults, and compatible payloads (for exploit modules, top 5).
+Module type is inferred from the path prefix.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `module` | yes | Module path (e.g. `exploit/multi/http/log4shell_header_injection`) |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `module` | string | yes | Module path (e.g. `exploit/multi/http/log4shell_header_injection`) |
 
 #### `msf_exploit`
-Execute an exploit module. **Requires confirmation** — the first call shows the
-plan, the second call with identical parameters executes.
+Execute an exploit module. When `require_confirmation` is enabled (default),
+the first call shows a plan summary. Calling again with identical parameters
+executes the exploit. Polls for completion with exponential backoff and reports
+any new sessions.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `module` | yes | Exploit module path |
-| `target` | yes | Target host or IP |
-| `port` | no | Target port |
-| `payload` | no | Payload module (auto-selects if omitted) |
-| `lhost` | no | Listener host for reverse payloads |
-| `lport` | no | Listener port (default 4444) |
-| `options` | no | Additional module options as key-value pairs |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `module` | string | yes | Exploit module path |
+| `target` | string | yes | Target host or IP (validated against allowlist) |
+| `port` | integer | no | Target port (sets RPORT) |
+| `payload` | string | no | Payload module (auto-selects if omitted) |
+| `lhost` | string | no | Listener host for reverse payloads (sets LHOST) |
+| `lport` | integer | no | Listener port for reverse payloads (default 4444, sets LPORT) |
+| `options` | object | no | Additional module options as key-value pairs (cannot override RHOSTS) |
 
 #### `msf_auxiliary`
-Run auxiliary modules (scanners, fuzzers).
+Run auxiliary modules (scanners, fuzzers). Polls for completion with
+exponential backoff.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `module` | yes | Auxiliary module path |
-| `target` | yes | Target host, IP, or CIDR |
-| `port` | no | Target port |
-| `options` | no | Additional module options |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `module` | string | yes | Auxiliary module path |
+| `target` | string | yes | Target host, IP, or CIDR (validated, sets RHOSTS) |
+| `port` | integer | no | Target port (sets RPORT) |
+| `options` | object | no | Additional module options as key-value pairs (cannot override RHOSTS) |
 
 #### `msf_sessions`
 Manage active Metasploit sessions.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `action` | yes | `list`, `interact`, `stop`, `compatible_modules` |
-| `session_id` | no* | Session ID (*required for all actions except `list`) |
-| `command` | no* | Command to run (*required for `interact`) |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `action` | string | yes | `list`, `interact`, `stop`, `compatible_modules` |
+| `session_id` | integer | conditional | Session ID. Required for `interact`, `stop`, `compatible_modules`. |
+| `command` | string | conditional | Command to execute. Required for `interact`. |
 
-Destructive commands (`rm`, `del`, `format`, `shutdown`, `reboot`, `upload`)
-are blocked by default.
+Actions:
+- **list** — show all active sessions with type, tunnel, and platform
+- **interact** — run a command in a session (output read after 2s delay, max 4096 chars)
+- **stop** — terminate a session
+- **compatible_modules** — list post modules compatible with a session (top 20)
+
+Blocked session commands: `rm`, `del`, `format`, `mkfs`, `dd`, `shutdown`,
+`reboot`, `halt`, `poweroff`, `upload`.
 
 #### `msf_post`
-Run post-exploitation modules on an active session.
+Run post-exploitation modules on an active session. Polls for completion with
+exponential backoff.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `module` | yes | Post module path (e.g. `post/multi/gather/env`) |
-| `session_id` | yes | Session ID |
-| `options` | no | Additional module options |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `module` | string | yes | Post module path (e.g. `post/multi/gather/env`) |
+| `session_id` | integer | yes | Session ID to run on (sets SESSION) |
+| `options` | object | no | Additional module options as key-value pairs |
 
-### HTTP Testing
+---
 
-#### `http_request`
-Send crafted HTTP requests for manual endpoint testing. Cookies are
-automatically persisted across requests within the same session via a shared
-cookie jar (see [Session Features](#session-features)).
-
-HTML responses are automatically stripped of tags, scripts, and styles, with
-entity decoding applied. Only security-relevant headers are shown in the
-response (see [Output Processing](#output-processing)).
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `url` | yes | Full URL (`http://` or `https://` only) |
-| `method` | no | `GET`, `POST`, `PUT`, `DELETE`, `PATCH`, `HEAD`, `OPTIONS` (default `GET`). Other methods are rejected. |
-| `headers` | no | Key-value header pairs |
-| `body` | no | Request body string |
-| `auth_token` | no | Bearer token for Authorization header |
-| `timeout_secs` | no | Timeout in seconds (default 30, max 120) |
-| `follow_redirects` | no | Follow redirects (default true) |
-
-### Background Scans
+### Scan Management
 
 For long-running scans, use the launch/poll pattern. A scan transitions
 through these states:
 
 ```
-launch_scan → Running → Completed (success)
-                      → Failed (non-zero exit or timeout)
-              cancel_scan → Cancelled
+launch_scan -> Running -> Completed (success)
+                       -> Failed (non-zero exit or timeout)
+             cancel_scan -> Cancelled
 ```
 
 The server enforces a concurrency cap (default 3, set via
@@ -722,46 +768,48 @@ The server enforces a concurrency cap (default 3, set via
 returns an error — cancel or wait for a running scan to finish first.
 
 During execution, the server sends progress notifications every 15 seconds
-to keep the MCP client informed. These are JSON-RPC notifications (no `id`
-field) that clients should handle or ignore gracefully.
+to keep the MCP client informed.
 
 #### `launch_scan`
 Start a scan in the background, returns a scan ID immediately. The target is
 validated and the tool is checked against the allowlist before launching.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `tool` | yes | Any allowlisted tool name (e.g. `nmap`, `nuclei`, `nikto`, `whatweb`) |
-| `target` | yes | Target IP, hostname, or URL |
-| `args` | no | Tool arguments as a string list |
-| `timeout_secs` | no | Scan timeout in seconds (default from config) |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `tool` | string | yes | Any allowlisted tool name (e.g. `nmap`, `nuclei`, `nikto`, `whatweb`) |
+| `target` | string | yes | Target IP, hostname, or URL |
+| `args` | string[] | no | Tool arguments as a list of strings |
+| `timeout_secs` | integer | no | Scan timeout in seconds (default from config, typically 600) |
 
 #### `get_scan_status`
 Check whether a scan is Running, Completed, Failed, or Cancelled.
-Completed scans with output under 10K chars include the output inline.
+Completed scans with output under 10K chars include the output inline
+(auto-inline), saving a follow-up `get_scan_results` call.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `scan_id` | yes | ID returned by `launch_scan` |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `scan_id` | string | yes | ID returned by `launch_scan` |
 
 #### `get_scan_results`
-Fetch output from a completed scan with pagination.
+Fetch output from a completed scan with character-based pagination.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `scan_id` | yes | ID returned by `launch_scan` |
-| `offset` | no | Character offset (default 0) |
-| `limit` | no | Max characters to return (default 10000) |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `scan_id` | string | yes | ID returned by `launch_scan` |
+| `offset` | integer | no | Character offset to start reading from (default 0) |
+| `limit` | integer | no | Max characters to return (default 10000) |
 
 #### `cancel_scan`
-Cancel a running scan.
+Cancel a running scan by aborting its background task.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `scan_id` | yes | ID returned by `launch_scan` |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `scan_id` | string | yes | ID returned by `launch_scan` |
 
 #### `list_scans`
 List all scans and their current status. No parameters.
+
+---
 
 ### Findings and Reports
 
@@ -771,44 +819,47 @@ under `{output_dir}/findings/` and indexed in memory for fast listing. There is 
 hard cap on finding count — the store scales to tens of thousands of findings with
 bounded memory (only metadata is kept in RAM; full data lives on disk).
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `title` | yes | Finding title |
-| `severity` | yes | `critical`, `high`, `medium`, `low`, `info` |
-| `description` | yes | Detailed description |
-| `target` | yes | Affected target |
-| `tool` | yes | Tool that discovered it |
-| `evidence` | no | Raw output excerpt |
-| `remediation` | no | Suggested fix |
-| `cvss` | no | CVSS score (0.0-10.0) |
-| `cve` | no | CVE identifier |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `title` | string | yes | Finding title |
+| `severity` | string | yes | `critical`, `high`, `medium`, `low`, `info` |
+| `description` | string | yes | Detailed description of the vulnerability |
+| `target` | string | yes | Affected target (IP, URL, hostname) |
+| `tool` | string | yes | Tool that discovered this finding |
+| `evidence` | string | no | Raw output excerpt as evidence |
+| `remediation` | string | no | Suggested remediation steps |
+| `cvss` | float | no | CVSS score (0.0-10.0) |
+| `cve` | string | no | CVE identifier (e.g. `CVE-2024-1234`) |
+| `owasp_category` | string | no | OWASP Top 10 category (e.g. `A03:2021 Injection`) |
 
 #### `get_finding`
 Retrieve full details of a finding as JSON.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `finding_id` | yes | Finding ID |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `finding_id` | string | yes | Finding ID |
 
 #### `list_findings`
 List all findings sorted by severity (Critical first). No parameters.
+Returns `ID | [Severity] Title` for each finding.
 
 #### `delete_finding`
 Remove a finding. The individual file is deleted from disk and the index is updated.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `finding_id` | yes | Finding ID |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `finding_id` | string | yes | Finding ID |
 
 #### `generate_report`
-Generate a markdown pentest report from all saved findings. The report is
-automatically saved to `{output_dir}/report-{timestamp}.md`. Returns a brief
-summary (finding count by severity) instead of the full report content to
-conserve context.
+Generate a markdown pentest report from all saved findings. The report includes
+a table of contents, methodology section, tools used, OWASP category mapping,
+and findings grouped by severity. The report is automatically saved to
+`{output_dir}/report-{timestamp}.md`. Returns a brief summary (finding count by
+severity) instead of the full report content to conserve context.
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `title` | no | Report title (default "Penetration Test Report") |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `title` | string | no | Report title (default "Penetration Test Report") |
 
 > **Persistence:** Findings are stored as individual JSON files at
 > `{output_dir}/findings/{uuid}.json` and survive server restarts. The
@@ -850,12 +901,12 @@ arguments are passed directly to `Command::arg()`, not through a shell.
 All optional numeric parameters accept both JSON numbers and string-encoded
 numbers. This handles a common LLM quirk where models serialize `2` as `"2"`.
 
-Fields with lenient deserialization: `count` (ping), `port` (nikto, msf_exploit),
-`threads` (feroxbuster, ffuf), `rate` (masscan), `level` (sqlmap),
-`risk` (sqlmap), `tasks` (hydra), `timeout_secs` (nikto, http_request,
-launch_scan, subfinder, enum4linux-ng), `offset` (get_scan_results),
-`limit` (get_scan_results, msf_search), `lport` (msf_exploit),
-`session_id` (msf_sessions), `cvss` (save_finding).
+Fields with lenient deserialization: `count` (ping), `port` (nikto, hydra,
+msf_exploit, msf_auxiliary), `threads` (feroxbuster, ffuf), `rate` (masscan),
+`level` (sqlmap), `risk` (sqlmap), `tasks` (hydra), `timeout_secs` (nikto,
+http_request, launch_scan, subfinder, enum4linux-ng, dalfox, dnsrecon,
+john `max_run_time`), `offset` (get_scan_results), `limit` (get_scan_results,
+msf_search), `lport` (msf_exploit), `session_id` (msf_sessions).
 
 Invalid strings (e.g. `"abc"`) produce a clear parse error. `null` and
 omitted fields both resolve to `None` (the default is used).
@@ -874,6 +925,9 @@ When the server rejects a request, errors follow predictable formats:
 | Root required | `masscan requires root privileges — either run the server as root or add "masscan" to sudo_tools in config` |
 | Timeout | `command timed out after nmap time out after 600s` |
 | Tool exit error | `nmap failed (exit exit status: 1): <stderr output>` |
+| FUZZ keyword missing | `URL must contain the FUZZ keyword (e.g. http://example.com/FUZZ)` |
+| Form params missing | `form_params is required for http-post-form/http-get-form` |
+| Invalid scan type | `invalid scan_type 'brute' — must be: standard, zone_transfer, srv` |
 
 ---
 
@@ -898,7 +952,7 @@ is spawned:
 3. **Argument building** — users pick presets (e.g. `scan_type: "service"`),
    never raw CLI flags. The server translates presets into safe argument lists.
 
-4. **Parameter validation** — all 18 request structs use `deny_unknown_fields`,
+4. **Parameter validation** — all request structs use `deny_unknown_fields`,
    which rejects any parameter the tool doesn't recognise. This catches LLM
    parameter hallucination with clear error messages (e.g. "unknown field
    `verbosity`"). Numeric parameters also accept string-encoded numbers
@@ -910,6 +964,7 @@ is spawned:
    - sqlmap: `--level` clamped to `sqlmap_max_level`, `--risk` to `sqlmap_max_risk`
    - hydra: `-t` (parallel tasks) clamped to `hydra_max_tasks`
    - masscan: `--rate` clamped to `masscan_max_rate`
+   - john: `--max-run-time` capped at 600 seconds
 
 6. **Execution containment** — configurable timeout per tool, `kill_on_drop` on
    all subprocesses (no orphaned processes), concurrent scan limit enforced.
@@ -923,7 +978,7 @@ is spawned:
 
 9. **Session budget tracking** — when `context_budget` is set, tracks cumulative
    output across all tool calls and dynamically shrinks per-call caps. Escalates
-   through Full → Compact → Minimal output modes. Hard floor at 1,000 chars
+   through Full -> Compact -> Minimal output modes. Hard floor at 1,000 chars
    remaining refuses new calls.
 
 10. **Metasploit safety** — when MSF is enabled, an additional 5-layer model
@@ -939,7 +994,7 @@ Tool output goes through a multi-stage pipeline before reaching the AI model:
 
 ### Structured Parsers
 
-All 13 subprocess tools have output parsers that extract the essential
+All subprocess tools have output parsers that extract the essential
 information and discard noise. Parsers return `Option<String>` — if parsing
 fails, the raw output is used as a fallback. Each parser has a result cap to
 prevent context overflow (see [Parser Result Caps](#parser-result-caps)).
@@ -959,6 +1014,9 @@ prevent context overflow (see [Parser Result Caps](#parser-result-caps)).
 | masscan | Line filter | `Discovered open port` lines. Capped at 50. |
 | subfinder | JSONL parser | `host (source)` lines. Capped at 50. |
 | enum4linux-ng | Section parser | OS, shares, users, groups, password policy. 20 items/section. |
+| dalfox | JSON parser | XSS findings with injection type, parameter, payload. Capped at 20. |
+| dnsrecon | JSON parser | DNS records as `TYPE NAME VALUE`. Capped at 30. |
+| john | Line filter | Cracked `password (username)` pairs, session status. |
 
 ### HTTP Response Processing
 
@@ -996,8 +1054,9 @@ requests within the same server session. This enables authenticated workflows:
 3. Session cookies are displayed in the response under `--- Session Cookies ---`.
 
 **Important:** Subprocess tools (sqlmap, nikto, feroxbuster, ffuf, nuclei,
-whatweb) run as separate processes and do **not** share the cookie jar. Pass
-cookies explicitly via each tool's `cookie` parameter for authenticated scanning.
+whatweb, wpscan, dalfox) run as separate processes and do **not** share the
+cookie jar. Pass cookies explicitly via each tool's `cookie` parameter for
+authenticated scanning.
 
 ### Scan Spill-to-Disk
 
@@ -1056,18 +1115,18 @@ Assistant: [calls generate_report]
 You: "Log in to http://target.example.com/login with admin:password"
 Assistant: [calls http_request with url, method: "POST",
            body: "username=admin&password=password"]
-→ Session cookies are captured automatically.
+-> Session cookies are captured automatically.
 
 You: "Now scan the authenticated area for SQL injection"
 Assistant: [reads session cookie from http_request response]
-           [calls run_sqlmap with target: "http://target.example.com/search?q=test",
+           [calls run_sqlmap with url: "http://target.example.com/search?q=test",
             cookie: "PHPSESSID=abc123"]
-→ Cookie passed explicitly because sqlmap runs as a subprocess.
+-> Cookie passed explicitly because sqlmap runs as a subprocess.
 
 You: "Run nikto against the same target"
 Assistant: [calls run_nikto with target: "http://target.example.com",
             cookie: "PHPSESSID=abc123"]
-→ Same cookie passed to nikto for authenticated scanning.
+-> Same cookie passed to nikto for authenticated scanning.
 ```
 
 ---

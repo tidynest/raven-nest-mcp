@@ -1,154 +1,287 @@
-# Raven-Nest-MCP Manual Test Results
+# Raven-Nest-MCP Unit & Integration Test Results
 
-**Date:** 2026-03-15
-**Server:** raven-nest-mcp v0.1.0 (release build)
-**Targets:** bWAPP (localhost:80), OWASP Juice Shop (localhost:3000)
+**Date:** 2026-03-29
+**Toolchain:** Rust stable
+**Command:** `cargo test --all`
 
-## Final Summary
+## Summary
 
-| Phase | Category | Tests | Pass | Fail | Timeout |
-|-------|----------|------:|-----:|-----:|--------:|
-| 0 | ping_target | 17 | 17 | 0 | 0 |
-| 4 | http_request | 28 | 28 | 0 | 0 |
-| 5 | Scan Lifecycle | 29 | 29 | 0 | 0 |
-| 6 | Findings Lifecycle | 42 | 42 | 0 | 0 |
-| 7 | Cross-Cutting | 32 | 28 | 0 | 4 |
-| 1 | nmap | 15 | 14 | 0 | 1 |
-| 1 | whatweb | 12 | 9 | 1 | 2 |
-| 1 | masscan | 8 | 8 | 0 | 0 |
-| 1 | testssl | 15 | 15 | 0 | 0 |
-| 2 | nuclei | 16 | 16 | 0 | 0 |
-| 2 | nikto | 18 | 10 | 3 | 5 |
-| 2 | feroxbuster | 13 | 12 | 0 | 1 |
-| 2 | ffuf | 19 | 19 | 0 | 0 |
-| 3 | sqlmap | 20 | 20 | 0 | 0 |
-| 3 | hydra | 13 | 12 | 1 | 0 |
-| **TOTAL** | | **297** | **279** | **5** | **13** |
+| Crate | Tests | Pass | Fail |
+|-------|------:|-----:|-----:|
+| raven-core | 49 | 49 | 0 |
+| raven-report | 18 | 18 | 0 |
+| raven-server | 104 | 104 | 0 |
+| integration | 8 | 8 | 0 |
+| **Total** | **179** | **179** | **0** |
 
-**Pass rate:** 279/297 = **93.9%**
-**Adjusted (excluding timeouts):** 279/284 = **98.2%**
+**Result:** All 179 tests pass.
 
-All 5 failures are documented findings (4 are server-side improvements, 1 is external tool behavior).
-All 13 timeouts are for slow/remote scan operations, not server bugs.
+---
 
-## Findings (Code Improvement Opportunities)
+## raven-core (49 tests)
 
-### Finding 1: `http_request` accepts arbitrary HTTP methods (12.11)
-- **Severity:** Low
-- **Description:** `INVALID` method passes through to reqwest without validation. Apache returns 200.
-- **Recommendation:** Validate against allowlist (GET, POST, PUT, DELETE, PATCH, HEAD, OPTIONS).
+### config (11 tests)
+- `context_budget_zero_uses_defaults`
+- `context_budget_derives_caps`
+- `default_config_has_expected_tools`
+- `network_config_defaults_to_none`
+- `load_returns_error_on_missing_file`
+- `resolve_tool_binary_falls_back_to_bare_name`
+- `resolve_tool_binary_uses_custom_path`
+- `timeout_for_falls_back_to_default`
+- `timeout_for_returns_tool_specific_value`
+- `network_config_parses_from_toml`
+- `load_returns_error_on_malformed_toml`
 
-### Finding 2: `validate_target` doesn't reject trailing-hyphen hostnames (V.16)
-- **Severity:** Low
-- **Description:** `evil-.com` passes validation. Ping fails with "Name or service not known".
-- **Recommendation:** Add regex check for label boundaries per RFC 952.
+### executor (1 test)
+- `proxy_env_vars_set_on_command`
 
-### Finding 3: whatweb passive mode returns empty output (3.4)
-- **Severity:** Info (external tool behavior)
-- **Description:** whatweb `-a 2` (passive) returns 1 char output for localhost. Quality checker flags it.
-- **Root cause:** whatweb tool limitation, not server bug.
+### msf_client (5 tests)
+- `clear_confirmation_resets`
+- `base_url_ssl`
+- `confirmation_different_hash_resets`
+- `base_url_no_ssl`
+- `confirmation_gate_requires_double_call`
 
-### Finding 4: feroxbuster/hydra return success for tool failures (7.13, 10.12)
-- **Severity:** Low
-- **Description:** When feroxbuster gets a nonexistent wordlist or hydra gets a nonexistent userlist, the tools exit with errors but the server returns `isError: false` with a quality warning.
-- **Root cause:** `executor::run()` wraps non-zero exits as warnings, not errors.
-- **Recommendation:** When a tool exits non-zero AND output is empty/minimal, return `isError: true`.
+### safety (24 tests)
+- `allowlist_rejects_unlisted_tool`
+- `allowlist_accepts_listed_tool`
+- `target_accepts_cidr_v6`
+- `target_accepts_host_port`
+- `target_accepts_ipv4`
+- `target_accepts_hostname`
+- `target_accepts_ipv6`
+- `target_rejects_empty`
+- `target_rejects_invalid_host_port`
+- `target_allows_url_query_ampersand`
+- `target_accepts_http_url`
+- `target_rejects_ipv4_cidr_over_32`
+- `target_rejects_ipv6_cidr_over_128`
+- `target_rejects_metacharacters_in_url_host_path`
+- `target_rejects_shell_metacharacters`
+- `target_accepts_cidr_v4`
+- `target_rejects_unsupported_scheme`
+- `truncate_exact_boundary`
+- `truncate_handles_empty_string`
+- `truncate_handles_multibyte_utf8`
+- `truncate_mixed_multibyte`
+- `target_accepts_https_url`
+- `truncate_preserves_head_and_tail`
+- `truncate_returns_short_output_unchanged`
 
-### Finding 5: nikto timeout error message has doubled "s" (6.14/6.15/6.16)
-- **Severity:** Low (cosmetic)
-- **Description:** When nikto times out, the error message reads "command timed out after nikto time out after 120ss" — note the "120ss" with a double "s".
-- **Root cause:** Likely string formatting in `executor.rs` or `nikto.rs` where timeout_secs is appended with "s" but the value already includes or is followed by another "s".
-- **Recommendation:** Fix the string formatting to produce "120s" not "120ss".
+### scan_manager (8 tests)
+- `default_args_nmap_builds_quick_scan`
+- `default_args_nuclei_builds_silent_scan`
+- `default_args_unknown_tool_appends_target`
+- `scan_output_memory_size`
+- `scan_status_info_none_output_for_running`
+- `scan_status_info_tracks_elapsed_and_output`
+- `spill_threshold_is_one_megabyte`
+- `scan_output_disk_size`
 
-### Confirmed Correct Behaviors
-- Lenient deserializer correctly rejects float-to-integer coercion (L.6)
-- `cancel_scan` correctly returns `isError: true` for not-found scans (16.3)
-- masscan correctly requires root (all 8 tests)
-- nmap OS scan correctly requires root (2.7)
+---
 
-## Timeout Explanation
+## raven-report (18 tests)
 
-| Test | Reason | Set Timeout |
-|------|--------|-------------|
-| V.1 | Ping to unreachable 192.168.1.1 | 10s |
-| V.3 | nmap scan of 10.0.0.0/8 (massive CIDR) | 30s |
-| V.8 | testssl to example.com:443 (remote) | 60s |
-| T.1 | nmap vuln scan (NSE scripts) | 180s |
-| 2.8 | nmap vuln scan on bWAPP | 180s |
-| 3.5, 3.7 | whatweb aggressive (deep probing) | 60s |
-| 6.1, 6.3, 6.6, 6.8, 6.12 | nikto full scans (300s harness timeout) | 300s |
-| 7.2 | feroxbuster on Juice Shop | 300s |
+### markdown (8 tests)
+- `report_empty_findings`
+- `report_contains_title_and_summary_table`
+- `report_finding_numbering`
+- `report_has_toc_methodology_tools`
+- `report_includes_optional_fields`
+- `report_includes_owasp_category`
+- `report_omits_absent_optional_fields`
+- `report_severity_counts_are_correct`
 
-## Phase-by-Phase Details
+### store (10 tests)
+- `delete_nonexistent`
+- `delete_existing`
+- `insert_and_get`
+- `corrupted_file_skipped`
+- `list_sorted_by_severity`
+- `persistence_survives_delete`
+- `persistence_round_trip`
+- `load_all_returns_sorted`
+- `migration_from_legacy_format`
+- `unlimited_findings`
 
-### Phase 0: ping_target (17/17 PASS)
-- IPv4/IPv6/hostname: PASS
-- Count clamping (0->1, 255->10): PASS
-- Lenient deser (string "3", null): PASS
-- Shell injection (`;`, `|`, `$()`, backtick): PASS (all rejected)
-- Unknown field rejection (`deny_unknown_fields`): PASS
-- Unreachable target graceful error: PASS
+---
 
-### Phase 1: Reconnaissance (50 tests: 46 PASS, 1 FAIL, 3 TIMEOUT)
-- **nmap (14/15):** All scan types (quick/service/vuln), port specs, CIDR, validation. Only vuln scan timeout.
-- **whatweb (9/12):** Stealthy/passive/aggressive modes, cookies, hostname vs URL. Passive returns empty (Finding 3), aggressive times out.
-- **masscan (8/8):** All return "requires root" as expected. Rate clamping, shell injection, empty target rejection all correct.
-- **testssl (15/15):** All severity levels, quick mode, case normalization, URL format accepted. Empty target rejected.
+## raven-server (104 tests)
 
-### Phase 2: Web Scanning (66 tests: 57 PASS, 3 FAIL, 6 TIMEOUT)
-- **nuclei (16/16):** All severity levels, tags (cve/tech/combined), authenticated scanning, all params combo. Validation tests pass.
-- **nikto (10/18):** URL vs hostname handling, port as string, tuning presets (quick/thorough/injection/fileupload), cookie support. 5 timeouts (nikto is inherently slow), 3 fail on timeout error formatting (Finding 5).
-- **feroxbuster (12/13):** Wordlists, extensions, threads (clamping at 200), status codes, cookies. 1 timeout on Juice Shop.
-- **ffuf (19/19):** FUZZ keyword validation, methods (GET/POST/HEAD), headers, match codes, filter size, threads (clamping at 150), query string fuzzing. All pass.
+### budget (15 tests)
+- `disabled_budget_returns_full_mode`
+- `budget_shrinks_with_usage`
+- `exhausted_budget_detected`
+- `enabled_budget_starts_full`
+- `mode_escalates_to_compact`
+- `mode_escalates_to_minimal`
+- `per_call_allocation_divides_fairly`
+- `scale_cap_compact_mode`
+- `scale_cap_disabled_returns_full`
+- `scale_cap_full_mode`
+- `scale_cap_minimal_mode`
+- `status_line_absent_when_disabled`
+- `status_line_present_when_enabled`
+- `truncate_short_text_unchanged`
+- `truncate_long_text_preserves_head_and_tail`
 
-### Phase 3: Exploitation (33 tests: 32 PASS, 1 FAIL)
-- **sqlmap (20/20):** GET/POST injection, level clamping (5->2), risk clamping (3->1), all techniques (B/E/U/T/BEUSTQ), lenient deser, non-injectable page detection. Level=0 clamped to 1.
-- **hydra (12/13):** SSH, HTTP POST form (finds bee/bug), HTTP GET form, tasks clamping (16->4), form_params validation for http-*-form services, FTP (graceful failure). Nonexistent userlist returns success instead of error (Finding 4).
+### tools::dalfox (3 tests)
+- `parse_dalfox_empty_returns_none`
+- `parse_dalfox_extracts_findings`
+- `parse_dalfox_caps_at_20`
 
-### Phase 4: http_request (28/28 PASS)
-- All HTTP methods including HEAD/OPTIONS
-- Cookie jar persistence (login -> portal navigation)
-- Custom headers, Bearer auth token, JSON body
-- Timeout capping (300->120), lenient deser
-- Redirect control (follow_redirects true/false/default)
-- FTP/invalid URL rejection
-- Juice Shop API JSON response
+### tools::dnsrecon (4 tests)
+- `parse_dnsrecon_empty_returns_none`
+- `parse_dnsrecon_handles_text_prefix`
+- `parse_dnsrecon_extracts_records`
+- `parse_dnsrecon_caps_at_30`
 
-### Phase 5: Scan Lifecycle (29/29 PASS)
-- Launch -> poll -> results with pagination (offset/limit)
-- Cancel -> verify status -> idempotent re-cancel
-- Custom args, timeout overrides
-- Concurrency cap (3 max) enforced
-- Disallowed tool, empty target, shell injection all rejected
-- Lenient deser (string for numeric params)
+### tools::enum4linux_ng (4 tests)
+- `parse_caps_items_per_section`
+- `parse_multiple_sections`
+- `parse_empty_returns_none`
+- `parse_info_markers_included`
 
-### Phase 6: Findings Lifecycle (42/42 PASS)
-- Full CRUD: save -> get -> list -> delete
-- Severity validation: all 5 levels + case insensitivity + invalid/empty/numeric rejection
-- Optional fields: evidence, remediation, CVSS (0.0-10.0), CVE
-- Report generation: default/custom/empty title
-- Integration lifecycle: save 3 -> list sorted -> delete 1 -> report with correct counts
+### tools::feroxbuster (4 tests)
+- `parse_feroxbuster_all_404s_returns_none`
+- `parse_feroxbuster_empty_returns_none`
+- `parse_feroxbuster_extracts_urls`
+- `parse_feroxbuster_filters_404s`
 
-### Phase 7: Cross-Cutting (32 tests: 28 PASS, 4 TIMEOUT)
-- **Target validation:** IPv4, IPv6, CIDR (valid + invalid prefix /33 /129), host:port, URL with `&` in query, shell injection in URL path, hostname >253 chars, leading hyphen, newline injection
-- **Lenient deser (7/7):** Number, string, null, missing, invalid string, float rejection, negative rejection
-- **deny_unknown_fields (5/5):** ping, nmap, sqlmap, http_request, save_finding all reject extra fields
-- **Output truncation:** HTTP response capped correctly, feroxbuster output truncated
+### tools::ffuf (3 tests)
+- `parse_ffuf_empty_returns_none`
+- `parse_ffuf_no_results_returns_none`
+- `parse_ffuf_extracts_results`
 
-## Test Harness
+### tools::findings (4 tests)
+- `parse_severity_case_insensitive`
+- `parse_severity_rejects_invalid`
+- `parse_severity_valid_values`
+- `parse_severity_error_message`
 
-Located at: `tests/manual_test_harness.py`
+### tools::http (7 tests)
+- `strip_html_collapses_whitespace`
+- `strip_html_decodes_entities`
+- `strip_html_removes_comments`
+- `strip_html_removes_scripts_and_styles`
+- `strip_html_decodes_extended_entities`
+- `strip_html_inserts_newlines_for_blocks`
+- `strip_html_decodes_numeric_entities`
 
-```
-Usage: python3 -u tests/manual_test_harness.py [phase...]
-Phases: phase0 phase1 phase2 phase3 phase4 phase5 phase6 phase7 all
-```
+### tools::hydra (3 tests)
+- `parse_hydra_no_creds_returns_summary`
+- `parse_hydra_extracts_credentials`
+- `parse_hydra_empty_returns_none`
 
-Features:
-- Spawns MCP server as subprocess, communicates via JSON-RPC 2.0 (NDJSON framing)
-- Context passing between tests (scan IDs, finding IDs, cookies via `{KEY}` placeholders)
-- Filters server-side progress notifications
-- Retry logic for server startup (3 attempts with 10s handshake timeout)
-- Colored terminal output (PASS/FAIL/SKIP/TIMEOUT)
+### tools::john (3 tests)
+- `parse_john_empty_returns_none`
+- `parse_john_no_cracked`
+- `parse_john_extracts_cracked`
 
-**Note:** Use `-u` flag when piping output to prevent buffering delays.
+### tools::lenient (5 tests)
+- `accepts_missing`
+- `accepts_null`
+- `rejects_invalid_string`
+- `accepts_number`
+- `accepts_string`
+
+### tools::masscan (3 tests)
+- `parse_masscan_empty_returns_none`
+- `parse_masscan_extracts_ports`
+- `parse_masscan_no_ports_returns_none`
+
+### tools::msf_exploit (1 test)
+- `hash_is_deterministic`
+
+### tools::msf_search (2 tests)
+- `parse_empty_results`
+- `parse_module_results`
+
+### tools::msf_post (1 test)
+- `request_struct_compiles`
+
+### tools::msf_module_info (1 test)
+- `parse_info_basic`
+
+### tools::msf_sessions (3 tests)
+- `blocked_commands`
+- `parse_empty_sessions`
+- `parse_sessions_with_entries`
+
+### tools::nikto (4 tests)
+- `cookie_uses_add_header_flag`
+- `parse_nikto_empty_returns_none`
+- `parse_nikto_rejects_help_text`
+- `parse_nikto_extracts_findings`
+
+### tools::nmap (9 tests)
+- `parse_malformed_xml_returns_none`
+- `parse_empty_nmaprun_returns_none`
+- `parse_wrong_root_tag_returns_none`
+- `summarize_long_output`
+- `parse_xml_with_os_detection`
+- `parse_xml_with_warning_prefix`
+- `parse_valid_xml_extracts_host_and_ports`
+- `parse_real_localhost_xml_with_doctype`
+- `parse_vuln_scan_with_scripts`
+
+### tools::nuclei (3 tests)
+- `parse_nuclei_empty_returns_none`
+- `parse_nuclei_extracts_findings`
+- `parse_nuclei_skips_non_json_lines`
+
+### tools::sqlmap (7 tests)
+- `parse_sqlmap_critical_errors`
+- `parse_sqlmap_empty_returns_none`
+- `parse_sqlmap_not_injectable`
+- `parse_sqlmap_timestamped_critical`
+- `parse_sqlmap_extracts_injection_points`
+- `strip_ansi_removes_escape_sequences`
+- `parse_sqlmap_resumed_injection_points`
+
+### tools::subfinder (3 tests)
+- `parse_subfinder_empty_returns_none`
+- `parse_subfinder_extracts_hosts`
+- `parse_subfinder_caps_at_50`
+
+### tools::testssl (3 tests)
+- `parse_testssl_detects_vulnerable`
+- `parse_testssl_empty_returns_none`
+- `parse_testssl_extracts_vulns_and_certs`
+
+### tools::whatweb (2 tests)
+- `parse_whatweb_empty_returns_none`
+- `parse_whatweb_extracts_tech_lines`
+
+### tools::wpscan (5 tests)
+- `enumerate_preset_mapping`
+- `parse_wpscan_empty_returns_none`
+- `parse_wpscan_minimal_output`
+- `parse_wpscan_full_output`
+- `parse_wpscan_caps_plugins_and_users`
+
+### tools (root) (2 tests)
+- `localhost_variants`
+- `remote_targets`
+
+---
+
+## Integration Tests (8 tests)
+
+File: `tests/integration_test.rs`
+
+- `delete_nonexistent_finding`
+- `list_findings_empty`
+- `delete_existing_finding`
+- `generate_report_produces_markdown`
+- `save_and_retrieve_finding`
+- `generate_report_uses_default_title`
+- `save_finding_with_optional_fields`
+- `list_findings_returns_sorted`
+
+---
+
+## Manual Test Results (historical)
+
+See the manual test harness (`tests/manual_test_harness.py`) for live-target test results against bWAPP and OWASP Juice Shop. Last run: 2026-03-15 (297 tests, 93.9% pass rate, 5 findings documented).
