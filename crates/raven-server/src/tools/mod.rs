@@ -64,10 +64,7 @@ pub(crate) fn strip_ansi(s: &str) -> String {
 ///
 /// Allowed prefixes: `/usr/share/`, `/usr/lib/`, and the configured `output_dir`.
 /// Rejects paths containing `..` or shell metacharacters.
-pub(crate) fn validate_file_path(
-    path: &str,
-    output_dir: &str,
-) -> Result<(), rmcp::ErrorData> {
+pub(crate) fn validate_file_path(path: &str, output_dir: &str) -> Result<(), rmcp::ErrorData> {
     if path.is_empty() {
         return Err(rmcp::ErrorData::invalid_params("file path is empty", None));
     }
@@ -93,7 +90,10 @@ pub(crate) fn validate_file_path(
         format!("{output_dir}/")
     };
     let allowed_prefixes: [&str; 3] = ["/usr/share/", "/usr/lib/", &output_dir_slash];
-    if !allowed_prefixes.iter().any(|prefix| path.starts_with(prefix)) {
+    if !allowed_prefixes
+        .iter()
+        .any(|prefix| path.starts_with(prefix))
+    {
         return Err(rmcp::ErrorData::invalid_params(
             format!(
                 "file path must be under /usr/share/, /usr/lib/, or the configured output directory ({})",
@@ -112,12 +112,12 @@ pub(crate) fn validate_file_path(
 /// defense-in-depth against tools that might split arguments internally.
 pub(crate) fn validate_port_spec(spec: &str) -> Result<(), rmcp::ErrorData> {
     if spec.is_empty() {
-        return Err(rmcp::ErrorData::invalid_params(
-            "port spec is empty",
-            None,
-        ));
+        return Err(rmcp::ErrorData::invalid_params("port spec is empty", None));
     }
-    if !spec.chars().all(|c| c.is_ascii_digit() || c == ',' || c == '-') {
+    if !spec
+        .chars()
+        .all(|c| c.is_ascii_digit() || c == ',' || c == '-')
+    {
         return Err(rmcp::ErrorData::invalid_params(
             "port spec must contain only digits, commas, and hyphens (e.g. '80,443' or '1-1000')",
             None,
@@ -153,26 +153,23 @@ mod path_validation_tests {
 
     #[test]
     fn accepts_seclists_wordlist() {
-        assert!(validate_file_path(
-            "/usr/share/seclists/Discovery/Web-Content/raft-medium-directories.txt",
-            "/tmp/raven-nest"
-        ).is_ok());
+        assert!(
+            validate_file_path(
+                "/usr/share/seclists/Discovery/Web-Content/raft-medium-directories.txt",
+                "/tmp/raven-nest"
+            )
+            .is_ok()
+        );
     }
 
     #[test]
     fn accepts_output_dir_path() {
-        assert!(validate_file_path(
-            "/tmp/raven-nest/hashes.txt",
-            "/tmp/raven-nest"
-        ).is_ok());
+        assert!(validate_file_path("/tmp/raven-nest/hashes.txt", "/tmp/raven-nest").is_ok());
     }
 
     #[test]
     fn accepts_usr_lib_path() {
-        assert!(validate_file_path(
-            "/usr/lib/john/password.lst",
-            "/tmp/raven-nest"
-        ).is_ok());
+        assert!(validate_file_path("/usr/lib/john/password.lst", "/tmp/raven-nest").is_ok());
     }
 
     #[test]
@@ -182,10 +179,7 @@ mod path_validation_tests {
 
     #[test]
     fn rejects_path_traversal() {
-        assert!(validate_file_path(
-            "/usr/share/../../etc/passwd",
-            "/tmp/raven-nest"
-        ).is_err());
+        assert!(validate_file_path("/usr/share/../../etc/passwd", "/tmp/raven-nest").is_err());
     }
 
     #[test]

@@ -77,9 +77,8 @@ pub struct MsfClient {
 impl MsfClient {
     /// Create a new client from config. Does NOT connect until first use.
     pub fn new(config: &MetasploitConfig) -> Self {
-        let is_local = config.host == "127.0.0.1"
-            || config.host == "localhost"
-            || config.host == "::1";
+        let is_local =
+            config.host == "127.0.0.1" || config.host == "localhost" || config.host == "::1";
         let http = reqwest::Client::builder()
             .danger_accept_invalid_certs(is_local) // only skip cert validation for localhost
             .timeout(std::time::Duration::from_secs(30))

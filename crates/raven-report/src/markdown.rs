@@ -50,7 +50,9 @@ pub fn generate_report(findings: &[&Finding], title: &str) -> String {
         let n = i + 1;
         report.push_str(&format!(
             "  - [{n}. [{}] {}](#{})\n",
-            f.severity, escape_markdown(&f.title), n,
+            f.severity,
+            escape_markdown(&f.title),
+            n,
         ));
     }
     report.push('\n');
@@ -96,7 +98,12 @@ pub fn generate_report(findings: &[&Finding], title: &str) -> String {
     // Individual findings
     report.push_str("## Findings\n\n");
     for (i, f) in findings.iter().enumerate() {
-        report.push_str(&format!("### {}. [{}] {}\n\n", i + 1, f.severity, escape_markdown(&f.title)));
+        report.push_str(&format!(
+            "### {}. [{}] {}\n\n",
+            i + 1,
+            f.severity,
+            escape_markdown(&f.title)
+        ));
         report.push_str(&format!("- **Target:** {}\n", f.target));
         report.push_str(&format!("- **Tool:** {}\n", f.tool));
 
@@ -116,7 +123,10 @@ pub fn generate_report(findings: &[&Finding], title: &str) -> String {
             report.push_str(&format!("**Evidence:**\n```\n{evidence}\n```\n\n"));
         }
         if let Some(remediation) = &f.remediation {
-            report.push_str(&format!("**Remediation:** {}\n\n", escape_markdown(remediation)));
+            report.push_str(&format!(
+                "**Remediation:** {}\n\n",
+                escape_markdown(remediation)
+            ));
         }
 
         report.push_str("---\n\n");
