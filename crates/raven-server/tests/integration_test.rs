@@ -20,7 +20,7 @@ use tempfile::TempDir;
 /// Create an isolated FindingStore backed by a temp directory.
 fn test_store() -> (RwLock<FindingStore>, TempDir) {
     let dir = TempDir::new().unwrap();
-    let store = FindingStore::new(dir.path().to_path_buf());
+    let store = FindingStore::new(dir.path().to_path_buf()).unwrap();
     (RwLock::new(store), dir)
 }
 

@@ -227,10 +227,21 @@ pub async fn run(
             "cookies": cookies_line,
             "timestamp": chrono::Utc::now().to_rfc3339()
         });
-        let _ = std::fs::write(
-            &cookie_file,
-            serde_json::to_string_pretty(&data).unwrap_or_default(),
-        );
+        use std::os::unix::fs::OpenOptionsExt;
+        let _ = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&cookie_file)
+            .and_then(|mut f| {
+                use std::io::Write;
+                f.write_all(
+                    serde_json::to_string_pretty(&data)
+                        .unwrap_or_default()
+                        .as_bytes(),
+                )
+            });
     }
 
     Ok(CallToolResult::success(vec![Content::text(output)]))

@@ -54,6 +54,8 @@ pub async fn run(
         .unwrap_or(100)
         .clamp(1, config.safety.masscan_max_rate);
 
+    super::validate_port_spec(&req.ports)?;
+
     let args = [
         req.target,
         "-p".to_string(),

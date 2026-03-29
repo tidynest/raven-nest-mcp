@@ -778,8 +778,11 @@ validated and the tool is checked against the allowlist before launching.
 |-----------|------|----------|-------------|
 | `tool` | string | yes | Any allowlisted tool name (e.g. `nmap`, `nuclei`, `nikto`, `whatweb`) |
 | `target` | string | yes | Target IP, hostname, or URL |
-| `args` | string[] | no | Tool arguments as a list of strings |
 | `timeout_secs` | integer | no | Scan timeout in seconds (default from config, typically 600) |
+
+Each tool uses safe preset arguments (e.g. sqlmap `--batch --level 1 --risk 1`,
+nmap `-T4 -F -oX -`). Custom arguments are not accepted — use the dedicated
+tool handlers (e.g. `run_nmap`, `run_sqlmap`) for fine-grained control.
 
 #### `get_scan_status`
 Check whether a scan is Running, Completed, Failed, or Cancelled.
@@ -1062,10 +1065,11 @@ authenticated scanning.
 
 Background scans (`launch_scan`) keep output in memory by default. When a
 scan's output exceeds **1 MB** (1,048,576 bytes), it is automatically spilled
-to disk at `{output_dir}/scans/{scan_id}.txt`. This prevents memory exhaustion
-from large scan outputs (e.g. full nuclei runs) while keeping small outputs
-fast. The `get_scan_results` tool reads from disk transparently when needed,
-supporting the same pagination interface.
+to disk at `{output_dir}/scans/{scan_id}.txt` with `0o600` permissions
+(owner-only read/write). This prevents memory exhaustion from large scan
+outputs (e.g. full nuclei runs) while keeping small outputs fast. The
+`get_scan_results` tool reads from disk transparently when needed, supporting
+the same pagination interface.
 
 ### Auto-Inline Small Outputs
 

@@ -32,12 +32,10 @@ pub async fn run(
     req: JohnRequest,
     peer: Option<rmcp::Peer<rmcp::RoleServer>>,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
-    // Validate hash_file path — reject shell metacharacters
-    if req.hash_file.contains(|c: char| ";&|`$(){}".contains(c)) {
-        return Err(rmcp::ErrorData::invalid_params(
-            "hash_file contains invalid characters",
-            None,
-        ));
+    // Validate file paths — prevent reading arbitrary files
+    super::validate_file_path(&req.hash_file, &config.execution.output_dir)?;
+    if let Some(ref wordlist) = req.wordlist {
+        super::validate_file_path(wordlist, &config.execution.output_dir)?;
     }
 
     let pot_file = format!("{}/john.pot", config.execution.output_dir);

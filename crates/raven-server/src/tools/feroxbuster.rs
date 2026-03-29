@@ -46,6 +46,10 @@ pub async fn run(
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
+    if let Some(ref wordlist) = req.wordlist {
+        super::validate_file_path(wordlist, &config.execution.output_dir)?;
+    }
+
     let _ticker = peer.map(|p| {
         crate::progress::ProgressTicker::start(p, "feroxbuster".into(), req.target.clone())
     });

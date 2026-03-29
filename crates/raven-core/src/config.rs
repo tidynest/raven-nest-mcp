@@ -151,6 +151,20 @@ pub struct MetasploitConfig {
     pub require_confirmation: bool,
 }
 
+impl MetasploitConfig {
+    /// Validate MSF config — reject the default "changeme" password when enabled.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.enabled && self.password == "changeme" {
+            return Err(
+                "metasploit is enabled but password is still 'changeme' — \
+                 change it in config before starting the server"
+                    .into(),
+            );
+        }
+        Ok(())
+    }
+}
+
 impl Default for MetasploitConfig {
     fn default() -> Self {
         Self {
@@ -209,6 +223,36 @@ impl SafetyConfig {
             20_000
         }
     }
+
+    /// Validate that safety limits are within acceptable ranges.
+    ///
+    /// Called at startup to reject misconfigured or tampered configs before
+    /// any tool execution. Prevents an operator from accidentally setting
+    /// unsafe limits (e.g. sqlmap level 5 = very aggressive).
+    pub fn validate(&self) -> Result<(), String> {
+        if !(1..=5).contains(&self.sqlmap_max_level) {
+            return Err(format!(
+                "sqlmap_max_level must be 1-5, got {}",
+                self.sqlmap_max_level
+            ));
+        }
+        if !(1..=3).contains(&self.sqlmap_max_risk) {
+            return Err(format!(
+                "sqlmap_max_risk must be 1-3, got {}",
+                self.sqlmap_max_risk
+            ));
+        }
+        if self.hydra_max_tasks == 0 {
+            return Err("hydra_max_tasks must be > 0".into());
+        }
+        if self.masscan_max_rate == 0 {
+            return Err("masscan_max_rate must be > 0".into());
+        }
+        if self.expected_tool_calls == 0 {
+            return Err("expected_tool_calls must be > 0".into());
+        }
+        Ok(())
+    }
 }
 
 impl RavenConfig {
@@ -217,6 +261,13 @@ impl RavenConfig {
         let content = std::fs::read_to_string(path)
             .map_err(|e| crate::error::PentestError::ConfigError(e.to_string()))?;
         toml::from_str(&content).map_err(|e| crate::error::PentestError::ConfigError(e.to_string()))
+    }
+
+    /// Validate all configuration sections at startup.
+    pub fn validate(&self) -> Result<(), String> {
+        self.safety.validate()?;
+        self.metasploit.validate()?;
+        Ok(())
     }
 
     /// Load configuration using a fallback chain:
@@ -415,6 +466,81 @@ mod tests {
         let cfg: RavenConfig = toml::from_str(toml_str).unwrap();
         assert_eq!(cfg.network.http_proxy.as_deref(), Some("http://proxy:3128"));
         assert_eq!(cfg.network.no_proxy, vec!["localhost", "127.0.0.1"]);
+    }
+
+    #[test]
+    fn safety_validate_accepts_defaults() {
+        let cfg = RavenConfig::default();
+        assert!(cfg.safety.validate().is_ok());
+    }
+
+    #[test]
+    fn safety_validate_rejects_sqlmap_level_zero() {
+        let mut cfg = RavenConfig::default();
+        cfg.safety.sqlmap_max_level = 0;
+        assert!(cfg.safety.validate().is_err());
+    }
+
+    #[test]
+    fn safety_validate_rejects_sqlmap_level_six() {
+        let mut cfg = RavenConfig::default();
+        cfg.safety.sqlmap_max_level = 6;
+        assert!(cfg.safety.validate().is_err());
+    }
+
+    #[test]
+    fn safety_validate_rejects_sqlmap_risk_four() {
+        let mut cfg = RavenConfig::default();
+        cfg.safety.sqlmap_max_risk = 4;
+        assert!(cfg.safety.validate().is_err());
+    }
+
+    #[test]
+    fn safety_validate_rejects_zero_hydra_tasks() {
+        let mut cfg = RavenConfig::default();
+        cfg.safety.hydra_max_tasks = 0;
+        assert!(cfg.safety.validate().is_err());
+    }
+
+    #[test]
+    fn safety_validate_rejects_zero_masscan_rate() {
+        let mut cfg = RavenConfig::default();
+        cfg.safety.masscan_max_rate = 0;
+        assert!(cfg.safety.validate().is_err());
+    }
+
+    #[test]
+    fn msf_validate_rejects_changeme_when_enabled() {
+        let cfg = MetasploitConfig {
+            enabled: true,
+            password: "changeme".into(),
+            ..MetasploitConfig::default()
+        };
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn msf_validate_accepts_changeme_when_disabled() {
+        let cfg = MetasploitConfig::default(); // enabled: false, password: "changeme"
+        assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn msf_validate_accepts_changed_password() {
+        let cfg = MetasploitConfig {
+            enabled: true,
+            password: "strong_password_123".into(),
+            ..MetasploitConfig::default()
+        };
+        assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn raven_config_validate_delegates_to_sections() {
+        let mut cfg = RavenConfig::default();
+        assert!(cfg.validate().is_ok());
+        cfg.safety.sqlmap_max_level = 99;
+        assert!(cfg.validate().is_err());
     }
 
     #[test]

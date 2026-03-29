@@ -71,6 +71,7 @@ pub async fn run(
     args.extend_from_slice(&["-oX".into(), "-".into()]);
 
     if let Some(ports) = req.ports {
+        super::validate_port_spec(&ports)?;
         args.push("-p".into());
         args.push(ports.clone());
     }

@@ -124,7 +124,34 @@ impl ScanManager {
                 target.into(),
             ],
             "nuclei" => vec!["-u".into(), target.into(), "-silent".into()],
-            "nikto" => vec!["-h".into(), target.into()],
+            "nikto" => vec!["-h".into(), target.into(), "-nocheck".into()],
+            "whatweb" => vec!["-a".into(), "1".into(), "--color=never".into(), target.into()],
+            "testssl.sh" => vec!["--quiet".into(), "--sneaky".into(), target.into()],
+            "feroxbuster" => vec![
+                "-u".into(), target.into(),
+                "-w".into(), "/usr/share/seclists/Discovery/Web-Content/raft-medium-directories.txt".into(),
+                "--no-state".into(), "-q".into(),
+            ],
+            "sqlmap" => vec![
+                "-u".into(), target.into(),
+                "--batch".into(), "--level".into(), "1".into(), "--risk".into(), "1".into(),
+            ],
+            "masscan" => vec![
+                target.into(), "-p".into(), "1-1000".into(),
+                "--rate".into(), "100".into(), "--open".into(),
+            ],
+            "subfinder" => vec!["-d".into(), target.into(), "-silent".into(), "-oJ".into()],
+            "wpscan" => vec![
+                "--url".into(), target.into(),
+                "--format".into(), "json".into(), "--no-banner".into(),
+                "-e".into(), "vp,vt,u".into(),
+            ],
+            "enum4linux-ng" => vec!["-A".into(), target.into()],
+            "dalfox" => vec!["url".into(), target.into(), "--silence".into(), "--format".into(), "json".into()],
+            "dnsrecon" => vec!["-d".into(), target.into()],
+            // Tools that require specific files (hydra needs wordlists, john needs
+            // hash file, ffuf needs FUZZ URL) — no safe default possible.
+            // The executor will report a usage error, which is safe.
             _ => vec![target.into()],
         }
     }
@@ -137,7 +164,6 @@ impl ScanManager {
     pub fn launch(
         &self,
         tool: &str,
-        args: Vec<String>,
         target: &str,
         timeout_secs: Option<u64>,
     ) -> Result<String, PentestError> {
@@ -164,11 +190,7 @@ impl ScanManager {
         let scans_for_task = self.scans.clone();
         let scan_id = id.clone();
 
-        let arg_strings = if args.is_empty() {
-            Self::default_args(tool, target)
-        } else {
-            args
-        };
+        let arg_strings = Self::default_args(tool, target);
 
         // Spawn the scan as a background tokio task
         let handle = tokio::spawn(async move {
@@ -202,7 +224,20 @@ impl ScanManager {
                                 std::path::Path::new(&config.execution.output_dir).join("scans");
                             let _ = std::fs::create_dir_all(&scan_dir);
                             let path = scan_dir.join(format!("{scan_id}.txt"));
-                            match std::fs::write(&path, &output_str) {
+                            let write_result = {
+                                use std::os::unix::fs::OpenOptionsExt;
+                                std::fs::OpenOptions::new()
+                                    .write(true)
+                                    .create(true)
+                                    .truncate(true)
+                                    .mode(0o600)
+                                    .open(&path)
+                                    .and_then(|mut f| {
+                                        use std::io::Write;
+                                        f.write_all(output_str.as_bytes())
+                                    })
+                            };
+                            match write_result {
                                 Ok(()) => {
                                     tracing::info!(
                                         "scan {scan_id}: spilled {}B to disk",
@@ -416,5 +451,66 @@ mod tests {
             output_chars: None,
         };
         assert!(info.output_chars.is_none());
+    }
+
+    #[test]
+    fn default_args_whatweb_builds_stealthy_scan() {
+        let args = ScanManager::default_args("whatweb", "http://example.com");
+        assert!(args.contains(&"-a".to_string()));
+        assert!(args.contains(&"1".to_string()));
+        assert!(args.contains(&"http://example.com".to_string()));
+    }
+
+    #[test]
+    fn default_args_sqlmap_uses_safe_levels() {
+        let args = ScanManager::default_args("sqlmap", "http://example.com/page?id=1");
+        assert!(args.contains(&"--batch".to_string()));
+        assert!(args.contains(&"--level".to_string()));
+        assert!(args.contains(&"1".to_string()));
+        assert!(args.contains(&"--risk".to_string()));
+    }
+
+    #[test]
+    fn default_args_masscan_caps_rate() {
+        let args = ScanManager::default_args("masscan", "10.0.0.0/24");
+        assert!(args.contains(&"--rate".to_string()));
+        assert!(args.contains(&"100".to_string()));
+        assert!(args.contains(&"--open".to_string()));
+    }
+
+    #[test]
+    fn default_args_subfinder_uses_silent() {
+        let args = ScanManager::default_args("subfinder", "example.com");
+        assert!(args.contains(&"-d".to_string()));
+        assert!(args.contains(&"-silent".to_string()));
+    }
+
+    #[test]
+    fn default_args_dnsrecon_targets_domain() {
+        let args = ScanManager::default_args("dnsrecon", "example.com");
+        assert!(args.contains(&"-d".to_string()));
+        assert!(args.contains(&"example.com".to_string()));
+    }
+
+    #[test]
+    fn default_args_wpscan_uses_json_format() {
+        let args = ScanManager::default_args("wpscan", "http://example.com");
+        assert!(args.contains(&"--format".to_string()));
+        assert!(args.contains(&"json".to_string()));
+    }
+
+    #[test]
+    fn default_args_dalfox_uses_json_format() {
+        let args = ScanManager::default_args("dalfox", "http://example.com/page?q=test");
+        assert!(args.contains(&"url".to_string()));
+        assert!(args.contains(&"--format".to_string()));
+        assert!(args.contains(&"json".to_string()));
+    }
+
+    #[test]
+    fn default_args_enum4linux_targets_host() {
+        let args = ScanManager::default_args("enum4linux-ng", "10.0.0.1");
+        assert!(args.contains(&"-A".to_string()));
+        assert!(args.contains(&"10.0.0.1".to_string()));
     }
 }
