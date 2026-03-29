@@ -155,11 +155,9 @@ impl MetasploitConfig {
     /// Validate MSF config — reject the default "changeme" password when enabled.
     pub fn validate(&self) -> Result<(), String> {
         if self.enabled && self.password == "changeme" {
-            return Err(
-                "metasploit is enabled but password is still 'changeme' — \
+            return Err("metasploit is enabled but password is still 'changeme' — \
                  change it in config before starting the server"
-                    .into(),
-            );
+                .into());
         }
         Ok(())
     }
