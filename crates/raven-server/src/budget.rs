@@ -200,6 +200,37 @@ impl SessionBudget {
         ))
     }
 
+    /// Current output mode based on budget consumption.
+    pub fn current_mode(&self) -> OutputMode {
+        if !self.enabled {
+            return OutputMode::Full;
+        }
+        let remaining = self.remaining();
+        let consumed_pct = if self.usable_budget > 0 {
+            ((self.usable_budget.saturating_sub(remaining)) * 100) / self.usable_budget
+        } else {
+            100
+        };
+        if remaining < 1000 || consumed_pct > 70 {
+            OutputMode::Minimal
+        } else if consumed_pct > 40 {
+            OutputMode::Compact
+        } else {
+            OutputMode::Full
+        }
+    }
+
+    /// Scale a parser's result cap based on current budget mode.
+    ///
+    /// Full = 100%, Compact = 50%, Minimal = 25%. Never returns less than 3.
+    pub fn scale_cap(&self, full: usize) -> usize {
+        match self.current_mode() {
+            OutputMode::Full => full,
+            OutputMode::Compact => (full / 2).max(3),
+            OutputMode::Minimal => (full / 4).max(3),
+        }
+    }
+
     /// Whether the budget is exhausted (< 1000 chars remaining).
     pub fn is_exhausted(&self) -> bool {
         self.enabled && self.remaining() < 1000
@@ -344,6 +375,43 @@ mod tests {
         assert!(truncated.contains("truncated"));
         // Head preserved
         assert!(truncated.starts_with("000 001 002"));
+    }
+
+    #[test]
+    fn scale_cap_full_mode() {
+        let budget = SessionBudget::new(65_536, 34, 10);
+        assert_eq!(budget.scale_cap(25), 25);
+        assert_eq!(budget.scale_cap(50), 50);
+        assert_eq!(budget.current_mode(), OutputMode::Full);
+    }
+
+    #[test]
+    fn scale_cap_compact_mode() {
+        let budget = SessionBudget::new(49_000, 34, 10);
+        let usable = budget.usable_budget;
+        budget.record((usable * 45) / 100);
+        assert_eq!(budget.current_mode(), OutputMode::Compact);
+        assert_eq!(budget.scale_cap(25), 12);
+        assert_eq!(budget.scale_cap(50), 25);
+        assert_eq!(budget.scale_cap(4), 3); // min 3
+    }
+
+    #[test]
+    fn scale_cap_minimal_mode() {
+        let budget = SessionBudget::new(49_000, 34, 10);
+        let usable = budget.usable_budget;
+        budget.record((usable * 75) / 100);
+        assert_eq!(budget.current_mode(), OutputMode::Minimal);
+        assert_eq!(budget.scale_cap(25), 6);
+        assert_eq!(budget.scale_cap(50), 12);
+        assert_eq!(budget.scale_cap(8), 3); // min 3
+    }
+
+    #[test]
+    fn scale_cap_disabled_returns_full() {
+        let budget = SessionBudget::new(0, 34, 10);
+        assert_eq!(budget.scale_cap(25), 25);
+        assert_eq!(budget.current_mode(), OutputMode::Full);
     }
 
     #[test]

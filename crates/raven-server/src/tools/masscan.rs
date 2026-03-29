@@ -33,6 +33,7 @@ pub struct MasscanRequest {
 pub async fn run(
     config: &RavenConfig,
     req: MasscanRequest,
+    result_limit: usize,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
@@ -68,7 +69,8 @@ pub async fn run(
         .map_err(crate::error::to_mcp)?;
 
     let output = if result.success {
-        let mut out = parse_masscan_output(&result.stdout).unwrap_or_else(|| result.stdout.clone());
+        let mut out = parse_masscan_output(&result.stdout, result_limit)
+            .unwrap_or_else(|| result.stdout.clone());
         if let Some(ref warning) = result.warning {
             out.push_str(&format!("\n\n⚠ {warning}"));
         }
@@ -84,7 +86,7 @@ pub async fn run(
 /// Result lines start with "Discovered open port" and contain the
 /// port/protocol and target IP. Banner, timing, and status lines
 /// are discarded.
-pub fn parse_masscan_output(raw: &str) -> Option<String> {
+pub fn parse_masscan_output(raw: &str, max_results: usize) -> Option<String> {
     let ports: Vec<&str> = raw
         .lines()
         .map(str::trim)
@@ -95,7 +97,7 @@ pub fn parse_masscan_output(raw: &str) -> Option<String> {
         None
     } else {
         let total = ports.len();
-        let cap = 50;
+        let cap = max_results;
         let shown: Vec<_> = ports.into_iter().take(cap).collect();
         let extra = if total > cap {
             format!("\n+{} more port(s)", total - cap)
@@ -121,7 +123,7 @@ Scanning 1 hosts [100 ports/host]
 Discovered open port 22/tcp on 10.0.0.1
 Discovered open port 80/tcp on 10.0.0.1
 Discovered open port 443/tcp on 10.0.0.2"#;
-        let result = parse_masscan_output(raw).unwrap();
+        let result = parse_masscan_output(raw, 50).unwrap();
         assert!(result.contains("3 open port(s) found:"));
         assert!(result.contains("22/tcp on 10.0.0.1"));
         assert!(result.contains("80/tcp on 10.0.0.1"));
@@ -133,11 +135,11 @@ Discovered open port 443/tcp on 10.0.0.2"#;
     #[test]
     fn parse_masscan_no_ports_returns_none() {
         let raw = "Starting masscan 1.3.2\nScanning 1 hosts [100 ports/host]\n";
-        assert!(parse_masscan_output(raw).is_none());
+        assert!(parse_masscan_output(raw, 50).is_none());
     }
 
     #[test]
     fn parse_masscan_empty_returns_none() {
-        assert!(parse_masscan_output("").is_none());
+        assert!(parse_masscan_output("", 50).is_none());
     }
 }

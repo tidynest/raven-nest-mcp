@@ -27,6 +27,7 @@ pub struct DalfoxRequest {
 pub async fn run(
     config: &RavenConfig,
     req: DalfoxRequest,
+    result_limit: usize,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
@@ -51,7 +52,8 @@ pub async fn run(
         .map_err(crate::error::to_mcp)?;
 
     let output = if result.success {
-        let mut out = parse_dalfox_json(&result.stdout).unwrap_or_else(|| result.stdout.clone());
+        let mut out = parse_dalfox_json(&result.stdout, result_limit)
+            .unwrap_or_else(|| result.stdout.clone());
         if let Some(ref warning) = result.warning {
             out.push_str(&format!("\n\n⚠ {warning}"));
         }
@@ -66,8 +68,7 @@ pub async fn run(
 ///
 /// Each JSON object contains `{"type":"...","inject_type":"...","poc_type":"...","data":"...","param":"...","payload":"..."}`.
 /// Extracts type, param, and payload; caps at 20 results.
-fn parse_dalfox_json(raw: &str) -> Option<String> {
-    const MAX_RESULTS: usize = 20;
+fn parse_dalfox_json(raw: &str, max_results: usize) -> Option<String> {
     let mut entries = Vec::new();
 
     for line in raw.lines() {
@@ -106,12 +107,12 @@ fn parse_dalfox_json(raw: &str) -> Option<String> {
     }
 
     let total = entries.len();
-    let truncated = total > MAX_RESULTS;
-    entries.truncate(MAX_RESULTS);
+    let truncated = total > max_results;
+    entries.truncate(max_results);
 
     let mut out = format!("{total} XSS finding(s):\n{}", entries.join("\n"));
     if truncated {
-        out.push_str(&format!("\n+{} more", total - MAX_RESULTS));
+        out.push_str(&format!("\n+{} more", total - max_results));
     }
     Some(out)
 }
@@ -127,7 +128,7 @@ mod tests {
             "\n",
             r#"{"type":"V","inject_type":"inATTR","poc_type":"plain","data":"http://example.com?search=test","param":"search","payload":"\" onmouseover=alert(1)"}"#,
         );
-        let result = parse_dalfox_json(json).unwrap();
+        let result = parse_dalfox_json(json, 20).unwrap();
         assert!(result.starts_with("2 XSS finding(s):"));
         assert!(result.contains("param=q"));
         assert!(result.contains("<script>alert(1)</script>"));
@@ -136,8 +137,8 @@ mod tests {
 
     #[test]
     fn parse_dalfox_empty_returns_none() {
-        assert!(parse_dalfox_json("").is_none());
-        assert!(parse_dalfox_json("no json here").is_none());
+        assert!(parse_dalfox_json("", 20).is_none());
+        assert!(parse_dalfox_json("no json here", 20).is_none());
     }
 
     #[test]
@@ -150,7 +151,7 @@ mod tests {
             })
             .collect();
         let json = lines.join("\n");
-        let result = parse_dalfox_json(&json).unwrap();
+        let result = parse_dalfox_json(&json, 20).unwrap();
         assert!(result.starts_with("30 XSS finding(s):"));
         assert!(result.contains("+10 more"));
     }

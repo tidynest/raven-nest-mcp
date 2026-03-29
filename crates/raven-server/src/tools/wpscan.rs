@@ -33,6 +33,7 @@ pub async fn run(
     config: &RavenConfig,
     req: WpscanRequest,
     peer: Option<Peer<RoleServer>>,
+    result_limit: usize,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
@@ -67,7 +68,8 @@ pub async fn run(
         .map_err(crate::error::to_mcp)?;
 
     let output = if result.success {
-        let mut out = parse_wpscan_json(&result.stdout).unwrap_or_else(|| result.stdout.clone());
+        let mut out = parse_wpscan_json(&result.stdout, result_limit)
+            .unwrap_or_else(|| result.stdout.clone());
         if let Some(ref warning) = result.warning {
             out.push_str(&format!("\n\n⚠ {warning}"));
         }
@@ -78,16 +80,13 @@ pub async fn run(
     Ok(CallToolResult::success(vec![Content::text(output)]))
 }
 
-/// Maximum number of plugins to display before truncation.
-const MAX_PLUGINS: usize = 20;
-/// Maximum number of users to display before truncation.
-const MAX_USERS: usize = 10;
-
 /// Parse wpscan JSON output into a compact structured summary.
 ///
 /// Extracts WordPress version/status, plugin/theme vulnerability counts,
 /// and enumerated users. Returns `None` if JSON parsing fails entirely.
-pub fn parse_wpscan_json(raw: &str) -> Option<String> {
+pub fn parse_wpscan_json(raw: &str, max_results: usize) -> Option<String> {
+    let max_plugins = max_results;
+    let max_users = (max_results / 2).max(3);
     let v: serde_json::Value = serde_json::from_str(raw.trim()).ok()?;
 
     let mut out = String::new();
@@ -126,8 +125,8 @@ pub fn parse_wpscan_json(raw: &str) -> Option<String> {
     {
         out.push_str("Plugins:\n");
         for (i, (name, info)) in plugins.iter().enumerate() {
-            if i >= MAX_PLUGINS {
-                out.push_str(&format!("  ... and {} more\n", plugins.len() - MAX_PLUGINS));
+            if i >= max_plugins {
+                out.push_str(&format!("  ... and {} more\n", plugins.len() - max_plugins));
                 break;
             }
             let version = info
@@ -199,12 +198,12 @@ pub fn parse_wpscan_json(raw: &str) -> Option<String> {
     {
         let names: Vec<&str> = users
             .iter()
-            .take(MAX_USERS)
+            .take(max_users)
             .filter_map(|u| u.get("slug").and_then(|s| s.as_str()))
             .collect();
         out.push_str(&format!("Users: {}", names.join(", ")));
-        if users.len() > MAX_USERS {
-            out.push_str(&format!(" ... and {} more", users.len() - MAX_USERS));
+        if users.len() > max_users {
+            out.push_str(&format!(" ... and {} more", users.len() - max_users));
         }
         out.push('\n');
     }
@@ -261,7 +260,7 @@ mod tests {
             ]
         }"#;
 
-        let result = parse_wpscan_json(json).unwrap();
+        let result = parse_wpscan_json(json, 20).unwrap();
         assert!(result.contains("WordPress 5.9 (outdated)"));
         assert!(result.contains("3 vulnerabilities"));
         assert!(result.contains("Interesting findings: 1"));
@@ -285,16 +284,16 @@ mod tests {
             }
         }"#;
 
-        let result = parse_wpscan_json(json).unwrap();
+        let result = parse_wpscan_json(json, 20).unwrap();
         assert!(result.contains("WordPress 6.4 (latest)"));
         assert!(!result.contains("vulnerabilit"));
     }
 
     #[test]
     fn parse_wpscan_empty_returns_none() {
-        assert!(parse_wpscan_json("").is_none());
-        assert!(parse_wpscan_json("not json at all").is_none());
-        assert!(parse_wpscan_json("{}").is_none());
+        assert!(parse_wpscan_json("", 20).is_none());
+        assert!(parse_wpscan_json("not json at all", 20).is_none());
+        assert!(parse_wpscan_json("{}", 20).is_none());
     }
 
     #[test]
@@ -343,7 +342,7 @@ mod tests {
             "users": users
         });
 
-        let result = parse_wpscan_json(&json.to_string()).unwrap();
+        let result = parse_wpscan_json(&json.to_string(), 20).unwrap();
         assert!(result.contains("... and 5 more"));
         assert!(result.contains("... and 5 more"));
     }

@@ -29,6 +29,7 @@ pub async fn run(
     config: &RavenConfig,
     req: DnsreconRequest,
     peer: Option<rmcp::Peer<rmcp::RoleServer>>,
+    result_limit: usize,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
@@ -63,7 +64,8 @@ pub async fn run(
         .map_err(crate::error::to_mcp)?;
 
     let output = if result.success {
-        let mut out = parse_dnsrecon_json(&result.stdout).unwrap_or_else(|| result.stdout.clone());
+        let mut out = parse_dnsrecon_json(&result.stdout, result_limit)
+            .unwrap_or_else(|| result.stdout.clone());
         if let Some(ref warning) = result.warning {
             out.push_str(&format!("\n\n⚠ {warning}"));
         }
@@ -78,9 +80,7 @@ pub async fn run(
 ///
 /// dnsrecon outputs a JSON array of record objects with `type`, `name`, `address`
 /// (or `target` for SRV/MX). Extracts `TYPE NAME VALUE`, caps at 30.
-fn parse_dnsrecon_json(raw: &str) -> Option<String> {
-    const MAX_RESULTS: usize = 30;
-
+fn parse_dnsrecon_json(raw: &str, max_results: usize) -> Option<String> {
     // dnsrecon may emit text before/after JSON — find the array.
     // Use "[{" to avoid matching bracket chars in non-JSON text like "[*]".
     let trimmed = raw.trim();
@@ -112,12 +112,12 @@ fn parse_dnsrecon_json(raw: &str) -> Option<String> {
     }
 
     let total = entries.len();
-    let truncated = total > MAX_RESULTS;
-    entries.truncate(MAX_RESULTS);
+    let truncated = total > max_results;
+    entries.truncate(max_results);
 
     let mut out = format!("{total} DNS record(s):\n{}", entries.join("\n"));
     if truncated {
-        out.push_str(&format!("\n+{} more", total - MAX_RESULTS));
+        out.push_str(&format!("\n+{} more", total - max_results));
     }
     Some(out)
 }
@@ -134,7 +134,7 @@ mod tests {
             {"type":"NS","name":"example.com","target":"ns1.example.com","address":"198.51.100.1"},
             {"type":"info","name":"dnsrecon version","address":""}
         ]"#;
-        let result = parse_dnsrecon_json(json).unwrap();
+        let result = parse_dnsrecon_json(json, 30).unwrap();
         assert!(result.starts_with("3 DNS record(s):"));
         assert!(result.contains("A\texample.com\t93.184.216.34"));
         assert!(result.contains("MX\texample.com\tmail.example.com"));
@@ -145,15 +145,15 @@ mod tests {
 
     #[test]
     fn parse_dnsrecon_empty_returns_none() {
-        assert!(parse_dnsrecon_json("").is_none());
-        assert!(parse_dnsrecon_json("[]").is_none());
-        assert!(parse_dnsrecon_json("no json").is_none());
+        assert!(parse_dnsrecon_json("", 30).is_none());
+        assert!(parse_dnsrecon_json("[]", 30).is_none());
+        assert!(parse_dnsrecon_json("no json", 30).is_none());
     }
 
     #[test]
     fn parse_dnsrecon_handles_text_prefix() {
         let raw = "[*] Performing General Enumeration...\n[{\"type\":\"A\",\"name\":\"test.com\",\"address\":\"1.2.3.4\"}]";
-        let result = parse_dnsrecon_json(raw).unwrap();
+        let result = parse_dnsrecon_json(raw, 30).unwrap();
         assert!(result.contains("A\ttest.com\t1.2.3.4"));
     }
 
@@ -165,7 +165,7 @@ mod tests {
             })
             .collect();
         let json = format!("[{}]", records.join(","));
-        let result = parse_dnsrecon_json(&json).unwrap();
+        let result = parse_dnsrecon_json(&json, 30).unwrap();
         assert!(result.starts_with("45 DNS record(s):"));
         assert!(result.contains("+15 more"));
     }

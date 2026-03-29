@@ -32,6 +32,7 @@ pub async fn run(
     config: &RavenConfig,
     req: NucleiRequest,
     peer: Option<Peer<RoleServer>>,
+    result_limit: usize,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
@@ -61,7 +62,8 @@ pub async fn run(
         .map_err(crate::error::to_mcp)?;
 
     let output = if result.success {
-        let mut out = parse_nuclei_jsonl(&result.stdout).unwrap_or_else(|| result.stdout.clone());
+        let mut out = parse_nuclei_jsonl(&result.stdout, result_limit)
+            .unwrap_or_else(|| result.stdout.clone());
         if let Some(ref warning) = result.warning {
             out.push_str(&format!("\n\n⚠ {warning}"));
         }
@@ -76,7 +78,7 @@ pub async fn run(
 ///
 /// Each JSONL line becomes: `[SEVERITY] template-id — name @ matched-url (type)`
 /// Reduces raw JSON noise to an actionable table of findings.
-pub fn parse_nuclei_jsonl(raw: &str) -> Option<String> {
+pub fn parse_nuclei_jsonl(raw: &str, max_results: usize) -> Option<String> {
     let mut findings = Vec::new();
 
     for line in raw.lines() {
@@ -127,7 +129,7 @@ pub fn parse_nuclei_jsonl(raw: &str) -> Option<String> {
         None
     } else {
         let total = findings.len();
-        let cap = 25;
+        let cap = max_results;
         let shown: Vec<_> = findings.into_iter().take(cap).collect();
         let extra = if total > cap {
             format!("\n+{} more finding(s)", total - cap)
@@ -146,7 +148,7 @@ mod tests {
     fn parse_nuclei_extracts_findings() {
         let jsonl = r#"{"template-id":"tech-detect","info":{"name":"Wappalyzer","severity":"info"},"type":"http","matched-at":"http://example.com/"}
 {"template-id":"cve-2021-44228","info":{"name":"Log4Shell","severity":"critical"},"type":"http","matched-at":"http://example.com/api"}"#;
-        let result = parse_nuclei_jsonl(jsonl).unwrap();
+        let result = parse_nuclei_jsonl(jsonl, 25).unwrap();
         assert!(result.starts_with("2 finding(s):"));
         assert!(result.contains("[info] tech-detect"));
         assert!(result.contains("[critical] cve-2021-44228"));
@@ -157,13 +159,13 @@ mod tests {
     #[test]
     fn parse_nuclei_skips_non_json_lines() {
         let raw = "some warning text\n{\"template-id\":\"test\",\"info\":{\"name\":\"T\",\"severity\":\"low\"},\"type\":\"http\",\"matched-at\":\"http://x\"}\nmore text";
-        let result = parse_nuclei_jsonl(raw).unwrap();
+        let result = parse_nuclei_jsonl(raw, 25).unwrap();
         assert!(result.starts_with("1 finding(s):"));
     }
 
     #[test]
     fn parse_nuclei_empty_returns_none() {
-        assert!(parse_nuclei_jsonl("").is_none());
-        assert!(parse_nuclei_jsonl("no json here").is_none());
+        assert!(parse_nuclei_jsonl("", 25).is_none());
+        assert!(parse_nuclei_jsonl("no json here", 25).is_none());
     }
 }

@@ -45,6 +45,7 @@ pub struct FfufRequest {
 pub async fn run(
     config: &RavenConfig,
     req: FfufRequest,
+    result_limit: usize,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     // Validate the base URL (substitute FUZZ keyword for validation only)
     let validation_url = req.url.replace("FUZZ", "test");
@@ -105,7 +106,8 @@ pub async fn run(
         .map_err(crate::error::to_mcp)?;
 
     let output = if result.success {
-        let mut out = parse_ffuf_output(&result.stdout).unwrap_or_else(|| result.stdout.clone());
+        let mut out = parse_ffuf_output(&result.stdout, result_limit)
+            .unwrap_or_else(|| result.stdout.clone());
         if let Some(ref warning) = result.warning {
             out.push_str(&format!("\n\n⚠ {warning}"));
         }
@@ -121,7 +123,7 @@ pub async fn run(
 /// Result lines contain `[Status: NNN,` with the matched word, HTTP status,
 /// response size, and word/line counts. The ASCII banner, config header,
 /// and progress lines are discarded.
-pub fn parse_ffuf_output(raw: &str) -> Option<String> {
+pub fn parse_ffuf_output(raw: &str, max_results: usize) -> Option<String> {
     // Strip ANSI escape codes (ffuf emits cursor control sequences like ESC[2K)
     let cleaned = super::strip_ansi(raw);
     let results: Vec<String> = cleaned
@@ -135,7 +137,7 @@ pub fn parse_ffuf_output(raw: &str) -> Option<String> {
         None
     } else {
         let total = results.len();
-        let cap = 40;
+        let cap = max_results;
         let shown: Vec<_> = results.into_iter().take(cap).collect();
         let extra = if total > cap {
             format!("\n+{} more result(s)", total - cap)
@@ -174,7 +176,7 @@ admin                   [Status: 301, Size: 0, Words: 1, Lines: 1, Duration: 23m
 index.html              [Status: 200, Size: 1256, Words: 156, Lines: 42, Duration: 15ms]
 server-status           [Status: 403, Size: 277, Words: 20, Lines: 10, Duration: 12ms]
 :: Progress: [63087/63087] :: Job [1/1] :: 500 req/sec :: Duration: [0:02:06] :: Errors: 0 ::"#;
-        let result = parse_ffuf_output(raw).unwrap();
+        let result = parse_ffuf_output(raw, 40).unwrap();
         assert!(result.contains("3 result(s) found:"));
         assert!(result.contains("admin"));
         assert!(result.contains("[Status: 301,"));
@@ -191,11 +193,11 @@ server-status           [Status: 403, Size: 277, Words: 20, Lines: 10, Duration:
  :: Method           : GET
  :: URL              : http://10.0.0.1/FUZZ
 :: Progress: [63087/63087] :: Job [1/1] :: 500 req/sec :: Duration: [0:02:06] :: Errors: 0 ::"#;
-        assert!(parse_ffuf_output(raw).is_none());
+        assert!(parse_ffuf_output(raw, 40).is_none());
     }
 
     #[test]
     fn parse_ffuf_empty_returns_none() {
-        assert!(parse_ffuf_output("").is_none());
+        assert!(parse_ffuf_output("", 40).is_none());
     }
 }

@@ -31,6 +31,7 @@ pub async fn run(
     config: &RavenConfig,
     req: Enum4linuxRequest,
     peer: Option<Peer<RoleServer>>,
+    result_limit: usize,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
@@ -55,8 +56,8 @@ pub async fn run(
         .map_err(crate::error::to_mcp)?;
 
     let output = if result.success {
-        let mut out =
-            parse_enum4linux_output(&result.stdout).unwrap_or_else(|| result.stdout.clone());
+        let mut out = parse_enum4linux_output(&result.stdout, result_limit)
+            .unwrap_or_else(|| result.stdout.clone());
         if let Some(ref warning) = result.warning {
             out.push_str(&format!("\n\n⚠ {warning}"));
         }
@@ -78,18 +79,15 @@ enum Section {
     Other,
 }
 
-/// Maximum items kept per section to avoid oversized responses.
-const MAX_ITEMS_PER_SECTION: usize = 20;
-
 /// Parse enum4linux-ng text output into a compact per-section summary.
 ///
 /// Sections are delimited by `====` banner lines whose inner text determines
 /// the category (OS, Shares, Users, Groups, Password Policy). Within each
 /// section, lines starting with `[+]` (findings) and `[*]` (info) are kept,
-/// capped at [`MAX_ITEMS_PER_SECTION`] per section.
+/// capped at `max_items` per section.
 ///
 /// Returns `None` if the output contains no actionable `[+]` or `[*]` lines.
-pub fn parse_enum4linux_output(raw: &str) -> Option<String> {
+pub fn parse_enum4linux_output(raw: &str, max_items: usize) -> Option<String> {
     // Strip ANSI color codes (enum4linux-ng emits colored output by default)
     let raw = &super::strip_ansi(raw);
     let mut current_section = Section::Other;
@@ -147,7 +145,7 @@ pub fn parse_enum4linux_output(raw: &str) -> Option<String> {
             Section::PasswordPolicy => &mut policy_items,
             Section::Other => &mut other_items,
         };
-        if bucket.len() < MAX_ITEMS_PER_SECTION {
+        if bucket.len() < max_items {
             bucket.push(content.to_string());
         }
     }
@@ -225,7 +223,7 @@ mod tests {
  [+] min length: 7
  [+] lockout threshold: 0
 "#;
-        let result = parse_enum4linux_output(raw).unwrap();
+        let result = parse_enum4linux_output(raw, 20).unwrap();
         assert!(result.contains("OS: "));
         assert!(result.contains("Windows 10.0 Build 19041"));
         assert!(result.contains("Shares: "));
@@ -241,9 +239,9 @@ mod tests {
 
     #[test]
     fn parse_empty_returns_none() {
-        assert!(parse_enum4linux_output("").is_none());
-        assert!(parse_enum4linux_output("some random text\nno findings").is_none());
-        assert!(parse_enum4linux_output("======\n|  OS  |\n======\n").is_none());
+        assert!(parse_enum4linux_output("", 20).is_none());
+        assert!(parse_enum4linux_output("some random text\nno findings", 20).is_none());
+        assert!(parse_enum4linux_output("======\n|  OS  |\n======\n", 20).is_none());
     }
 
     #[test]
@@ -255,7 +253,7 @@ mod tests {
  [*] Server allows unauthenticated sessions
  [+] OS: Linux 5.15
 "#;
-        let result = parse_enum4linux_output(raw).unwrap();
+        let result = parse_enum4linux_output(raw, 20).unwrap();
         assert!(result.contains("Server allows unauthenticated sessions"));
         assert!(result.contains("Linux 5.15"));
     }
@@ -268,7 +266,7 @@ mod tests {
         for i in 0..30 {
             raw.push_str(&format!(" [+] user{i}\n"));
         }
-        let result = parse_enum4linux_output(&raw).unwrap();
+        let result = parse_enum4linux_output(&raw, 20).unwrap();
         // Only first 20 should appear
         assert!(result.contains("user0"));
         assert!(result.contains("user19"));
