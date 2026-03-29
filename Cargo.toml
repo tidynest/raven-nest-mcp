@@ -24,6 +24,10 @@ toml = "0.9.8"
 # HTTP client
 reqwest = { version = "0.13.2", features = ["json", "cookies"] }
 
+# MessagePack (for Metasploit RPC)
+rmp-serde = "1.3"
+rmpv = { version = "1.3", features = ["with-serde"] }
+
 # Error handling
 thiserror = "2.0.18"
 anyhow = "1.0.102"

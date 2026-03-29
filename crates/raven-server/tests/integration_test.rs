@@ -36,6 +36,7 @@ fn save_req(title: &str, severity: &str) -> SaveFindingRequest {
         remediation: None,
         cvss: None,
         cve: None,
+        owasp_category: None,
     }
 }
 

@@ -19,6 +19,8 @@ pub fn to_mcp(err: PentestError) -> rmcp::ErrorData {
     let (code, msg) = match &err {
         PentestError::InvalidTarget(_) => (ErrorCode::INVALID_PARAMS, err.to_string()),
         PentestError::ToolNotAllowed(_) => (ErrorCode::INVALID_REQUEST, err.to_string()),
+        PentestError::MsfNotRunning(_) => (ErrorCode::INTERNAL_ERROR, err.to_string()),
+        PentestError::MsfRpcError(_) => (ErrorCode::INTERNAL_ERROR, err.to_string()),
         PentestError::CommandTimeout(_)
         | PentestError::CommandFailed(_)
         | PentestError::ConfigError(_)

@@ -25,6 +25,37 @@ pub(crate) fn is_localhost(target: &str) -> bool {
         || host_part.starts_with("[::1]")
 }
 
+/// Strip ANSI escape codes from tool output.
+///
+/// Many CLI tools emit terminal control codes (colors, cursor movement) even
+/// in non-interactive mode. These waste context tokens and confuse parsers.
+pub(crate) fn strip_ansi(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut chars = s.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\x1b' {
+            // CSI sequence: ESC [ ... final_byte
+            if chars.peek() == Some(&'[') {
+                chars.next();
+                while let Some(&c) = chars.peek() {
+                    chars.next();
+                    if c.is_ascii_alphabetic() || c == '~' {
+                        break;
+                    }
+                }
+            } else if matches!(chars.peek(), Some(&'(' | &')' | &'*' | &'+')) {
+                chars.next();
+                chars.next();
+            } else {
+                chars.next();
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::is_localhost;
@@ -48,17 +79,29 @@ mod tests {
 
 pub mod lenient;
 
+pub mod dalfox;
+pub mod dnsrecon;
+pub mod enum4linux_ng;
 pub mod feroxbuster;
 pub mod ffuf;
 pub mod findings;
 pub mod http;
 pub mod hydra;
+pub mod john;
 pub mod masscan;
+pub mod msf_auxiliary;
+pub mod msf_exploit;
+pub mod msf_module_info;
+pub mod msf_post;
+pub mod msf_search;
+pub mod msf_sessions;
 pub mod nikto;
 pub mod nmap;
 pub mod nuclei;
 pub mod ping;
 pub mod scans;
 pub mod sqlmap;
+pub mod subfinder;
 pub mod testssl;
 pub mod whatweb;
+pub mod wpscan;

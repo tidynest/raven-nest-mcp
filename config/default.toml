@@ -3,6 +3,8 @@ allowed_tools = [
     "ping", "nmap", "nuclei", "nikto", "whatweb",
     "testssl.sh", "feroxbuster", "ffuf",
     "sqlmap", "hydra", "masscan",
+    "subfinder", "wpscan", "enum4linux-ng",
+    "dalfox", "dnsrecon", "john",
 ]
 max_output_chars = 50000
 
@@ -10,6 +12,10 @@ max_output_chars = 50000
 # and HTTP body cap to fit ~4 tool outputs per session.
 # Examples: 32768 (Qwen 8B), 65536 (with q8_0 KV cache), 131072 (Qwen 14B)
 context_budget = 65536
+
+# Expected tool calls per session. Higher = smaller per-call cap.
+# Typical pentest: 6-12 calls. Default 10.
+expected_tool_calls = 10
 
 # Safety limits for dangerous tools (prevents LLM escalation)
 # sqlmap_max_level = 2    # 1-5, default 2
@@ -21,10 +27,10 @@ context_budget = 65536
 # Requires passwordless sudo — see /etc/sudoers.d/raven-nest
 sudo_tools = ["masscan", "nmap"]
 
-# Optional: custom binary paths for tools not on $PATH
+# Custom binary paths for tools not on $PATH
 # [safety.tool_paths]
-# nmap = "/opt/nmap-dev/bin/nmap"
-# nuclei = "/home/user/.local/bin/nuclei"
+# wpscan = "/home/user/.local/share/gem/ruby/3.4.0/bin/wpscan"
+# subfinder = "/home/user/go/bin/subfinder"
 
 [execution]
 default_timeout_secs = 600
@@ -40,3 +46,18 @@ output_dir = "/tmp/raven-nest"
 # http_proxy = "http://127.0.0.1:8080"
 # https_proxy = "http://127.0.0.1:8080"
 # no_proxy = ["127.0.0.1", "localhost"]
+
+# Metasploit Framework RPC integration — disabled by default.
+# Operator must start msfrpcd separately:
+#   msfrpcd -P <password> -a 127.0.0.1 -p 55553 -n -f
+# [metasploit]
+# enabled = true
+# host = "127.0.0.1"
+# port = 55553
+# username = "msf"
+# password = "changeme"    # CHANGE THIS
+# ssl = true
+# max_search_results = 20
+# max_concurrent_exploits = 1
+# require_confirmation = true
+# blocked_modules = []

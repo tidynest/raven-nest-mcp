@@ -23,6 +23,9 @@ pub struct HydraRequest {
     pub target: String,
     #[schemars(description = "Service to attack (e.g. 'ssh', 'ftp', 'http-post-form')")]
     pub service: String,
+    #[schemars(description = "Target port (default: service default)")]
+    #[serde(default, deserialize_with = "super::lenient::option_number")]
+    pub port: Option<u16>,
     #[schemars(description = "Path to username list file")]
     pub userlist: String,
     #[schemars(description = "Path to password list file")]
@@ -71,9 +74,14 @@ pub async fn run(
         "-t".into(),
         tasks.to_string(),
         "-f".into(), // stop on first valid credential pair
-        req.target,
-        req.service,
     ];
+
+    if let Some(port) = req.port {
+        args.extend(["-s".into(), port.to_string()]);
+    }
+
+    args.push(req.target);
+    args.push(req.service);
 
     // form_params is passed as a positional arg after the service name
     if let Some(form_params) = req.form_params {

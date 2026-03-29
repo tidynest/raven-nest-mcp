@@ -60,7 +60,7 @@ pub async fn run(
     let stderr = String::from_utf8_lossy(&output.stderr);
 
     let result = if output.status.success() {
-        safety::truncate_output(&stdout, config.safety.max_output_chars)
+        safety::truncate_output(&stdout, config.safety.effective_max_output_chars())
     } else {
         format!("ping failed (exit {}):\n{stderr}", output.status)
     };

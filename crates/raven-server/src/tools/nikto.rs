@@ -102,7 +102,15 @@ pub fn parse_nikto_output(raw: &str) -> Option<String> {
     if findings.is_empty() || !has_target {
         None
     } else {
-        Some(findings.join("\n"))
+        let total = findings.len();
+        let cap = 30;
+        let shown: Vec<_> = findings.into_iter().take(cap).collect();
+        let extra = if total > cap {
+            format!("\n+{} more finding(s)", total - cap)
+        } else {
+            String::new()
+        };
+        Some(format!("{}{extra}", shown.join("\n")))
     }
 }
 

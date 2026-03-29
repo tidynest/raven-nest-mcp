@@ -174,6 +174,7 @@ mod tests {
             masscan_max_rate: 1000,
             context_budget: 0,
             sudo_tools: Vec::new(),
+            expected_tool_calls: 10,
         }
     }
 

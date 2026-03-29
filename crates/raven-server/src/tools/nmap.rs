@@ -156,7 +156,7 @@ fn format_nse_script(script: &roxmltree::Node) -> Option<String> {
         if cves.is_empty() {
             // Fall back to output attribute if structured parsing found nothing
             let out = script.attribute("output").unwrap_or("");
-            return Some(format!("  {id}: {}", summarize_script_output(out, 300)));
+            return Some(format!("  {id}: {}", summarize_script_output(out, 150)));
         }
         // Sort by CVSS descending, show top 5
         cves.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
@@ -177,7 +177,7 @@ fn format_nse_script(script: &roxmltree::Node) -> Option<String> {
         if out.is_empty() {
             return None;
         }
-        Some(format!("  {id}: {}", summarize_script_output(out, 300)))
+        Some(format!("  {id}: {}", summarize_script_output(out, 150)))
     }
 }
 
@@ -229,7 +229,20 @@ pub fn parse_nmap_xml(xml: &str) -> Option<String> {
         output.push_str(&format!("Command: {args}\n"));
     }
 
+    let mut host_count = 0usize;
+    let max_hosts = 10;
     for host in root.children().filter(|n| n.tag_name().name() == "host") {
+        host_count += 1;
+        if host_count > max_hosts {
+            output.push_str(&format!(
+                "\n(+{} more hosts — use get_scan_results for full output)\n",
+                root.children()
+                    .filter(|n| n.tag_name().name() == "host")
+                    .count()
+                    - max_hosts
+            ));
+            break;
+        }
         // Host address
         if let Some(addr) = host.children().find(|n| n.tag_name().name() == "address") {
             let ip = addr.attribute("addr").unwrap_or("unknown");

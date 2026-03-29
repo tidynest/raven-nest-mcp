@@ -60,6 +60,8 @@ pub struct Finding {
     pub cvss: Option<f32>,
     /// CVE identifier (e.g. "CVE-2024-1234").
     pub cve: Option<String>,
+    /// OWASP Top 10 category (e.g. "A03:2021 Injection").
+    pub owasp_category: Option<String>,
     /// When this finding was recorded.
     pub timestamp: DateTime<Utc>,
 }
@@ -84,6 +86,7 @@ impl Finding {
             remediation: None,
             cvss: None,
             cve: None,
+            owasp_category: None,
             timestamp: Utc::now(),
         }
     }

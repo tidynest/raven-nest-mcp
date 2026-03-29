@@ -19,15 +19,16 @@ starts regardless, but tool calls will fail if the binary isn't installed.
 
 ```bash
 # Core tools (official repos — Arch Linux)
-sudo pacman -S nmap nikto whatweb testssl.sh sqlmap hydra masscan
+sudo pacman -S nmap nikto whatweb testssl.sh sqlmap hydra masscan wpscan
 
 # AUR tools
-yay -S feroxbuster-bin ffuf-bin
+yay -S feroxbuster-bin ffuf-bin enum4linux-ng
 
-# Nuclei — installed via Go or GitHub releases
-# Download the latest release from https://github.com/projectdiscovery/nuclei
-# or install with: go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
-# After install, update templates: nuclei -ut
+# Go tools (ProjectDiscovery)
+# Install nuclei and subfinder via Go or GitHub releases:
+# go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
+# go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+# After install, update nuclei templates: nuclei -ut
 ```
 
 `ping` is available by default on all Linux systems.
@@ -126,8 +127,8 @@ see the [Configuration](#configuration) section.
 
 ## Configuration
 
-Edit `config/default.toml` to customise behaviour. The config file has three
-sections: `[safety]`, `[execution]`, and `[network]`.
+Edit `config/default.toml` to customise behaviour. The config file has four
+sections: `[safety]`, `[execution]`, `[network]`, and `[metasploit]`.
 
 ### Config Resolution Chain
 
@@ -138,7 +139,7 @@ The server searches for config in this order, using the first one found:
 3. **CWD** — `config/default.toml` in the current working directory
 4. **Built-in defaults** — hardcoded fallback if nothing else is found
 
-If all fail, the server starts with safe defaults (all 11 tools allowed, 600s
+If all fail, the server starts with safe defaults (all 14 tools allowed, 600s
 timeout, output at `/tmp/raven-nest`).
 
 ### `[safety]` — Tool Allowlisting and Limits
@@ -149,9 +150,11 @@ allowed_tools = [
     "ping", "nmap", "nuclei", "nikto", "whatweb",
     "testssl.sh", "feroxbuster", "ffuf",
     "sqlmap", "hydra", "masscan",
+    "subfinder", "wpscan", "enum4linux-ng",
 ]
 max_output_chars = 50000
-# context_budget = 32768
+# context_budget = 65536
+# expected_tool_calls = 10
 
 # Safety limits for dangerous tools
 # sqlmap_max_level = 2
@@ -167,7 +170,7 @@ max_output_chars = 50000
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `allowed_tools` | string list | all 11 tools | Allowlisted tool binaries. Calls for unlisted tools are rejected before execution. Remove tools to restrict what the AI can invoke. |
+| `allowed_tools` | string list | all 14 tools | Allowlisted tool binaries. Calls for unlisted tools are rejected before execution. Remove tools to restrict what the AI can invoke. |
 | `max_output_chars` | integer | 50000 | Truncation limit for subprocess output. When exceeded, keeps 70% from the start and 30% from the end with a marker in between. Uses char boundaries for UTF-8 safety. Overridden by `context_budget` when set. |
 | `context_budget` | integer | 0 (disabled) | Model context window size in characters. When > 0, derives output caps automatically so ~4 tool outputs fit in the context. See table below. |
 | `sqlmap_max_level` | integer (1-5) | 2 | Caps sqlmap `--level`. Higher levels add more injection vectors but are slower and noisier. |
@@ -176,6 +179,7 @@ max_output_chars = 50000
 | `masscan_max_rate` | integer | 1000 | Max packets/sec for masscan. High rates can disrupt networks — increase only with explicit authorisation. |
 | `tool_paths` | table | empty | Map of tool name to absolute binary path, for tools not on `$PATH`. Falls back to `$PATH` lookup if not specified. |
 | `sudo_tools` | string list | `[]` | Tools invoked via `sudo` for privilege escalation. See [sudo_tools](#sudo_tools--privilege-escalation) below. |
+| `expected_tool_calls` | integer | 10 | Expected tool calls per session. Used by the session budget tracker to plan per-call output allocation. Higher values yield smaller per-call caps. Typical pentest: 6-12 calls. |
 
 #### Context Budget
 
@@ -193,6 +197,52 @@ cap proportionally:
 **When to set this:** Only when using models with limited context windows. Leave
 at 0 (disabled) for Claude or other large-context models — `max_output_chars`
 alone handles truncation fine.
+
+#### Session Budget Tracker
+
+When `context_budget` is set, the server tracks cumulative output across the
+entire session and dynamically adjusts per-tool caps. This prevents context
+overflow during multi-tool pentest sessions.
+
+The tracker appends a status line to every tool response:
+```
+[budget: 4200/38500 used | ~3430/call | mode: full]
+```
+
+Three output modes escalate automatically as the budget is consumed:
+
+| Mode | Trigger | Behaviour |
+|------|---------|-----------|
+| **Full** | >60% budget remaining | Normal parsed output, all findings and details |
+| **Compact** | 30-60% remaining | Output truncated more aggressively per tool |
+| **Minimal** | <30% remaining | Output heavily compressed |
+
+**Hard safety floor:** Below 1,000 chars remaining, the server refuses new
+tool calls and returns: "Context budget exhausted. Save findings and generate
+report."
+
+The `expected_tool_calls` setting controls how the budget is divided. With
+`expected_tool_calls = 10`, the tracker assumes 10 total calls and allocates
+accordingly. If you typically run longer sessions, increase this value.
+
+#### Parser Result Caps
+
+Output parsers cap results to prevent any single tool from consuming excessive
+context, regardless of the budget tracker:
+
+| Parser | Max results | Overflow |
+|--------|-------------|----------|
+| nuclei | 25 findings | "+N more finding(s)" |
+| nikto | 30 findings | "+N more finding(s)" |
+| feroxbuster | 40 URLs | "+N more URL(s)" |
+| ffuf | 40 results | "+N more result(s)" |
+| masscan | 50 ports | "+N more port(s)" |
+| nmap | 10 hosts | "(+N more hosts — use get_scan_results for full output)" |
+| subfinder | 50 subdomains | "+N more subdomain(s)" |
+| wpscan | 20 plugins, 10 users | truncated with count |
+| enum4linux-ng | 20 items per section | truncated with count |
+
+These caps are applied before the budget tracker's per-call enforcement.
 
 #### `sudo_tools` — Privilege Escalation
 
@@ -278,11 +328,42 @@ request inspection. Both upper- and lower-case env vars are set, so tools using
 either convention pick up the proxy automatically. The `http_request` tool also
 honours these proxy settings.
 
+### `[metasploit]` — Metasploit Framework Integration
+
+Disabled by default. See [docs/METASPLOIT.md](METASPLOIT.md) for full setup.
+
+```toml
+[metasploit]
+enabled = true
+host = "127.0.0.1"
+port = 55553
+username = "msf"
+password = "changeme"    # CHANGE THIS
+ssl = true
+max_search_results = 20
+max_concurrent_exploits = 1
+require_confirmation = true
+# blocked_modules = ["exploit/multi/misc/msf_rpc_console"]
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `false` | Master switch — MSF tools only registered when true |
+| `host` | string | `127.0.0.1` | msfrpcd host |
+| `port` | integer | `55553` | msfrpcd port |
+| `username` | string | `msf` | RPC username |
+| `password` | string | `changeme` | RPC password — **change this** |
+| `ssl` | bool | `true` | Use SSL (msfrpcd default) |
+| `max_search_results` | integer | `20` | Cap module search results |
+| `max_concurrent_exploits` | integer | `1` | Max simultaneous exploit executions |
+| `require_confirmation` | bool | `true` | Require double-call to execute exploits |
+| `blocked_modules` | string list | `[]` | Regex patterns for blocked modules |
+
 ---
 
 ## Tools Reference
 
-The server exposes 22 tools across 6 categories.
+The server exposes 31 tools across 9 categories.
 
 ### Reconnaissance
 
@@ -339,6 +420,37 @@ error if neither is available. Output is parsed to extract discovered open ports
 > iptables NAT rules don't apply to raw packets. Use nmap for local/Docker
 > targets. masscan works correctly against targets on real network interfaces.
 
+#### `run_subfinder`
+Passive subdomain enumeration via certificate transparency logs, DNS databases,
+and search engine scraping. Does not actively probe the target — purely passive.
+Output is parsed from JSONL format into `host (source)` lines.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `target` | yes | Domain to enumerate (e.g. `example.com`) |
+| `sources` | no | Comma-separated source filter (e.g. `crtsh,hackertarget`) |
+| `timeout_secs` | no | Scan timeout in seconds |
+
+> **Internet access required:** subfinder queries online APIs (crt.sh,
+> HackerTarget, etc.). It won't find subdomains for purely local targets.
+
+### SMB / Active Directory
+
+#### `run_enum4linux_ng`
+SMB and Active Directory enumeration. Discovers shares, users, groups,
+password policies, and OS information. Useful for internal pentests against
+Windows/Samba environments.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `target` | yes | Target IP or hostname |
+| `username` | no | SMB username for authenticated enumeration |
+| `password` | no | SMB password |
+| `timeout_secs` | no | Scan timeout in seconds |
+
+Output is parsed into sections: OS info, shares, users, groups, and password
+policy. Each section is capped at 20 items.
+
 ### Vulnerability Scanning
 
 #### `run_nuclei`
@@ -368,6 +480,26 @@ Web server misconfiguration scanner. Output is parsed to extract finding lines
 > the `port` parameter is ignored — nikto v2.6+ rejects the `-p` flag when
 > given a URL. Use the port in the URL instead (e.g. `http://localhost:3000`).
 > When `target` is a bare hostname, `-p` is added automatically.
+
+#### `run_wpscan`
+WordPress vulnerability scanner. Enumerates plugins, themes, and users, then
+cross-references against the WPVulnDB vulnerability database. Output is parsed
+from JSON into a structured summary of versions, vulnerabilities, and users.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `target` | yes | WordPress site URL |
+| `enumerate` | no | `quick` (default: vulnerable plugins/themes/users) or `thorough` (all plugins/themes/users + config backups + DB exports) |
+| `api_token` | no | WPVulnDB API token for full vulnerability data |
+| `cookie` | no | Cookie string for authenticated scanning |
+
+Enumerate presets:
+- **quick** — `-enumerate vp,vt,u` (vulnerable plugins, vulnerable themes, users)
+- **thorough** — `-enumerate vp,vt,u,ap,at,cb,dbe` (all plugins, all themes, users, config backups, DB exports)
+
+> **API token:** Without a WPVulnDB API token, wpscan still identifies
+> versions and plugins but cannot look up their known vulnerabilities.
+> Register at https://wpscan.com/ for a free API key.
 
 ### Web Fuzzing & Discovery
 
@@ -447,6 +579,111 @@ normalised internally. Invalid values (e.g. `urgent`) are silently ignored.
 > **Non-TLS targets:** If the target has no TLS service, testssl returns
 > minimal output or a connection error. This is expected — the tool is
 > designed for TLS analysis only.
+
+### XSS Scanning
+
+#### `run_dalfox`
+XSS vulnerability scanning. Output is parsed to extract injection findings
+with parameter names and payloads.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `target` | yes | URL to test for XSS |
+| `parameters` | no | Comma-separated parameter names to test (e.g. `q,search`) |
+| `cookie` | no | Cookie string for authenticated scanning |
+| `timeout_secs` | no | Timeout in seconds |
+
+### DNS Reconnaissance
+
+#### `run_dnsrecon`
+DNS enumeration with support for standard lookups, zone transfers, and SRV
+record discovery. Output is parsed to extract DNS records in `TYPE NAME VALUE`
+format.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `target` | yes | Domain to enumerate |
+| `scan_type` | no | `standard` (default), `zone_transfer`, `srv` |
+| `timeout_secs` | no | Timeout in seconds |
+
+### Password Cracking
+
+#### `run_john`
+John the Ripper password hash cracking. Runtime is capped at 600 seconds.
+Output is parsed to extract cracked credentials.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `hash_file` | yes | Path to hash file |
+| `wordlist` | no | Path to wordlist file |
+| `format` | no | Hash format (e.g. `raw-md5`, `bcrypt`, `sha512crypt`) |
+| `max_run_time` | no | Max runtime in seconds (default 300, max 600) |
+
+### Metasploit Framework
+
+Metasploit integration is **disabled by default** and requires a running
+`msfrpcd` instance. See [docs/METASPLOIT.md](METASPLOIT.md) for full setup,
+safety model, and troubleshooting.
+
+#### `msf_search`
+Search for exploit, auxiliary, and post-exploitation modules.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `query` | yes | Search query (e.g. `cve:2021-44228`, `type:exploit smb`) |
+| `limit` | no | Max results (default 20) |
+
+#### `msf_module_info`
+Get details about a module — description, required options, compatible payloads.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `module` | yes | Module path (e.g. `exploit/multi/http/log4shell_header_injection`) |
+
+#### `msf_exploit`
+Execute an exploit module. **Requires confirmation** — the first call shows the
+plan, the second call with identical parameters executes.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `module` | yes | Exploit module path |
+| `target` | yes | Target host or IP |
+| `port` | no | Target port |
+| `payload` | no | Payload module (auto-selects if omitted) |
+| `lhost` | no | Listener host for reverse payloads |
+| `lport` | no | Listener port (default 4444) |
+| `options` | no | Additional module options as key-value pairs |
+
+#### `msf_auxiliary`
+Run auxiliary modules (scanners, fuzzers).
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `module` | yes | Auxiliary module path |
+| `target` | yes | Target host, IP, or CIDR |
+| `port` | no | Target port |
+| `options` | no | Additional module options |
+
+#### `msf_sessions`
+Manage active Metasploit sessions.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `action` | yes | `list`, `interact`, `stop`, `compatible_modules` |
+| `session_id` | no* | Session ID (*required for all actions except `list`) |
+| `command` | no* | Command to run (*required for `interact`) |
+
+Destructive commands (`rm`, `del`, `format`, `shutdown`, `reboot`, `upload`)
+are blocked by default.
+
+#### `msf_post`
+Run post-exploitation modules on an active session.
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `module` | yes | Post module path (e.g. `post/multi/gather/env`) |
+| `session_id` | yes | Session ID |
+| `options` | no | Additional module options |
 
 ### HTTP Testing
 
@@ -613,11 +850,12 @@ arguments are passed directly to `Command::arg()`, not through a shell.
 All optional numeric parameters accept both JSON numbers and string-encoded
 numbers. This handles a common LLM quirk where models serialize `2` as `"2"`.
 
-Fields with lenient deserialization: `count` (ping), `port` (nikto),
+Fields with lenient deserialization: `count` (ping), `port` (nikto, msf_exploit),
 `threads` (feroxbuster, ffuf), `rate` (masscan), `level` (sqlmap),
 `risk` (sqlmap), `tasks` (hydra), `timeout_secs` (nikto, http_request,
-launch_scan), `offset` (get_scan_results), `limit` (get_scan_results),
-`cvss` (save_finding).
+launch_scan, subfinder, enum4linux-ng), `offset` (get_scan_results),
+`limit` (get_scan_results, msf_search), `lport` (msf_exploit),
+`session_id` (msf_sessions), `cvss` (save_finding).
 
 Invalid strings (e.g. `"abc"`) produce a clear parse error. `null` and
 omitted fields both resolve to `None` (the default is used).
@@ -683,6 +921,16 @@ is spawned:
    completion markers, and rate-limit/WAF indicators; appends warnings when
    detected (e.g. "Output appears empty", "Possible rate limiting detected").
 
+9. **Session budget tracking** — when `context_budget` is set, tracks cumulative
+   output across all tool calls and dynamically shrinks per-call caps. Escalates
+   through Full → Compact → Minimal output modes. Hard floor at 1,000 chars
+   remaining refuses new calls.
+
+10. **Metasploit safety** — when MSF is enabled, an additional 5-layer model
+    applies: disabled by default, per-tool allowlisting, module blocklist,
+    exploit confirmation gate, and session command filtering. See
+    [docs/METASPLOIT.md](METASPLOIT.md).
+
 ---
 
 ## Output Processing
@@ -691,22 +939,26 @@ Tool output goes through a multi-stage pipeline before reaching the AI model:
 
 ### Structured Parsers
 
-All 10 subprocess tools have output parsers that extract the essential
+All 13 subprocess tools have output parsers that extract the essential
 information and discard noise. Parsers return `Option<String>` — if parsing
-fails, the raw output is used as a fallback.
+fails, the raw output is used as a fallback. Each parser has a result cap to
+prevent context overflow (see [Parser Result Caps](#parser-result-caps)).
 
 | Tool | Parser | What It Extracts |
 |------|--------|-----------------|
-| nmap | XML parser | Host addresses, port states (proto/port/state/service/version), NSE script results (per-port and host-level; vulners top-5 CVEs by CVSS score, other scripts compressed to one-line summaries), OS matches, run stats |
-| nuclei | JSONL parser | `[SEVERITY] template-id - name @ url (type)` per finding |
-| nikto | Line filter | Lines starting with `+` (findings); filters help text |
-| feroxbuster | Line filter | Status-code + URL pairs; filters 404s |
-| testssl | Section parser | Vulnerability assessments, certificate details (CN, SAN, issuer, expiry), rating |
-| sqlmap | Block parser | Injection points (parameter/type/title/payload), DBMS/OS/tech info, error messages |
-| hydra | Line filter | Discovered credentials (`login:` + `password:`), summary |
-| whatweb | Line filter | Technology lines starting with URLs and containing bracket tags |
-| masscan | Line filter | `Discovered open port` lines (port/proto/IP) |
-| ffuf | Line filter | Result lines containing `[Status:` with size/word counts |
+| nmap | XML parser | Host addresses, port states, NSE scripts (vulners top-5 CVEs, other scripts compressed), OS matches, run stats. Capped at 10 hosts. |
+| nuclei | JSONL parser | `[SEVERITY] template-id - name @ url (type)`. Capped at 25 findings. |
+| nikto | Line filter | Lines starting with `+` (findings); filters help text. Capped at 30. |
+| wpscan | JSON parser | WordPress version/status, plugins with vuln counts, themes, users. |
+| feroxbuster | Line filter | Status-code + URL pairs; filters 404s. Capped at 40. |
+| ffuf | Line filter | Result lines with `[Status:` and size/word counts. Capped at 40. |
+| sqlmap | Block parser | Injection points, DBMS/OS/tech info, error messages. |
+| hydra | Line filter | Discovered credentials (`login:` + `password:`), summary. |
+| testssl | Section parser | Vulnerability assessments, certificate details, rating. |
+| whatweb | Line filter | Technology lines with bracket tags. |
+| masscan | Line filter | `Discovered open port` lines. Capped at 50. |
+| subfinder | JSONL parser | `host (source)` lines. Capped at 50. |
+| enum4linux-ng | Section parser | OS, shares, users, groups, password policy. 20 items/section. |
 
 ### HTTP Response Processing
 
@@ -822,9 +1074,10 @@ Assistant: [calls run_nikto with target: "http://target.example.com",
 
 ## Testing
 
-A comprehensive test harness at `tests/manual_test_harness.py` covers 297
-test cases across all 22 tools. It spawns the MCP server as a subprocess
-and communicates via JSON-RPC 2.0 over stdin/stdout.
+A comprehensive test harness at `tests/manual_test_harness.py` spawns the
+MCP server as a subprocess and communicates via JSON-RPC 2.0 over stdin/stdout.
+Additionally, 163 Rust unit tests cover parsers, config, safety, budget
+tracking, and request validation.
 
 ```bash
 # Run all phases

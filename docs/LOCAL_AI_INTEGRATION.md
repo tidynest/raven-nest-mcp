@@ -36,6 +36,26 @@ prefix entirely.
 Tools then appear as `raven.run_nmap`, `raven.list_findings`, etc. — much
 easier for smaller models to handle.
 
+## New Tools (v0.2)
+
+Three reconnaissance tools and Metasploit Framework integration were added:
+
+| Tool | Binary | Install |
+|------|--------|---------|
+| subfinder | `subfinder` | `go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest` |
+| wpscan | `wpscan` | `gem install --user-install wpscan` |
+| enum4linux-ng | `enum4linux-ng` | `python3 -m pip install git+https://github.com/cddmp/enum4linux-ng.git` |
+
+Metasploit requires `msfrpcd` running separately. See `docs/METASPLOIT.md`.
+
+For tools not in `$PATH`, add custom paths in config:
+
+```toml
+[safety.tool_paths]
+wpscan = "/home/user/.local/share/gem/ruby/3.4.0/bin/wpscan"
+subfinder = "/home/user/go/bin/subfinder"
+```
+
 ## Model Compatibility
 
 ### Recommended Models (by tool-calling reliability)
@@ -86,6 +106,32 @@ match Ollama's protocol.
 - **Dolphin 3.0** — no tool-calling support in Ollama at all
 - **DeepSeek models** — tool calling requires thinking mode disabled
 - **Any model under 3B parameters** — unreliable for structured tool calling (Granite 4.0 at 3.4B is borderline)
+
+## Context Budget Tracker
+
+The server tracks cumulative output across all tool calls in a session. Three modes escalate automatically:
+
+| Mode | Trigger | Effect |
+|------|---------|--------|
+| Full | >60% budget remaining | Normal parsed output |
+| Compact | 30-60% remaining | Aggressive truncation |
+| Minimal | <30% remaining | One-line summaries |
+
+Every tool response includes a budget status line:
+
+```
+[budget: 4200/38500 used | ~3430/call | mode: full]
+```
+
+Configure via `expected_tool_calls` (default 10). For longer sessions, increase this value.
+
+### Recommended Context Budgets
+
+| Model | context_budget | expected_tool_calls | Notes |
+|-------|---------------|---------------------|-------|
+| Qwen3 8B @64K | 65536 | 10 | Daily driver, interactive |
+| Qwen3.5 9B @49K | 49152 | 8 | Batch mode only |
+| Qwen3 14B @40K | 40960 | 8 | Batch mode only |
 
 ## Known Issues and Workarounds
 

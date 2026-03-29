@@ -9,27 +9,40 @@
 //! corresponding module in [`tools`](crate::tools). Long-running tools receive
 //! a `Peer<RoleServer>` for progress notifications via [`ProgressTicker`](crate::progress::ProgressTicker).
 
+use crate::budget::SessionBudget;
 use crate::tools::scans::{LaunchScanRequest, ScanIdRequest, ScanResultsRequest};
 use crate::tools::{
+    dalfox::DalfoxRequest,
+    dnsrecon::DnsreconRequest,
+    enum4linux_ng::Enum4linuxRequest,
     feroxbuster::FeroxbusterRequest,
     ffuf::FfufRequest,
     findings::{FindingIdRequest, GenerateReportRequest, SaveFindingRequest},
     http::HttpRequest,
     hydra::HydraRequest,
+    john::JohnRequest,
     masscan::MasscanRequest,
+    msf_auxiliary::MsfAuxiliaryRequest,
+    msf_exploit::MsfExploitRequest,
+    msf_module_info::MsfModuleInfoRequest,
+    msf_post::MsfPostRequest,
+    msf_search::MsfSearchRequest,
+    msf_sessions::MsfSessionsRequest,
     nikto::NiktoRequest,
     nmap::NmapRequest,
     nuclei::NucleiRequest,
     ping::PingRequest,
     sqlmap::SqlmapRequest,
+    subfinder::SubfinderRequest,
     testssl::TestsslRequest,
     whatweb::WhatwebRequest,
+    wpscan::WpscanRequest,
 };
 
 use rmcp::{
     Peer, RoleServer, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolResult, ServerCapabilities, ServerInfo},
+    model::{CallToolResult, Content, RawContent, ServerCapabilities, ServerInfo},
     tool, tool_handler, tool_router,
 };
 
@@ -44,13 +57,17 @@ pub struct RavenServer {
     finding_store: std::sync::Arc<std::sync::RwLock<raven_report::store::FindingStore>>,
     /// Shared cookie jar for `http_request` — persists cookies across requests within a session.
     cookie_jar: std::sync::Arc<reqwest::cookie::Jar>,
+    /// Session-aware output budget tracker — dynamically adjusts per-tool caps.
+    budget: std::sync::Arc<SessionBudget>,
+    /// Metasploit RPC client — `None` when MSF is disabled in config.
+    msf_client: Option<std::sync::Arc<raven_core::msf_client::MsfClient>>,
 }
 
 #[tool_router]
 impl RavenServer {
     /// Create a new server instance, initialising all shared state.
     ///
-    /// Creates the output directory, findings store, and scan manager.
+    /// Creates the output directory, findings store, scan manager, and budget tracker.
     pub fn new(config: raven_core::config::RavenConfig) -> Self {
         let config = std::sync::Arc::new(config);
         let scan_manager =
@@ -62,19 +79,100 @@ impl RavenServer {
         ));
         let cookie_jar = std::sync::Arc::new(reqwest::cookie::Jar::default());
 
+        // Restore session cookies from disk (survives context clears)
+        let cookie_file =
+            std::path::PathBuf::from(&config.execution.output_dir).join("session_cookies.json");
+        if let Ok(data) = std::fs::read_to_string(&cookie_file)
+            && let Ok(v) = serde_json::from_str::<serde_json::Value>(&data)
+            && let (Some(url), Some(cookies)) = (v["url"].as_str(), v["cookies"].as_str())
+            && let Ok(parsed) = url.parse::<reqwest::Url>()
+        {
+            for cookie in cookies.split("; ") {
+                cookie_jar.add_cookie_str(cookie, &parsed);
+            }
+            tracing::info!("restored session cookies from disk");
+        }
+
+        // Tool count: 17 security + 6 MSF + ping + http + 5 scan mgmt + 5 findings = 34
+        let tool_count = 34;
+        let budget = std::sync::Arc::new(SessionBudget::new(
+            config.safety.context_budget,
+            tool_count,
+            config.safety.expected_tool_calls,
+        ));
+
+        let msf_client = if config.metasploit.enabled {
+            Some(std::sync::Arc::new(raven_core::msf_client::MsfClient::new(
+                &config.metasploit,
+            )))
+        } else {
+            None
+        };
+
         Self {
             config,
             scan_manager,
             tool_router: Self::tool_router(),
             finding_store,
             cookie_jar,
+            budget,
+            msf_client,
         }
+    }
+
+    /// Get the MSF client or return an error if Metasploit is disabled.
+    fn require_msf(
+        &self,
+    ) -> Result<&std::sync::Arc<raven_core::msf_client::MsfClient>, rmcp::ErrorData> {
+        self.msf_client.as_ref().ok_or_else(|| {
+            rmcp::ErrorData::new(
+                rmcp::model::ErrorCode::INVALID_REQUEST,
+                "Metasploit is disabled. Set [metasploit] enabled = true in config.",
+                None,
+            )
+        })
+    }
+
+    /// Apply budget enforcement to a tool result: measure, truncate, append status, record.
+    fn wrap_result(
+        &self,
+        result: Result<CallToolResult, rmcp::ErrorData>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        if self.budget.is_exhausted() && result.is_ok() {
+            return Ok(CallToolResult::success(vec![Content::text(
+                "Context budget exhausted. Save findings and generate report.",
+            )]));
+        }
+
+        let mut call_result = result?;
+        let cap = self.budget.allocate();
+
+        // Measure and truncate text content
+        let mut total_chars = 0usize;
+        for content in &mut call_result.content {
+            if let RawContent::Text(ref mut tc) = content.raw {
+                let text_len = tc.text.chars().count();
+                if text_len > cap.max_chars {
+                    tc.text = SessionBudget::truncate_to_cap(&tc.text, cap.max_chars);
+                }
+                total_chars += tc.text.len();
+            }
+        }
+
+        // Append budget status line
+        if let Some(status) = self.budget.status_line() {
+            call_result.content.push(Content::text(status));
+            total_chars += 100; // approximate status line size
+        }
+
+        self.budget.record(total_chars);
+        Ok(call_result)
     }
 
     // ── Fast tools (1-5s) ────────────────────────────────────────────
 
     #[tool(
-        description = "Ping a target to verify connectivity and measure latency",
+        description = "Ping target for connectivity check",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -85,11 +183,11 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<PingRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::ping::run(&self.config, req).await
+        self.wrap_result(crate::tools::ping::run(&self.config, req).await)
     }
 
     #[tool(
-        description = "Run whatweb to identify web technologies",
+        description = "Whatweb tech identification",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -100,22 +198,22 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<WhatwebRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::whatweb::run(&self.config, req).await
+        self.wrap_result(crate::tools::whatweb::run(&self.config, req).await)
     }
 
     #[tool(
-        description = "Send a crafted HTTP request for manual endpoint testing",
+        description = "Manual HTTP request",
         annotations(destructive_hint = false, open_world_hint = true)
     )]
     async fn http_request(
         &self,
         Parameters(req): Parameters<HttpRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::http::run(&self.config, self.cookie_jar.clone(), req).await
+        self.wrap_result(crate::tools::http::run(&self.config, self.cookie_jar.clone(), req).await)
     }
 
     #[tool(
-        description = "Run ffuf for web fuzzing with FUZZ keyword substitution",
+        description = "Ffuf web fuzzer (use FUZZ keyword in URL)",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -126,11 +224,11 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<FfufRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::ffuf::run(&self.config, req).await
+        self.wrap_result(crate::tools::ffuf::run(&self.config, req).await)
     }
 
     #[tool(
-        description = "Run masscan for high-speed port scanning (requires root)",
+        description = "Masscan fast port scan (root required)",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -141,13 +239,13 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<MasscanRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::masscan::run(&self.config, req).await
+        self.wrap_result(crate::tools::masscan::run(&self.config, req).await)
     }
 
     // ── Medium/Slow tools (5-300s) ───────────────────────────────────
 
     #[tool(
-        description = "Run an nmap scan with preset configurations",
+        description = "Nmap port/service/vuln scanner",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -159,11 +257,11 @@ impl RavenServer {
         peer: Peer<RoleServer>,
         Parameters(req): Parameters<NmapRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::nmap::run(&self.config, req, Some(peer)).await
+        self.wrap_result(crate::tools::nmap::run(&self.config, req, Some(peer)).await)
     }
 
     #[tool(
-        description = "Run nuclei template-based vulnerability scanner",
+        description = "Nuclei CVE/vuln template scanner",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -175,11 +273,11 @@ impl RavenServer {
         peer: Peer<RoleServer>,
         Parameters(req): Parameters<NucleiRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::nuclei::run(&self.config, req, Some(peer)).await
+        self.wrap_result(crate::tools::nuclei::run(&self.config, req, Some(peer)).await)
     }
 
     #[tool(
-        description = "Run nikto web server scanner",
+        description = "Nikto web server vuln scanner",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -191,11 +289,11 @@ impl RavenServer {
         peer: Peer<RoleServer>,
         Parameters(req): Parameters<NiktoRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::nikto::run(&self.config, req, Some(peer)).await
+        self.wrap_result(crate::tools::nikto::run(&self.config, req, Some(peer)).await)
     }
 
     #[tool(
-        description = "Run testssl.sh for SSL/TLS configuration auditing",
+        description = "Testssl TLS/SSL auditor",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -207,11 +305,11 @@ impl RavenServer {
         peer: Peer<RoleServer>,
         Parameters(req): Parameters<TestsslRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::testssl::run(&self.config, req, Some(peer)).await
+        self.wrap_result(crate::tools::testssl::run(&self.config, req, Some(peer)).await)
     }
 
     #[tool(
-        description = "Run feroxbuster for directory and content discovery",
+        description = "Feroxbuster directory brute-force",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -223,11 +321,11 @@ impl RavenServer {
         peer: Peer<RoleServer>,
         Parameters(req): Parameters<FeroxbusterRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::feroxbuster::run(&self.config, req, Some(peer)).await
+        self.wrap_result(crate::tools::feroxbuster::run(&self.config, req, Some(peer)).await)
     }
 
     #[tool(
-        description = "Run sqlmap for SQL injection detection and exploitation",
+        description = "Sqlmap SQL injection scanner",
         annotations(destructive_hint = false, open_world_hint = true)
     )]
     async fn run_sqlmap(
@@ -235,11 +333,11 @@ impl RavenServer {
         peer: Peer<RoleServer>,
         Parameters(req): Parameters<SqlmapRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::sqlmap::run(&self.config, req, Some(peer)).await
+        self.wrap_result(crate::tools::sqlmap::run(&self.config, req, Some(peer)).await)
     }
 
     #[tool(
-        description = "Run hydra for network authentication brute-forcing",
+        description = "Hydra auth brute-forcer",
         annotations(destructive_hint = false, open_world_hint = true)
     )]
     async fn run_hydra(
@@ -247,24 +345,192 @@ impl RavenServer {
         peer: Peer<RoleServer>,
         Parameters(req): Parameters<HydraRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::hydra::run(&self.config, req, Some(peer)).await
+        self.wrap_result(crate::tools::hydra::run(&self.config, req, Some(peer)).await)
+    }
+
+    #[tool(
+        description = "Enum4linux-ng SMB/AD enumerator",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = true
+        )
+    )]
+    async fn run_enum4linux_ng(
+        &self,
+        peer: Peer<RoleServer>,
+        Parameters(req): Parameters<Enum4linuxRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result(crate::tools::enum4linux_ng::run(&self.config, req, Some(peer)).await)
+    }
+
+    #[tool(
+        description = "Dalfox XSS scanner",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = true
+        )
+    )]
+    async fn run_dalfox(
+        &self,
+        Parameters(req): Parameters<DalfoxRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result(crate::tools::dalfox::run(&self.config, req).await)
+    }
+
+    #[tool(
+        description = "Dnsrecon DNS enumerator",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = true
+        )
+    )]
+    async fn run_dnsrecon(
+        &self,
+        peer: Peer<RoleServer>,
+        Parameters(req): Parameters<DnsreconRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result(crate::tools::dnsrecon::run(&self.config, req, Some(peer)).await)
+    }
+
+    #[tool(
+        description = "John password cracker",
+        annotations(destructive_hint = false, open_world_hint = false)
+    )]
+    async fn run_john(
+        &self,
+        peer: Peer<RoleServer>,
+        Parameters(req): Parameters<JohnRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result(crate::tools::john::run(&self.config, req, Some(peer)).await)
+    }
+
+    #[tool(
+        description = "Subfinder subdomain enumerator",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = true
+        )
+    )]
+    async fn run_subfinder(
+        &self,
+        Parameters(req): Parameters<SubfinderRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result(crate::tools::subfinder::run(&self.config, req).await)
+    }
+
+    #[tool(
+        description = "Wpscan WordPress vuln scanner",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = true
+        )
+    )]
+    async fn run_wpscan(
+        &self,
+        peer: Peer<RoleServer>,
+        Parameters(req): Parameters<WpscanRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result(crate::tools::wpscan::run(&self.config, req, Some(peer)).await)
+    }
+
+    // ── Metasploit tools ──────────────────────────────────────────────
+
+    #[tool(
+        description = "Search Metasploit modules",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn msf_search(
+        &self,
+        Parameters(req): Parameters<MsfSearchRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result(crate::tools::msf_search::run(self.require_msf()?, req).await)
+    }
+
+    #[tool(
+        description = "Get Metasploit module info",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    async fn msf_module_info(
+        &self,
+        Parameters(req): Parameters<MsfModuleInfoRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result(crate::tools::msf_module_info::run(self.require_msf()?, req).await)
+    }
+
+    #[tool(
+        description = "Run Metasploit exploit (requires confirmation)",
+        annotations(destructive_hint = true, open_world_hint = true)
+    )]
+    async fn msf_exploit(
+        &self,
+        Parameters(req): Parameters<MsfExploitRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result(
+            crate::tools::msf_exploit::run(self.require_msf()?, &self.config, req).await,
+        )
+    }
+
+    #[tool(
+        description = "Run Metasploit auxiliary module",
+        annotations(destructive_hint = false, open_world_hint = true)
+    )]
+    async fn msf_auxiliary(
+        &self,
+        Parameters(req): Parameters<MsfAuxiliaryRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result(crate::tools::msf_auxiliary::run(self.require_msf()?, req).await)
+    }
+
+    #[tool(
+        description = "Manage Metasploit sessions",
+        annotations(destructive_hint = false, open_world_hint = false)
+    )]
+    async fn msf_sessions(
+        &self,
+        Parameters(req): Parameters<MsfSessionsRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result(crate::tools::msf_sessions::run(self.require_msf()?, req).await)
+    }
+
+    #[tool(
+        description = "Run Metasploit post-exploitation module",
+        annotations(destructive_hint = true, open_world_hint = false)
+    )]
+    async fn msf_post(
+        &self,
+        Parameters(req): Parameters<MsfPostRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result(crate::tools::msf_post::run(self.require_msf()?, req).await)
     }
 
     // ── Background scan management ───────────────────────────────────
 
     #[tool(
-        description = "Launch a background scan (returns scan ID immediately)",
+        description = "Launch background scan",
         annotations(destructive_hint = false, open_world_hint = true)
     )]
     fn launch_scan(
         &self,
         Parameters(req): Parameters<LaunchScanRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::scans::launch(&self.scan_manager, req)
+        self.wrap_result(crate::tools::scans::launch(&self.scan_manager, req))
     }
 
     #[tool(
-        description = "Check the status of a background scan",
+        description = "Check scan status",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -275,11 +541,11 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<ScanIdRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::scans::status(&self.scan_manager, req)
+        self.wrap_result(crate::tools::scans::status(&self.scan_manager, req))
     }
 
     #[tool(
-        description = "Get results from a completed scan (supports pagination)",
+        description = "Get scan results (paginated)",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -290,22 +556,22 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<ScanResultsRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::scans::results(&self.scan_manager, req)
+        self.wrap_result(crate::tools::scans::results(&self.scan_manager, req))
     }
 
     #[tool(
-        description = "Cancel a running scan",
+        description = "Cancel scan",
         annotations(destructive_hint = true, open_world_hint = false)
     )]
     fn cancel_scan(
         &self,
         Parameters(req): Parameters<ScanIdRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::scans::cancel(&self.scan_manager, req)
+        self.wrap_result(crate::tools::scans::cancel(&self.scan_manager, req))
     }
 
     #[tool(
-        description = "List all scans and their status",
+        description = "List scans",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -313,24 +579,27 @@ impl RavenServer {
         )
     )]
     fn list_scans(&self) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::scans::list_scans(&self.scan_manager)
+        self.wrap_result(crate::tools::scans::list_scans(&self.scan_manager))
     }
 
     // ── Findings management ──────────────────────────────────────────
 
     #[tool(
-        description = "Save a vulnerability finding",
+        description = "Save finding",
         annotations(destructive_hint = false, open_world_hint = false)
     )]
     fn save_finding(
         &self,
         Parameters(req): Parameters<SaveFindingRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::findings::save_finding(&self.finding_store, req)
+        self.wrap_result(crate::tools::findings::save_finding(
+            &self.finding_store,
+            req,
+        ))
     }
 
     #[tool(
-        description = "Get details of a specific finding",
+        description = "Get finding by ID",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -341,11 +610,14 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<FindingIdRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::findings::get_finding(&self.finding_store, req)
+        self.wrap_result(crate::tools::findings::get_finding(
+            &self.finding_store,
+            req,
+        ))
     }
 
     #[tool(
-        description = "List all findings sorted by severity",
+        description = "List findings by severity",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -353,22 +625,25 @@ impl RavenServer {
         )
     )]
     fn list_findings(&self) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::findings::list_findings(&self.finding_store)
+        self.wrap_result(crate::tools::findings::list_findings(&self.finding_store))
     }
 
     #[tool(
-        description = "Delete a finding by ID",
+        description = "Delete finding",
         annotations(destructive_hint = true, open_world_hint = false)
     )]
     fn delete_finding(
         &self,
         Parameters(req): Parameters<FindingIdRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::findings::delete_finding(&self.finding_store, req)
+        self.wrap_result(crate::tools::findings::delete_finding(
+            &self.finding_store,
+            req,
+        ))
     }
 
     #[tool(
-        description = "Generate a markdown pentest report from all findings",
+        description = "Generate pentest report",
         annotations(
             read_only_hint = true,
             destructive_hint = false,
@@ -379,7 +654,11 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<GenerateReportRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        crate::tools::findings::generate_report(&self.finding_store, &self.config, req)
+        self.wrap_result(crate::tools::findings::generate_report(
+            &self.finding_store,
+            &self.config,
+            req,
+        ))
     }
 }
 
@@ -403,16 +682,21 @@ Raven Nest - pentesting toolkit.
 
 ## Workflow
 1. ping_target first to verify connectivity.
-2. Use dedicated tools (not launch_scan): nmap, masscan (root), whatweb for recon; nuclei, nikto, feroxbuster, ffuf for web; sqlmap, hydra for exploitation; testssl for TLS.
-3. Targets: bare hostnames/IPs for nmap/ping/masscan; full URLs for web tools.
-4. Start with less aggressive scans first.
-5. Check output for empty/rate-limited results before saving findings.
-6. save_finding for each vuln, then generate_report.
+2. Recon: nmap, masscan (root), whatweb, subfinder (subdomains), enum4linux-ng (SMB/AD), dnsrecon (DNS).
+3. Web: nuclei, nikto, feroxbuster, ffuf, wpscan (WordPress), dalfox (XSS), sqlmap, hydra. testssl for TLS.
+4. Password: john (hash cracking).
+5. Exploit: msf_search > msf_module_info > msf_exploit (if Metasploit enabled).
+6. Targets: bare hostnames/IPs for nmap/ping/masscan; full URLs for web tools.
+7. Start with less aggressive scans. Check output for empty/rate-limited results.
+8. save_finding for each vuln, then generate_report.
 
 ## Tool Timing
-- Fast (1-5s): ping_target, run_whatweb, http_request, run_ffuf, run_masscan
-- Medium (5-30s): run_nmap (quick/service)
-- Slow (30-300s): run_nmap (os/vuln), run_nuclei, run_nikto, run_testssl, run_feroxbuster, run_sqlmap, run_hydra
+- Fast (1-5s): ping_target, run_whatweb, http_request, run_ffuf, run_masscan, run_subfinder, run_dalfox
+- Medium (5-30s): run_nmap (quick/service), run_wpscan, run_dnsrecon, msf_search, msf_module_info
+- Slow (30-300s): run_nmap (os/vuln), run_nuclei, run_nikto, run_testssl, run_feroxbuster, run_sqlmap, run_hydra, run_enum4linux_ng, run_john, msf_exploit
+
+## Context Budget
+Watch the [budget: ...] line in responses. When mode switches to compact/minimal, prioritize saving findings over running more scans.
 
 ## Authenticated Scanning
 http_request cookie jar persists within a session. Subprocess tools (sqlmap, nikto, etc.) do NOT share it — pass cookies via each tool's `cookie` parameter.";

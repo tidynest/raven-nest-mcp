@@ -78,6 +78,7 @@ pub async fn run(
 /// verbose cipher enumeration and protocol negotiation details that
 /// dominate testssl output.
 pub fn parse_testssl_output(raw: &str) -> Option<String> {
+    let raw = &super::strip_ansi(raw);
     let mut output = String::new();
 
     for line in raw.lines() {
