@@ -75,7 +75,8 @@ impl RavenServer {
         let _ = std::fs::create_dir_all(&config.execution.output_dir);
         let findings_dir = std::path::PathBuf::from(&config.execution.output_dir).join("findings");
         let finding_store = std::sync::Arc::new(std::sync::RwLock::new(
-            raven_report::store::FindingStore::new(findings_dir),
+            raven_report::store::FindingStore::new(findings_dir)
+                .expect("failed to create findings directory"),
         ));
         let cookie_jar = std::sync::Arc::new(reqwest::cookie::Jar::default());
 

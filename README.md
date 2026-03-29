@@ -98,9 +98,16 @@ Every tool call passes through six layers:
 5. **Output sanitisation** -- ANSI stripping, truncation at configurable limits (UTF-8 safe)
 6. **Quality assessment** -- detects empty results, rate-limiting, and WAF blocks
 
-Dangerous tools have additional caps: sqlmap level/risk, hydra task count, and masscan packet rate are all configurable maximums that prevent escalation beyond operator-approved limits.
+Additional hardening:
 
-Metasploit integration adds a 5-layer safety model: disabled by default, per-tool allowlisting, module blocklist, exploit confirmation gate (double-call to execute), and session command filtering. See [docs/METASPLOIT.md](docs/METASPLOIT.md).
+- **Config validation at startup** -- safety limits (sqlmap level/risk, hydra tasks, masscan rate) are range-checked; the server refuses to start with out-of-range values or default MSF credentials
+- **Wordlist path validation** -- hydra, john, feroxbuster, and ffuf only accept wordlists under `/usr/share/`, `/usr/lib/`, or the configured `output_dir`; path traversal (`..`) is rejected
+- **Port spec validation** -- nmap and masscan port parameters accept only digits, commas, and hyphens
+- **File permissions** -- cookie files and scan spill files are created with `0o600` (owner-only)
+- **Markdown escaping** -- report generation escapes user-supplied finding fields to prevent markdown injection
+- **Finding ID validation** -- finding get/delete operations require valid UUID format, preventing path traversal
+
+Metasploit integration adds a 5-layer safety model: disabled by default, per-tool allowlisting, path-boundary module blocklist, exploit confirmation gate (double-call to execute), and session command filtering. Passwords are redacted from error messages, and TLS certificate bypass is restricted to localhost connections. See [docs/METASPLOIT.md](docs/METASPLOIT.md).
 
 Tools requiring root (masscan, nmap OS detection) can be run via passwordless `sudo` without elevating the entire server. See `sudo_tools` in the [configuration docs](docs/USAGE.md#sudo_tools--privilege-escalation).
 

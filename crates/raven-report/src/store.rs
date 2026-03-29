@@ -30,13 +30,13 @@ impl FindingStore {
     ///
     /// On first run, migrates any legacy `findings.json` found in the parent directory.
     /// Rebuilds the in-memory index by scanning all `.json` files in the directory.
-    pub fn new(findings_dir: PathBuf) -> Self {
-        fs::create_dir_all(&findings_dir).unwrap_or_else(|e| {
-            panic!(
+    pub fn new(findings_dir: PathBuf) -> Result<Self, String> {
+        fs::create_dir_all(&findings_dir).map_err(|e| {
+            format!(
                 "failed to create findings directory {}: {e}",
                 findings_dir.display()
-            );
-        });
+            )
+        })?;
 
         // One-time migration from legacy single-file format
         if let Some(parent) = findings_dir.parent() {
@@ -67,10 +67,10 @@ impl FindingStore {
             }
         }
 
-        Self {
+        Ok(Self {
             index,
             findings_dir,
-        }
+        })
     }
 
     /// Persist a new finding to disk and add it to the in-memory index.
@@ -85,6 +85,10 @@ impl FindingStore {
 
     /// Load the full finding from disk by ID. Returns `None` if not found.
     pub fn get(&self, id: &str) -> Option<Finding> {
+        // Reject non-UUID IDs to prevent path traversal via finding_path()
+        if uuid::Uuid::parse_str(id).is_err() {
+            return None;
+        }
         if !self.index.contains_key(id) {
             return None;
         }
@@ -95,6 +99,10 @@ impl FindingStore {
 
     /// Delete a finding from disk and the in-memory index. Returns `true` if found.
     pub fn delete(&mut self, id: &str) -> bool {
+        // Reject non-UUID IDs to prevent path traversal via finding_path()
+        if uuid::Uuid::parse_str(id).is_err() {
+            return false;
+        }
         if self.index.remove(id).is_none() {
             return false;
         }
@@ -186,7 +194,7 @@ mod tests {
 
     fn test_store() -> (FindingStore, tempfile::TempDir) {
         let dir = tempfile::tempdir().unwrap();
-        let store = FindingStore::new(dir.path().join("findings"));
+        let store = FindingStore::new(dir.path().join("findings")).unwrap();
         (store, dir)
     }
 
@@ -240,14 +248,14 @@ mod tests {
         let findings_dir = dir.path().join("findings");
 
         let id = {
-            let mut store = FindingStore::new(findings_dir.clone());
+            let mut store = FindingStore::new(findings_dir.clone()).unwrap();
             store
                 .insert(make_finding("persisted", Severity::Medium))
                 .unwrap()
         };
 
         // Reopen store from disk
-        let store = FindingStore::new(findings_dir);
+        let store = FindingStore::new(findings_dir).unwrap();
         let f = store.get(&id).unwrap();
         assert_eq!(f.title, "persisted");
     }
@@ -258,14 +266,14 @@ mod tests {
         let findings_dir = dir.path().join("findings");
 
         let (id1, _id2) = {
-            let mut store = FindingStore::new(findings_dir.clone());
+            let mut store = FindingStore::new(findings_dir.clone()).unwrap();
             let id1 = store.insert(make_finding("keep", Severity::High)).unwrap();
             let id2 = store.insert(make_finding("remove", Severity::Low)).unwrap();
             store.delete(&id2);
             (id1, id2)
         };
 
-        let store = FindingStore::new(findings_dir);
+        let store = FindingStore::new(findings_dir).unwrap();
         assert!(store.get(&id1).is_some());
         assert_eq!(store.list().len(), 1);
     }
@@ -295,7 +303,7 @@ mod tests {
         // Write corrupt JSON
         fs::write(findings_dir.join("corrupt.json"), "not valid json{{{").unwrap();
 
-        let store = FindingStore::new(findings_dir);
+        let store = FindingStore::new(findings_dir).unwrap();
         assert_eq!(store.list().len(), 1);
         assert_eq!(store.list()[0].title, "valid");
     }
@@ -312,7 +320,7 @@ mod tests {
         fs::write(output_dir.join("findings.json"), &legacy_json).unwrap();
 
         // Open store — should auto-migrate
-        let store = FindingStore::new(output_dir.join("findings"));
+        let store = FindingStore::new(output_dir.join("findings")).unwrap();
         assert_eq!(store.list().len(), 2);
 
         // Legacy file should be renamed
@@ -338,5 +346,30 @@ mod tests {
         let all = store.load_all();
         let titles: Vec<&str> = all.iter().map(|f| f.title.as_str()).collect();
         assert_eq!(titles, vec!["critical", "medium", "info"]);
+    }
+
+    #[test]
+    fn get_rejects_path_traversal_id() {
+        let (store, _dir) = test_store();
+        assert!(store.get("../../etc/passwd").is_none());
+    }
+
+    #[test]
+    fn delete_rejects_path_traversal_id() {
+        let (mut store, _dir) = test_store();
+        assert!(!store.delete("../../etc/shadow"));
+    }
+
+    #[test]
+    fn get_rejects_non_uuid_id() {
+        let (store, _dir) = test_store();
+        assert!(store.get("not-a-uuid-at-all").is_none());
+    }
+
+    #[test]
+    fn new_returns_error_on_unwritable_path() {
+        // /proc is not writable — FindingStore should return Err, not panic
+        let result = FindingStore::new(std::path::PathBuf::from("/proc/nonexistent/findings"));
+        assert!(result.is_err());
     }
 }

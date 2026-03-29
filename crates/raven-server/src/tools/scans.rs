@@ -23,8 +23,6 @@ pub struct LaunchScanRequest {
     pub tool: String,
     #[schemars(description = "Target IP, hostname, or URL")]
     pub target: String,
-    #[schemars(description = "Tool arguments as a list of strings")]
-    pub args: Option<Vec<String>>,
     #[schemars(description = "Scan timeout in seconds (default from config, typically 600)")]
     #[serde(default, deserialize_with = "super::lenient::option_number")]
     pub timeout_secs: Option<u64>,
@@ -57,10 +55,9 @@ pub fn launch(
     manager: &ScanManager,
     req: LaunchScanRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
-    let args = req.args.unwrap_or_default();
     let tool = &req.tool;
     let id = manager
-        .launch(tool, args, &req.target, req.timeout_secs)
+        .launch(tool, &req.target, req.timeout_secs)
         .map_err(crate::error::to_mcp)?;
 
     // Suggest appropriate first-poll delay based on typical tool duration

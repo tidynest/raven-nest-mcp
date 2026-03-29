@@ -56,6 +56,76 @@ pub(crate) fn strip_ansi(s: &str) -> String {
     out
 }
 
+/// Validate that a file path is within allowed directories.
+///
+/// Pentesting tools like hydra, john, feroxbuster, and ffuf accept file paths
+/// for wordlists and hash files. Without validation, an LLM could read arbitrary
+/// files (e.g. `/etc/shadow`) by passing them as wordlist paths.
+///
+/// Allowed prefixes: `/usr/share/`, `/usr/lib/`, and the configured `output_dir`.
+/// Rejects paths containing `..` or shell metacharacters.
+pub(crate) fn validate_file_path(
+    path: &str,
+    output_dir: &str,
+) -> Result<(), rmcp::ErrorData> {
+    if path.is_empty() {
+        return Err(rmcp::ErrorData::invalid_params("file path is empty", None));
+    }
+    // Reject path traversal
+    if path.contains("..") {
+        return Err(rmcp::ErrorData::invalid_params(
+            "file path must not contain '..'",
+            None,
+        ));
+    }
+    // Reject shell metacharacters
+    if path.contains(|c: char| ";&|`$(){}<!>\n".contains(c)) {
+        return Err(rmcp::ErrorData::invalid_params(
+            "file path contains invalid characters",
+            None,
+        ));
+    }
+    // Check allowed directory prefixes (ensure trailing slash to prevent
+    // sibling-directory bypass: /tmp/raven-nest vs /tmp/raven-nestevil/)
+    let output_dir_slash = if output_dir.ends_with('/') {
+        output_dir.to_string()
+    } else {
+        format!("{output_dir}/")
+    };
+    let allowed_prefixes: [&str; 3] = ["/usr/share/", "/usr/lib/", &output_dir_slash];
+    if !allowed_prefixes.iter().any(|prefix| path.starts_with(prefix)) {
+        return Err(rmcp::ErrorData::invalid_params(
+            format!(
+                "file path must be under /usr/share/, /usr/lib/, or the configured output directory ({})",
+                output_dir
+            ),
+            None,
+        ));
+    }
+    Ok(())
+}
+
+/// Validate that a port specification contains only digits, commas, and hyphens.
+///
+/// Nmap and masscan accept port specs like `80,443` or `1-1000`. While
+/// `Command::arg()` prevents shell injection, validating the format is
+/// defense-in-depth against tools that might split arguments internally.
+pub(crate) fn validate_port_spec(spec: &str) -> Result<(), rmcp::ErrorData> {
+    if spec.is_empty() {
+        return Err(rmcp::ErrorData::invalid_params(
+            "port spec is empty",
+            None,
+        ));
+    }
+    if !spec.chars().all(|c| c.is_ascii_digit() || c == ',' || c == '-') {
+        return Err(rmcp::ErrorData::invalid_params(
+            "port spec must contain only digits, commas, and hyphens (e.g. '80,443' or '1-1000')",
+            None,
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::is_localhost;
@@ -74,6 +144,114 @@ mod tests {
         assert!(!is_localhost("http://example.com"));
         assert!(!is_localhost("https://10.0.0.1:443"));
         assert!(!is_localhost("remote.example.com"));
+    }
+}
+
+#[cfg(test)]
+mod path_validation_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_seclists_wordlist() {
+        assert!(validate_file_path(
+            "/usr/share/seclists/Discovery/Web-Content/raft-medium-directories.txt",
+            "/tmp/raven-nest"
+        ).is_ok());
+    }
+
+    #[test]
+    fn accepts_output_dir_path() {
+        assert!(validate_file_path(
+            "/tmp/raven-nest/hashes.txt",
+            "/tmp/raven-nest"
+        ).is_ok());
+    }
+
+    #[test]
+    fn accepts_usr_lib_path() {
+        assert!(validate_file_path(
+            "/usr/lib/john/password.lst",
+            "/tmp/raven-nest"
+        ).is_ok());
+    }
+
+    #[test]
+    fn rejects_etc_shadow() {
+        assert!(validate_file_path("/etc/shadow", "/tmp/raven-nest").is_err());
+    }
+
+    #[test]
+    fn rejects_path_traversal() {
+        assert!(validate_file_path(
+            "/usr/share/../../etc/passwd",
+            "/tmp/raven-nest"
+        ).is_err());
+    }
+
+    #[test]
+    fn rejects_relative_traversal() {
+        assert!(validate_file_path("../../etc/passwd", "/tmp/raven-nest").is_err());
+    }
+
+    #[test]
+    fn rejects_metacharacters() {
+        assert!(validate_file_path("/usr/share/test;rm -rf /", "/tmp/raven-nest").is_err());
+        assert!(validate_file_path("/usr/share/test$(whoami)", "/tmp/raven-nest").is_err());
+    }
+
+    #[test]
+    fn rejects_empty_path() {
+        assert!(validate_file_path("", "/tmp/raven-nest").is_err());
+    }
+
+    #[test]
+    fn rejects_home_directory() {
+        assert!(validate_file_path("/home/user/wordlist.txt", "/tmp/raven-nest").is_err());
+    }
+}
+
+#[cfg(test)]
+mod port_validation_tests {
+    use super::*;
+
+    #[test]
+    fn accepts_single_port() {
+        assert!(validate_port_spec("80").is_ok());
+    }
+
+    #[test]
+    fn accepts_port_list() {
+        assert!(validate_port_spec("80,443,8080").is_ok());
+    }
+
+    #[test]
+    fn accepts_port_range() {
+        assert!(validate_port_spec("1-1000").is_ok());
+    }
+
+    #[test]
+    fn accepts_mixed_spec() {
+        assert!(validate_port_spec("22,80,443,8000-9000").is_ok());
+    }
+
+    #[test]
+    fn rejects_spaces() {
+        assert!(validate_port_spec("80 443").is_err());
+    }
+
+    #[test]
+    fn rejects_flags() {
+        assert!(validate_port_spec("80 -sV").is_err());
+    }
+
+    #[test]
+    fn rejects_semicolons() {
+        assert!(validate_port_spec("80;nmap").is_err());
+    }
+
+    #[test]
+    fn rejects_empty() {
+        assert!(validate_port_spec("").is_err());
     }
 }
 

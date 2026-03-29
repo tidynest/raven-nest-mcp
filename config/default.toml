@@ -35,6 +35,8 @@ sudo_tools = ["masscan", "nmap"]
 [execution]
 default_timeout_secs = 600
 max_concurrent_scans = 3
+# SECURITY: /tmp is world-writable. For production, use a restricted location
+# owned by the service user with mode 0700 (e.g. /var/lib/raven-nest).
 output_dir = "/tmp/raven-nest"
 
 # Optional: per-tool timeout overrides (seconds)

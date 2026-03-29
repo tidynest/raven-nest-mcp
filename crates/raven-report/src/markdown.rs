@@ -10,6 +10,25 @@
 
 use crate::finding::{Finding, Severity};
 
+/// Escape markdown special characters in user-supplied text.
+///
+/// Prevents injected markdown (e.g. `# Fake Header` in a finding title)
+/// from breaking report structure. Applied to titles, descriptions, and
+/// remediation text — but NOT to evidence (which is inside a code fence).
+fn escape_markdown(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '#' | '[' | ']' | '*' | '_' | '`' | '|' | '\\' => {
+                out.push('\\');
+                out.push(c);
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 /// Generate a complete markdown pentest report from a list of findings.
 ///
 /// Findings are rendered in the order provided — callers typically pass them
@@ -31,7 +50,7 @@ pub fn generate_report(findings: &[&Finding], title: &str) -> String {
         let n = i + 1;
         report.push_str(&format!(
             "  - [{n}. [{}] {}](#{})\n",
-            f.severity, f.title, n,
+            f.severity, escape_markdown(&f.title), n,
         ));
     }
     report.push('\n');
@@ -77,7 +96,7 @@ pub fn generate_report(findings: &[&Finding], title: &str) -> String {
     // Individual findings
     report.push_str("## Findings\n\n");
     for (i, f) in findings.iter().enumerate() {
-        report.push_str(&format!("### {}. [{}] {}\n\n", i + 1, f.severity, f.title));
+        report.push_str(&format!("### {}. [{}] {}\n\n", i + 1, f.severity, escape_markdown(&f.title)));
         report.push_str(&format!("- **Target:** {}\n", f.target));
         report.push_str(&format!("- **Tool:** {}\n", f.tool));
 
@@ -91,13 +110,13 @@ pub fn generate_report(findings: &[&Finding], title: &str) -> String {
             report.push_str(&format!("- **OWASP:** {owasp}\n"));
         }
 
-        report.push_str(&format!("\n{}\n\n", f.description));
+        report.push_str(&format!("\n{}\n\n", escape_markdown(&f.description)));
 
         if let Some(evidence) = &f.evidence {
             report.push_str(&format!("**Evidence:**\n```\n{evidence}\n```\n\n"));
         }
         if let Some(remediation) = &f.remediation {
-            report.push_str(&format!("**Remediation:** {remediation}\n\n"));
+            report.push_str(&format!("**Remediation:** {}\n\n", escape_markdown(remediation)));
         }
 
         report.push_str("---\n\n");
@@ -251,5 +270,44 @@ mod tests {
         assert!(report.contains("### 1. [High] First"));
         assert!(report.contains("### 2. [Medium] Second"));
         assert!(report.contains("### 3. [Low] Third"));
+    }
+
+    #[test]
+    fn escape_markdown_handles_special_chars() {
+        assert_eq!(escape_markdown("# Header"), "\\# Header");
+        assert_eq!(escape_markdown("[link](url)"), "\\[link\\](url)");
+        assert_eq!(escape_markdown("**bold**"), "\\*\\*bold\\*\\*");
+        assert_eq!(escape_markdown("`code`"), "\\`code\\`");
+        assert_eq!(escape_markdown("pipe | table"), "pipe \\| table");
+        assert_eq!(escape_markdown("back\\slash"), "back\\\\slash");
+    }
+
+    #[test]
+    fn escape_markdown_preserves_normal_text() {
+        assert_eq!(escape_markdown("normal text 123"), "normal text 123");
+        assert_eq!(escape_markdown(""), "");
+    }
+
+    #[test]
+    fn report_escapes_markdown_injection_in_title() {
+        let mut f = make("# Injected Header", Severity::High);
+        f.description = "## Injected Section\n\nMalicious content".into();
+        let findings = vec![&f];
+        let report = generate_report(&findings, "Injection Test");
+        // The title should be escaped — no raw "# Injected Header" as an actual heading
+        assert!(report.contains("\\# Injected Header"));
+        // The description should be escaped
+        assert!(report.contains("\\#\\# Injected Section"));
+    }
+
+    #[test]
+    fn report_does_not_escape_evidence() {
+        let mut f = make("Test Finding", Severity::Medium);
+        f.evidence = Some("# This should NOT be escaped\n`code here`".into());
+        let findings = vec![&f];
+        let report = generate_report(&findings, "Evidence Test");
+        // Evidence is inside a code fence — should NOT be escaped
+        assert!(report.contains("# This should NOT be escaped"));
+        assert!(report.contains("`code here`"));
     }
 }

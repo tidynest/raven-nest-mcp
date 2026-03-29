@@ -45,7 +45,7 @@ All fields live under the `[metasploit]` section of `config/default.toml`. The e
 | `ssl` | bool | `true` | Use HTTPS for the RPC connection (msfrpcd default). |
 | `max_search_results` | usize | `20` | Maximum modules returned by `msf_search`. |
 | `max_concurrent_exploits` | usize | `1` | Maximum simultaneous exploit executions. |
-| `blocked_modules` | string[] | `[]` | Substring patterns -- any module whose path contains a match is blocked. |
+| `blocked_modules` | string[] | `[]` | Path-boundary patterns -- blocks exact matches, prefix matches (e.g. `exploit/windows/` blocks all Windows exploits), and path-segment matches. |
 | `require_confirmation` | bool | `true` | Require double-call confirmation before exploit execution. |
 
 ### Example: Restrictive Setup
@@ -346,9 +346,9 @@ max_concurrent_exploits = 1
 ## Security Considerations
 
 - **Network exposure:** msfrpcd should only bind to `127.0.0.1` unless you need remote access. Never expose it to untrusted networks.
-- **Credential management:** The default password `changeme` must be replaced before use. The password is stored in plain text in the TOML config file -- protect file permissions accordingly.
-- **Self-signed TLS:** msfrpcd generates a self-signed certificate by default. The RPC client accepts invalid certificates (`danger_accept_invalid_certs`) to work with this default. If you need strict TLS, provide a valid certificate to msfrpcd.
-- **Module blocklist:** Use `blocked_modules` to prevent execution of dangerous or out-of-scope modules. Patterns are substring matches, not regex.
+- **Credential management:** The default password `changeme` must be replaced before use. The server refuses to start with the default password when Metasploit is enabled. Passwords are redacted from error messages to prevent credential exposure in logs.
+- **Self-signed TLS:** msfrpcd generates a self-signed certificate by default. The RPC client accepts invalid certificates only for localhost connections (`127.0.0.1`, `localhost`, `::1`). Remote msfrpcd connections require valid TLS certificates.
+- **Module blocklist:** Use `blocked_modules` to prevent execution of dangerous or out-of-scope modules. Patterns match at path boundaries (exact match, prefix with `/` separator, or trailing-slash prefix), not arbitrary substrings.
 - **Confirmation gate:** Keep `require_confirmation = true` for any LLM-driven workflow. This prevents the model from executing exploits without operator review.
 - **Session isolation:** The command blocklist prevents destructive operations in sessions, but it is not a sandbox. An attacker with shell access can bypass prefix-based filtering. Treat sessions as high-privilege access.
 - **All request structs use `deny_unknown_fields`:** any parameter name not listed in the tables above is rejected with a descriptive error. This catches LLM parameter hallucination.
@@ -379,7 +379,7 @@ The RPC token expired. The client automatically re-authenticates once on token e
 
 ### SSL Certificate Errors
 
-msfrpcd generates a self-signed certificate by default. The client accepts invalid certificates (`danger_accept_invalid_certs`). If you need strict TLS, provide a valid certificate to msfrpcd and set `ssl = true`.
+msfrpcd generates a self-signed certificate by default. The client accepts invalid certificates only for localhost connections. For remote msfrpcd, provide a valid TLS certificate.
 
 ### Module Not Found
 

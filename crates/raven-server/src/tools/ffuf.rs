@@ -51,6 +51,10 @@ pub async fn run(
     let validation_url = req.url.replace("FUZZ", "test");
     safety::validate_target(&validation_url).map_err(crate::error::to_mcp)?;
 
+    if let Some(ref wordlist) = req.wordlist {
+        super::validate_file_path(wordlist, &config.execution.output_dir)?;
+    }
+
     // The FUZZ keyword is required — it's the substitution point for wordlist entries
     if !req.url.contains("FUZZ") {
         return Err(rmcp::ErrorData::invalid_params(

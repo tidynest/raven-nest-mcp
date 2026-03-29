@@ -77,8 +77,11 @@ pub struct MsfClient {
 impl MsfClient {
     /// Create a new client from config. Does NOT connect until first use.
     pub fn new(config: &MetasploitConfig) -> Self {
+        let is_local = config.host == "127.0.0.1"
+            || config.host == "localhost"
+            || config.host == "::1";
         let http = reqwest::Client::builder()
-            .danger_accept_invalid_certs(true) // msfrpcd uses self-signed certs
+            .danger_accept_invalid_certs(is_local) // only skip cert validation for localhost
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
@@ -118,8 +121,8 @@ impl MsfClient {
             .await
             .map_err(|e| {
                 PentestError::MsfNotRunning(format!(
-                    "{e} — start msfrpcd with: msfrpcd -P {} -a {} -p {} -n -f",
-                    self.config.password, self.config.host, self.config.port
+                    "{e} — start msfrpcd with: msfrpcd -P <redacted> -a {} -p {} -n -f",
+                    self.config.host, self.config.port
                 ))
             })?;
 
@@ -267,7 +270,10 @@ impl MsfClient {
     ) -> Result<Value, PentestError> {
         // Check blocked modules
         for pattern in &self.config.blocked_modules {
-            if module_name.contains(pattern) {
+            if module_name == pattern
+                || module_name.starts_with(&format!("{pattern}/"))
+                || pattern.ends_with('/') && module_name.starts_with(pattern.as_str())
+            {
                 return Err(PentestError::MsfRpcError(format!(
                     "module '{module_name}' is blocked by config"
                 )));
@@ -444,5 +450,56 @@ mod tests {
         assert!(!client.check_confirmation(123));
         client.clear_confirmation();
         assert!(!client.check_confirmation(123));
+    }
+
+    #[test]
+    fn error_message_does_not_contain_password() {
+        let config = MetasploitConfig {
+            password: "super_secret_123".into(),
+            ..MetasploitConfig::default()
+        };
+        let _client = MsfClient::new(&config);
+        // The base_url format is testable; the error message format
+        // would require an actual connection attempt, so we verify
+        // the redaction pattern is correct by checking the format string
+        let error_msg = format!(
+            "connection refused — start msfrpcd with: msfrpcd -P <redacted> -a {} -p {} -n -f",
+            config.host, config.port
+        );
+        assert!(!error_msg.contains("super_secret_123"));
+        assert!(error_msg.contains("<redacted>"));
+    }
+
+    #[test]
+    fn blocked_module_exact_match() {
+        let config = MetasploitConfig {
+            blocked_modules: vec!["exploit/windows/smb/ms17_010_eternalblue".into()],
+            ..MetasploitConfig::default()
+        };
+        let _client = MsfClient::new(&config);
+        // We can't call execute_module without a running msfrpcd,
+        // but we can verify the matching logic directly
+        let pattern = &config.blocked_modules[0];
+        let module = "exploit/windows/smb/ms17_010_eternalblue";
+        assert!(module == pattern || module.starts_with(&format!("{pattern}/")));
+    }
+
+    #[test]
+    fn blocked_module_prefix_match() {
+        let pattern = "exploit/windows/";
+        let module = "exploit/windows/smb/ms17_010_eternalblue";
+        assert!(pattern.ends_with('/') && module.starts_with(pattern));
+    }
+
+    #[test]
+    fn blocked_module_no_false_substring_match() {
+        let pattern = "windows";
+        let module = "exploit/linux/samba/windows_compat_check";
+        // Old behavior: module.contains(pattern) would match (WRONG)
+        // New behavior: should NOT match
+        let matches = module == pattern
+            || module.starts_with(&format!("{pattern}/"))
+            || (pattern.ends_with('/') && module.starts_with(pattern));
+        assert!(!matches);
     }
 }

@@ -22,6 +22,11 @@ async fn main() -> Result<()> {
 
     let config = raven_core::config::RavenConfig::load_with_fallback();
 
+    if let Err(e) = config.validate() {
+        tracing::error!("invalid configuration: {e}");
+        std::process::exit(1);
+    }
+
     let service = raven_server::server::RavenServer::new(config);
 
     // Serve MCP over stdin/stdout and block until the client disconnects
