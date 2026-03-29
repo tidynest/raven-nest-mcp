@@ -35,6 +35,7 @@ pub async fn run(
     config: &RavenConfig,
     req: NiktoRequest,
     peer: Option<Peer<RoleServer>>,
+    result_limit: usize,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
@@ -72,7 +73,8 @@ pub async fn run(
         .map_err(crate::error::to_mcp)?;
 
     let output = if result.success {
-        let mut out = parse_nikto_output(&result.stdout).unwrap_or_else(|| result.stdout.clone());
+        let mut out = parse_nikto_output(&result.stdout, result_limit)
+            .unwrap_or_else(|| result.stdout.clone());
         if let Some(ref warning) = result.warning {
             out.push_str(&format!("\n\n⚠ {warning}"));
         }
@@ -87,7 +89,7 @@ pub async fn run(
 ///
 /// Nikto lines starting with `+` are findings or target metadata.
 /// Everything else (banner, separator lines, blank lines) is discarded.
-pub fn parse_nikto_output(raw: &str) -> Option<String> {
+pub fn parse_nikto_output(raw: &str, max_results: usize) -> Option<String> {
     let findings: Vec<&str> = raw
         .lines()
         .map(str::trim)
@@ -103,7 +105,7 @@ pub fn parse_nikto_output(raw: &str) -> Option<String> {
         None
     } else {
         let total = findings.len();
-        let cap = 30;
+        let cap = max_results;
         let shown: Vec<_> = findings.into_iter().take(cap).collect();
         let extra = if total > cap {
             format!("\n+{} more finding(s)", total - cap)
@@ -132,7 +134,7 @@ mod tests {
 + 7915 requests: 0 error(s) and 3 item(s) reported
 ---------------------------------------------------------------------------
 + 1 host(s) tested"#;
-        let result = parse_nikto_output(raw).unwrap();
+        let result = parse_nikto_output(raw, 30).unwrap();
         assert!(result.contains("+ Target IP:"));
         assert!(result.contains("+ Server: Apache"));
         assert!(result.contains("OSVDB-3092"));
@@ -144,8 +146,8 @@ mod tests {
 
     #[test]
     fn parse_nikto_empty_returns_none() {
-        assert!(parse_nikto_output("").is_none());
-        assert!(parse_nikto_output("no plus-prefixed lines here").is_none());
+        assert!(parse_nikto_output("", 30).is_none());
+        assert!(parse_nikto_output("no plus-prefixed lines here", 30).is_none());
     }
 
     #[test]
@@ -157,7 +159,7 @@ mod tests {
        -p+   Port to use (default 80)
        + requires a value"#;
         assert!(
-            parse_nikto_output(help).is_none(),
+            parse_nikto_output(help, 30).is_none(),
             "help text should not parse as valid scan output"
         );
     }

@@ -28,11 +28,10 @@ pub fn generate_report(findings: &[&Finding], title: &str) -> String {
     report.push_str("- [Tools Used](#tools-used)\n");
     report.push_str(&format!("- [Findings ({})](#findings)\n", findings.len()));
     for (i, f) in findings.iter().enumerate() {
+        let n = i + 1;
         report.push_str(&format!(
-            "  - [{i}. [{}] {}](#{})\n",
-            f.severity,
-            f.title,
-            i + 1,
+            "  - [{n}. [{}] {}](#{})\n",
+            f.severity, f.title, n,
         ));
     }
     report.push('\n');

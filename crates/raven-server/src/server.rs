@@ -147,10 +147,13 @@ impl RavenServer {
         let mut call_result = result?;
         let cap = self.budget.allocate();
 
-        // Measure and truncate text content
+        // Strip ANSI escape codes and truncate text content.
+        // Centralised here so every tool response — parser output, error paths,
+        // raw fallback, background scan results — is clean.
         let mut total_chars = 0usize;
         for content in &mut call_result.content {
             if let RawContent::Text(ref mut tc) = content.raw {
+                tc.text = crate::tools::strip_ansi(&tc.text);
                 let text_len = tc.text.chars().count();
                 if text_len > cap.max_chars {
                     tc.text = SessionBudget::truncate_to_cap(&tc.text, cap.max_chars);
@@ -224,7 +227,9 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<FfufRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::ffuf::run(&self.config, req).await)
+        self.wrap_result(
+            crate::tools::ffuf::run(&self.config, req, self.budget.scale_cap(40)).await,
+        )
     }
 
     #[tool(
@@ -239,7 +244,9 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<MasscanRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::masscan::run(&self.config, req).await)
+        self.wrap_result(
+            crate::tools::masscan::run(&self.config, req, self.budget.scale_cap(50)).await,
+        )
     }
 
     // ── Medium/Slow tools (5-300s) ───────────────────────────────────
@@ -257,7 +264,9 @@ impl RavenServer {
         peer: Peer<RoleServer>,
         Parameters(req): Parameters<NmapRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::nmap::run(&self.config, req, Some(peer)).await)
+        self.wrap_result(
+            crate::tools::nmap::run(&self.config, req, Some(peer), self.budget.scale_cap(10)).await,
+        )
     }
 
     #[tool(
@@ -273,7 +282,10 @@ impl RavenServer {
         peer: Peer<RoleServer>,
         Parameters(req): Parameters<NucleiRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::nuclei::run(&self.config, req, Some(peer)).await)
+        self.wrap_result(
+            crate::tools::nuclei::run(&self.config, req, Some(peer), self.budget.scale_cap(25))
+                .await,
+        )
     }
 
     #[tool(
@@ -289,7 +301,10 @@ impl RavenServer {
         peer: Peer<RoleServer>,
         Parameters(req): Parameters<NiktoRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::nikto::run(&self.config, req, Some(peer)).await)
+        self.wrap_result(
+            crate::tools::nikto::run(&self.config, req, Some(peer), self.budget.scale_cap(30))
+                .await,
+        )
     }
 
     #[tool(
@@ -321,7 +336,15 @@ impl RavenServer {
         peer: Peer<RoleServer>,
         Parameters(req): Parameters<FeroxbusterRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::feroxbuster::run(&self.config, req, Some(peer)).await)
+        self.wrap_result(
+            crate::tools::feroxbuster::run(
+                &self.config,
+                req,
+                Some(peer),
+                self.budget.scale_cap(40),
+            )
+            .await,
+        )
     }
 
     #[tool(
@@ -361,7 +384,15 @@ impl RavenServer {
         peer: Peer<RoleServer>,
         Parameters(req): Parameters<Enum4linuxRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::enum4linux_ng::run(&self.config, req, Some(peer)).await)
+        self.wrap_result(
+            crate::tools::enum4linux_ng::run(
+                &self.config,
+                req,
+                Some(peer),
+                self.budget.scale_cap(20),
+            )
+            .await,
+        )
     }
 
     #[tool(
@@ -376,7 +407,9 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<DalfoxRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::dalfox::run(&self.config, req).await)
+        self.wrap_result(
+            crate::tools::dalfox::run(&self.config, req, self.budget.scale_cap(20)).await,
+        )
     }
 
     #[tool(
@@ -392,7 +425,10 @@ impl RavenServer {
         peer: Peer<RoleServer>,
         Parameters(req): Parameters<DnsreconRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::dnsrecon::run(&self.config, req, Some(peer)).await)
+        self.wrap_result(
+            crate::tools::dnsrecon::run(&self.config, req, Some(peer), self.budget.scale_cap(30))
+                .await,
+        )
     }
 
     #[tool(
@@ -419,7 +455,9 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<SubfinderRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::subfinder::run(&self.config, req).await)
+        self.wrap_result(
+            crate::tools::subfinder::run(&self.config, req, self.budget.scale_cap(50)).await,
+        )
     }
 
     #[tool(
@@ -435,7 +473,10 @@ impl RavenServer {
         peer: Peer<RoleServer>,
         Parameters(req): Parameters<WpscanRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::wpscan::run(&self.config, req, Some(peer)).await)
+        self.wrap_result(
+            crate::tools::wpscan::run(&self.config, req, Some(peer), self.budget.scale_cap(20))
+                .await,
+        )
     }
 
     // ── Metasploit tools ──────────────────────────────────────────────

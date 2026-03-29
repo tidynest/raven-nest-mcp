@@ -27,6 +27,7 @@ pub struct SubfinderRequest {
 pub async fn run(
     config: &RavenConfig,
     req: SubfinderRequest,
+    result_limit: usize,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
@@ -45,8 +46,8 @@ pub async fn run(
         .map_err(crate::error::to_mcp)?;
 
     let output = if result.success {
-        let mut out =
-            parse_subfinder_jsonl(&result.stdout).unwrap_or_else(|| result.stdout.clone());
+        let mut out = parse_subfinder_jsonl(&result.stdout, result_limit)
+            .unwrap_or_else(|| result.stdout.clone());
         if let Some(ref warning) = result.warning {
             out.push_str(&format!("\n\n⚠ {warning}"));
         }
@@ -62,8 +63,7 @@ pub async fn run(
 /// Each JSONL line contains `{"host":"sub.example.com","source":"crtsh","ip":"..."}`.
 /// Extracts host and source, caps at 50 results, and appends a truncation note
 /// if more were found.
-fn parse_subfinder_jsonl(raw: &str) -> Option<String> {
-    const MAX_RESULTS: usize = 50;
+fn parse_subfinder_jsonl(raw: &str, max_results: usize) -> Option<String> {
     let mut entries = Vec::new();
 
     for line in raw.lines() {
@@ -89,12 +89,12 @@ fn parse_subfinder_jsonl(raw: &str) -> Option<String> {
     }
 
     let total = entries.len();
-    let truncated = total > MAX_RESULTS;
-    entries.truncate(MAX_RESULTS);
+    let truncated = total > max_results;
+    entries.truncate(max_results);
 
     let mut out = format!("{total} subdomain(s) found:\n{}", entries.join("\n"));
     if truncated {
-        out.push_str(&format!("\n+{} more", total - MAX_RESULTS));
+        out.push_str(&format!("\n+{} more", total - max_results));
     }
     Some(out)
 }
@@ -112,7 +112,7 @@ mod tests {
             "\n",
             r#"{"host":"dev.example.com","source":"dnsdumpster","ip":"9.10.11.12"}"#,
         );
-        let result = parse_subfinder_jsonl(jsonl).unwrap();
+        let result = parse_subfinder_jsonl(jsonl, 50).unwrap();
         assert!(result.starts_with("3 subdomain(s) found:"));
         assert!(result.contains("api.example.com (crtsh)"));
         assert!(result.contains("mail.example.com (hackertarget)"));
@@ -121,9 +121,9 @@ mod tests {
 
     #[test]
     fn parse_subfinder_empty_returns_none() {
-        assert!(parse_subfinder_jsonl("").is_none());
-        assert!(parse_subfinder_jsonl("no json here").is_none());
-        assert!(parse_subfinder_jsonl("   \n  \n").is_none());
+        assert!(parse_subfinder_jsonl("", 50).is_none());
+        assert!(parse_subfinder_jsonl("no json here", 50).is_none());
+        assert!(parse_subfinder_jsonl("   \n  \n", 50).is_none());
     }
 
     #[test]
@@ -134,7 +134,7 @@ mod tests {
             })
             .collect();
         let jsonl = lines.join("\n");
-        let result = parse_subfinder_jsonl(&jsonl).unwrap();
+        let result = parse_subfinder_jsonl(&jsonl, 50).unwrap();
         assert!(result.starts_with("75 subdomain(s) found:"));
         assert!(result.contains("+25 more"));
         // Verify only 50 host entries appear (not 75)

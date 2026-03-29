@@ -35,6 +35,7 @@ pub async fn run(
     config: &RavenConfig,
     req: NmapRequest,
     peer: Option<Peer<RoleServer>>,
+    result_limit: usize,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
@@ -82,7 +83,7 @@ pub async fn run(
         .map_err(crate::error::to_mcp)?;
 
     // Try structured XML parsing; fall back to raw output on failure
-    let structured = parse_nmap_xml(&result.stdout);
+    let structured = parse_nmap_xml(&result.stdout, result_limit);
     let output = match structured {
         Some(summary) => {
             let mut out = summary;
@@ -204,7 +205,7 @@ fn collect_scripts(parent: &roxmltree::Node) -> Vec<String> {
 /// warnings), the parser strips the prefix to find `<?xml` or `<nmaprun`.
 ///
 /// Returns `None` if the input isn't valid nmap XML.
-pub fn parse_nmap_xml(xml: &str) -> Option<String> {
+pub fn parse_nmap_xml(xml: &str, max_hosts: usize) -> Option<String> {
     // Strip any non-XML prefix (nmap warnings, etc.)
     let xml = xml
         .find("<?xml")
@@ -230,7 +231,6 @@ pub fn parse_nmap_xml(xml: &str) -> Option<String> {
     }
 
     let mut host_count = 0usize;
-    let max_hosts = 10;
     for host in root.children().filter(|n| n.tag_name().name() == "host") {
         host_count += 1;
         if host_count > max_hosts {
@@ -388,7 +388,7 @@ mod tests {
     <hosts up="1" down="0"/>
   </runstats>
 </nmaprun>"#;
-        let result = parse_nmap_xml(xml).unwrap();
+        let result = parse_nmap_xml(xml, 10).unwrap();
         assert!(result.contains("10.0.0.1"));
         assert!(result.contains("22"));
         assert!(result.contains("ssh"));
@@ -411,28 +411,28 @@ mod tests {
     </os>
   </host>
 </nmaprun>"#;
-        let result = parse_nmap_xml(xml).unwrap();
+        let result = parse_nmap_xml(xml, 10).unwrap();
         assert!(result.contains("Linux 5.4"));
         assert!(result.contains("95%"));
     }
 
     #[test]
     fn parse_malformed_xml_returns_none() {
-        assert!(parse_nmap_xml("this is not xml at all").is_none());
-        assert!(parse_nmap_xml("<unclosed>").is_none());
+        assert!(parse_nmap_xml("this is not xml at all", 10).is_none());
+        assert!(parse_nmap_xml("<unclosed>", 10).is_none());
     }
 
     #[test]
     fn parse_wrong_root_tag_returns_none() {
         let xml = r#"<?xml version="1.0"?><other/>"#;
-        assert!(parse_nmap_xml(xml).is_none());
+        assert!(parse_nmap_xml(xml, 10).is_none());
     }
 
     #[test]
     fn parse_empty_nmaprun_returns_none() {
         let xml = r#"<?xml version="1.0"?><nmaprun/>"#;
         // No hosts, no runstats — output is empty
-        assert!(parse_nmap_xml(xml).is_none());
+        assert!(parse_nmap_xml(xml, 10).is_none());
     }
 
     #[test]
@@ -464,7 +464,7 @@ mod tests {
 </host>
 <runstats><finished time="1773049936" elapsed="0.02" exit="success"/><hosts up="1" down="0" total="1"/></runstats>
 </nmaprun>"#;
-        let result = parse_nmap_xml(xml);
+        let result = parse_nmap_xml(xml, 10);
         println!("Result: {result:?}");
         assert!(result.is_some(), "Parser returned None on real nmap XML!");
         let text = result.unwrap();
@@ -540,7 +540,7 @@ mod tests {
   <hosts up="1" down="0"/>
 </runstats>
 </nmaprun>"#;
-        let result = parse_nmap_xml(xml).unwrap();
+        let result = parse_nmap_xml(xml, 10).unwrap();
         println!("--- Vuln scan parsed output ---\n{result}");
 
         // Port table still works
@@ -582,7 +582,7 @@ mod tests {
                    <nmaprun args=\"nmap -sV 10.0.0.1\">\n\
                    <host><address addr=\"10.0.0.1\" addrtype=\"ipv4\"/></host>\n\
                    </nmaprun>";
-        let result = parse_nmap_xml(xml);
+        let result = parse_nmap_xml(xml, 10);
         assert!(result.is_some(), "Should strip non-XML prefix");
         assert!(result.unwrap().contains("10.0.0.1"));
     }

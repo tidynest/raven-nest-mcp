@@ -42,6 +42,7 @@ pub async fn run(
     config: &RavenConfig,
     req: FeroxbusterRequest,
     peer: Option<Peer<RoleServer>>,
+    result_limit: usize,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
@@ -85,8 +86,8 @@ pub async fn run(
         .map_err(crate::error::to_mcp)?;
 
     let output = if result.success {
-        let mut out =
-            parse_feroxbuster_output(&result.stdout).unwrap_or_else(|| result.stdout.clone());
+        let mut out = parse_feroxbuster_output(&result.stdout, result_limit)
+            .unwrap_or_else(|| result.stdout.clone());
         if let Some(ref warning) = result.warning {
             out.push_str(&format!("\n\n⚠ {warning}"));
         }
@@ -102,7 +103,7 @@ pub async fn run(
 /// In quiet mode (`-q`), each result line starts with a 3-digit status code
 /// followed by method, dimensions, and URL. Extracts status + URL pairs,
 /// discarding progress bars and stats.
-pub fn parse_feroxbuster_output(raw: &str) -> Option<String> {
+pub fn parse_feroxbuster_output(raw: &str, max_results: usize) -> Option<String> {
     let mut results = Vec::new();
 
     for line in raw.lines() {
@@ -132,7 +133,7 @@ pub fn parse_feroxbuster_output(raw: &str) -> Option<String> {
         None
     } else {
         let total = results.len();
-        let cap = 40;
+        let cap = max_results;
         let shown: Vec<_> = results.into_iter().take(cap).collect();
         let extra = if total > cap {
             format!("\n+{} more URL(s)", total - cap)
@@ -153,7 +154,7 @@ mod tests {
     #[test]
     fn parse_feroxbuster_extracts_urls() {
         let raw = "200      GET        5l       10w      178c http://example.com/index.html\n301      GET        5l       10w      178c http://example.com/admin => http://example.com/admin/\n403      GET        5l       10w      178c http://example.com/server-status";
-        let result = parse_feroxbuster_output(raw).unwrap();
+        let result = parse_feroxbuster_output(raw, 40).unwrap();
         assert!(result.starts_with("3 URL(s) discovered:"));
         assert!(result.contains("200  http://example.com/index.html"));
         assert!(result.contains("301  http://example.com/admin"));
@@ -163,7 +164,7 @@ mod tests {
     #[test]
     fn parse_feroxbuster_filters_404s() {
         let raw = "200      GET        5l       10w      178c http://example.com/index.html\n404      GET        1l        2w       15c http://example.com/missing\n301      GET        5l       10w      178c http://example.com/admin => http://example.com/admin/\n404      GET        1l        2w       15c http://example.com/nope";
-        let result = parse_feroxbuster_output(raw).unwrap();
+        let result = parse_feroxbuster_output(raw, 40).unwrap();
         assert!(result.starts_with("2 URL(s) discovered:"));
         assert!(result.contains("200  http://example.com/index.html"));
         assert!(result.contains("301  http://example.com/admin"));
@@ -175,12 +176,12 @@ mod tests {
     #[test]
     fn parse_feroxbuster_all_404s_returns_none() {
         let raw = "404      GET        1l        2w       15c http://example.com/a\n404      GET        1l        2w       15c http://example.com/b";
-        assert!(parse_feroxbuster_output(raw).is_none());
+        assert!(parse_feroxbuster_output(raw, 40).is_none());
     }
 
     #[test]
     fn parse_feroxbuster_empty_returns_none() {
-        assert!(parse_feroxbuster_output("").is_none());
-        assert!(parse_feroxbuster_output("progress: 50%\nscanning...").is_none());
+        assert!(parse_feroxbuster_output("", 40).is_none());
+        assert!(parse_feroxbuster_output("progress: 50%\nscanning...", 40).is_none());
     }
 }
