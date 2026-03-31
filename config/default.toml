@@ -28,9 +28,8 @@ expected_tool_calls = 10
 sudo_tools = ["masscan", "nmap"]
 
 # Custom binary paths for tools not on $PATH
-# [safety.tool_paths]
-# wpscan = "/home/user/.local/share/gem/ruby/3.4.0/bin/wpscan"
-# subfinder = "/home/user/go/bin/subfinder"
+[safety.tool_paths]
+wpscan = "/home/bakri/.local/share/gem/ruby/3.4.0/bin/wpscan"
 
 [execution]
 default_timeout_secs = 600
