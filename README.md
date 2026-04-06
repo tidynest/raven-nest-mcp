@@ -65,7 +65,7 @@ Key configuration sections:
 
 ```toml
 [safety]
-allowed_tools = ["nmap", "nuclei", "nikto", "whatweb", "masscan", ...]
+allowed_tools = ["nmap", "nuclei", "nikto", "whatweb", "masscan", ...] 
 context_budget = 65536          # Model context window in chars (0 = disabled)
 expected_tool_calls = 10        # Anticipated calls per session
 sudo_tools = ["masscan", "nmap"] # Tools invoked via passwordless sudo
