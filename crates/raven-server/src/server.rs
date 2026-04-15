@@ -52,6 +52,7 @@ use rmcp::{
 #[derive(Clone)]
 pub struct RavenServer {
     config: std::sync::Arc<raven_core::config::RavenConfig>,
+    #[allow(dead_code)]
     tool_router: ToolRouter<Self>,
     pub scan_manager: raven_core::scan_manager::ScanManager,
     finding_store: std::sync::Arc<std::sync::RwLock<raven_report::store::FindingStore>>,
