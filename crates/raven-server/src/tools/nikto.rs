@@ -36,7 +36,7 @@ pub async fn run(
     req: NiktoRequest,
     peer: Option<Peer<RoleServer>>,
     result_limit: usize,
-) -> Result<CallToolResult, rmcp::ErrorData> {
+) -> Result<(CallToolResult, Vec<crate::tools::extract::ExtractedFinding>), rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
     let _ticker =
@@ -72,7 +72,9 @@ pub async fn run(
         .await
         .map_err(crate::error::to_mcp)?;
 
+    let mut findings = Vec::new();
     let output = if result.success {
+        findings = crate::tools::extract::extract_nikto(&result.stdout);
         let mut out = parse_nikto_output(&result.stdout, result_limit)
             .unwrap_or_else(|| result.stdout.clone());
         if let Some(ref warning) = result.warning {
@@ -82,7 +84,10 @@ pub async fn run(
     } else {
         crate::error::format_result("nikto", &result)
     };
-    Ok(CallToolResult::success(vec![Content::text(output)]))
+    Ok((
+        CallToolResult::success(vec![Content::text(output)]),
+        findings,
+    ))
 }
 
 /// Parse nikto output, keeping only findings and target info.

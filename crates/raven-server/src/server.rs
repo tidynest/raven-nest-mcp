@@ -274,9 +274,19 @@ impl RavenServer {
         peer: Peer<RoleServer>,
         Parameters(req): Parameters<NmapRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(
-            crate::tools::nmap::run(&self.config, req, Some(peer), self.budget.scale_cap(10)).await,
-        )
+        let target = req.target.clone();
+        let (result, findings) =
+            crate::tools::nmap::run(&self.config, req, Some(peer), self.budget.scale_cap(10))
+                .await?;
+        crate::tools::extract::auto_save(
+            &self.finding_store,
+            &self.config,
+            "nmap",
+            &target,
+            None,
+            findings,
+        );
+        self.wrap_result(Ok(result))
     }
 
     #[tool(
@@ -321,10 +331,19 @@ impl RavenServer {
         peer: Peer<RoleServer>,
         Parameters(req): Parameters<NiktoRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(
+        let target = req.target.clone();
+        let (result, findings) =
             crate::tools::nikto::run(&self.config, req, Some(peer), self.budget.scale_cap(30))
-                .await,
-        )
+                .await?;
+        crate::tools::extract::auto_save(
+            &self.finding_store,
+            &self.config,
+            "nikto",
+            &target,
+            None,
+            findings,
+        );
+        self.wrap_result(Ok(result))
     }
 
     #[tool(
@@ -427,9 +446,18 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<DalfoxRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(
-            crate::tools::dalfox::run(&self.config, req, self.budget.scale_cap(20)).await,
-        )
+        let target = req.target.clone();
+        let (result, findings) =
+            crate::tools::dalfox::run(&self.config, req, self.budget.scale_cap(20)).await?;
+        crate::tools::extract::auto_save(
+            &self.finding_store,
+            &self.config,
+            "dalfox",
+            &target,
+            None,
+            findings,
+        );
+        self.wrap_result(Ok(result))
     }
 
     #[tool(
