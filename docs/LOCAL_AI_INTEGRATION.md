@@ -45,8 +45,9 @@ easier for smaller models to handle.
 
 ## Tool Installation
 
-Raven Nest exposes **34 MCP endpoints** wrapping 17 security tools + 6
-Metasploit modules + ping/http + 5 scan management + 5 finding management.
+Raven Nest exposes **41 MCP endpoints** wrapping 20 security tools + 6
+Metasploit modules + ping/http + 5 scan management + 6 finding management +
+2 engagement.
 
 ### Core Tools (likely already installed)
 
@@ -63,7 +64,7 @@ Metasploit modules + ping/http + 5 scan management + 5 finding management.
 | hydra | `hydra` | `pacman -S hydra` / `apt install hydra` |
 | masscan | `masscan` | `pacman -S masscan` / `apt install masscan` |
 
-### New Tools (v0.3)
+### Additional Tools
 
 | Tool | Binary | Install |
 |------|--------|---------|
@@ -73,6 +74,10 @@ Metasploit modules + ping/http + 5 scan management + 5 finding management.
 | dalfox | `dalfox` | `go install github.com/hahwul/dalfox/v2@latest` |
 | dnsrecon | `dnsrecon` | `pipx install dnsrecon` |
 | john | `john` | `pacman -S john` / `apt install john` |
+| httpx | `httpx` | `go install github.com/projectdiscovery/httpx/cmd/httpx@latest` |
+| dnsx | `dnsx` | `go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest` |
+| katana | `katana` | `go install github.com/projectdiscovery/katana/cmd/katana@latest` |
+| netexec | `nxc` | `pipx install netexec` — gated; set `[netexec] enabled = true` |
 
 ### Tool Paths Configuration
 
@@ -140,7 +145,7 @@ match Ollama's protocol.
 | Qwen3.5 35B-A3B (MoE) | 23 GB | Good (batch) | Excellent in batch mode, fabricates in single-step interactive. 32K context. |
 | Hermes 3 8B | 4.7 GB | Marginal | Individual tool calls work, but can't chain in batch. Tool substitution (whatweb->http_request). sqlmap always silent. |
 | Granite 4.0 (3.4B) | 2.1 GB | Marginal | Chains 2-4 calls autonomously (best non-Qwen chaining). Param hallucination: passes cookie to nmap, invalid scan_type values. |
-| Llama 3-Groq 8B | 4.7 GB | Limited | Uses Ollama tool API correctly, but 8K context fatally small for 34 tools. Can't chain calls or call generate_report. |
+| Llama 3-Groq 8B | 4.7 GB | Limited | Uses Ollama tool API correctly, but 8K context fatally small for 41 tools. Can't chain calls or call generate_report. |
 | Granite 3.3 8B | 5 GB | **Incompatible** | Outputs tool names as plain text instead of structured API calls. |
 | xLAM-2-8B-fc-r | 8.5 GB | **Incompatible** | Outputs tool calls as JSON arrays in text. Correct tool names and params, but ollmcp can't intercept them. |
 | Phi-4-mini (3.8B) | 2.5 GB | **Incompatible** | Outputs tool calls as Python-like pseudo-code text. Never triggers Ollama tool API. |
@@ -151,7 +156,7 @@ match Ollama's protocol.
 
 ### Models to Avoid
 
-- **Ministral 3B/8B** — fails silently with >2 tools attached (fatal for 34 tools)
+- **Ministral 3B/8B** — fails silently with >2 tools attached (fatal for 41 tools)
 - **Mistral Nemo 12B** — MCP role bug breaks multi-turn tool use
 - **xLAM 8B (v1)** — F1 score 0.570, frequently misses tools
 - **xLAM-2-8B-fc-r (v2)** — despite BFCL #4, outputs JSON text instead of using Ollama tool API
@@ -168,7 +173,7 @@ dynamically adjusts per-tool output caps to prevent context overflow.
 ### How It Works
 
 On startup, the budget subtracts estimated overhead from `context_budget`:
-- Tool schema descriptions (~350 chars x 34 tools = ~11,900 chars)
+- Tool schema descriptions (~350 chars x 41 tools = ~14,350 chars)
 - Server instructions (~500 chars)
 - AI reasoning per turn (~1,500 chars x `expected_tool_calls`)
 
@@ -207,7 +212,8 @@ Output parsers use `scale_cap()` to dynamically scale their result limits:
 
 Tools that use adaptive caps: nmap (10), nuclei (25), nikto (30),
 feroxbuster (40), ffuf (40), masscan (50), subfinder (50),
-enum4linux-ng (20), dnsrecon (30), wpscan (20), dalfox (20).
+enum4linux-ng (20), dnsrecon (30), wpscan (20), dalfox (20),
+httpx (30), dnsx (30), katana (40).
 
 ### Truncation
 
@@ -259,7 +265,7 @@ Local models may use wrong parameter names based on their training data.
 For example, Qwen 3.5 used `"data"` instead of `"body"` for
 `http_request` — likely influenced by Python's `requests.post(data=...)`.
 
-**Built-in protection:** all 31 request structs use
+**Built-in protection:** every request struct uses
 `#[serde(deny_unknown_fields)]`, so misnamed parameters produce an
 explicit error message naming the invalid field instead of being silently
 ignored.
@@ -306,6 +312,9 @@ summaries instead of raw verbose output:
 - **whatweb** — extracts technology identifications
 - **masscan** — extracts open port/protocol pairs
 - **ffuf** — extracts discovered URLs with status codes
+- **httpx** — extracts per-URL status, title, tech, TLS
+- **dnsx** — extracts resolved DNS records
+- **katana** — extracts crawled/deduplicated endpoints
 
 **HTTP response reduction:**
 - HTML responses are automatically stripped to plain text (scripts, styles,
@@ -316,7 +325,7 @@ summaries instead of raw verbose output:
 - Response body capped at 20K characters
 
 **Report generation** returns a severity breakdown summary + file path
-instead of the full markdown report content.
+instead of the full report content.
 
 **Server instructions** are trimmed to essentials (~600 chars vs ~1500).
 
@@ -361,7 +370,12 @@ the model calls tools correctly.
 Neither model reliably saves info-level findings in batch mode. Both
 prioritize higher-severity results from nikto/sqlmap. When nuclei is
 the only tool (individual mode), Qwen3 8B does save the info finding.
-This may require prompt engineering or server-side auto-save in future.
+
+**Mitigation (shipped):** enable server-side auto-save — set
+`auto_save_findings = true` (and optionally `auto_save_min_severity = "info"`)
+under `[safety]`. Qualifying nuclei findings are then extracted and saved
+automatically, independent of whether the model remembers to call
+`save_finding`.
 
 ### Tool Discovery Failures
 
@@ -447,6 +461,9 @@ Key tool parameters:
 - run_feroxbuster: target, wordlist, extensions, cookie
 - run_ffuf: url, wordlist, method, cookie
 - run_nmap: target, ports, scan_type
+- run_httpx: target, scan_type
+- run_dnsx: target, scan_type
+- run_katana: target, scan_type, depth
 - run_subfinder: domain
 - run_wpscan: url, cookie, api_token
 - run_enum4linux_ng: target
@@ -538,7 +555,7 @@ For **background scans** launched via `launch_scan`:
 For **findings and reports:**
 - `list_findings` — list all saved findings sorted by severity
 - `get_finding(finding_id)` — get full finding details
-- `generate_report(title)` — generate markdown report from all findings
+- `generate_report(title, format)` — generate a report (markdown default; json/sarif/html) from all findings
 
 Direct tool calls (run_nuclei, run_nmap, etc.) return when done — the
 MCP server sends progress notifications to the client during execution.

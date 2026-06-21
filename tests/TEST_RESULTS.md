@@ -1,20 +1,25 @@
 # Raven-Nest-MCP Unit & Integration Test Results
 
-**Date:** 2026-03-29
+**Date:** 2026-06-22
 **Toolchain:** Rust stable
-**Command:** `cargo test --all`
+**Command:** `cargo test --workspace`
 
 ## Summary
 
 | Crate | Tests | Pass | Fail |
 |-------|------:|-----:|-----:|
-| raven-core | 49 | 49 | 0 |
-| raven-report | 18 | 18 | 0 |
-| raven-server | 104 | 104 | 0 |
-| integration | 8 | 8 | 0 |
-| **Total** | **179** | **179** | **0** |
+| raven-core | 86 | 86 | 0 |
+| raven-report | 54 | 54 | 0 |
+| raven-server | 144 | 144 | 0 |
+| integration | 10 | 10 | 0 |
+| **Total** | **294** | **294** | **0** |
 
-**Result:** All 179 tests pass.
+**Result:** All 294 tests pass.
+
+> The per-module enumeration below is the 2026-03-29 baseline (179 tests). The
+> +115 tests added by the hardening campaign (recon tools, engagement, scope,
+> audit, report formats, auto-extract) are counted in the summary above but not
+> itemized here — regenerate the full list with `cargo test --workspace -- --list`.
 
 ---
 
