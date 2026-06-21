@@ -275,10 +275,7 @@ fn strip_html(html: &str) -> String {
         }
     }
     // Strip HTML comments (<!-- ... -->)
-    loop {
-        let Some(start) = cleaned.find("<!--") else {
-            break;
-        };
+    while let Some(start) = cleaned.find("<!--") {
         let Some(end) = cleaned[start..].find("-->") else {
             break;
         };

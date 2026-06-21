@@ -22,6 +22,11 @@ pub enum PentestError {
     #[error("invalid target: {0}")]
     InvalidTarget(String),
 
+    /// The target is syntactically valid but outside the operator-configured
+    /// engagement scope (see [`ScopeConfig`](crate::config::ScopeConfig)).
+    #[error("out of scope: {0}")]
+    OutOfScope(String),
+
     /// The external tool process exited with an error or could not be spawned.
     #[error("command failed: {0}")]
     CommandFailed(String),

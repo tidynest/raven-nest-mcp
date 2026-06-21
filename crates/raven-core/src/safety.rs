@@ -11,9 +11,11 @@
 //! These functions are called by [`executor::run`](crate::executor::run) and
 //! directly by tool handlers in `raven-server::tools` for early validation.
 
-use crate::config::SafetyConfig;
+use crate::config::{SafetyConfig, ScopeConfig};
 use crate::error::PentestError;
+use ipnet::IpNet;
 use std::net::IpAddr;
+use std::sync::OnceLock;
 
 /// Reject if the tool isn't in the operator's allowlist.
 ///
@@ -27,15 +29,55 @@ pub fn check_allowlist(tool: &str, config: &SafetyConfig) -> Result<(), PentestE
     }
 }
 
-/// Validate that a target string is a reasonable IP, hostname, CIDR, or URL.
+/// Create a directory (and parents) with owner-only permissions (0700).
+///
+/// Output directories often live under world-writable locations like `/tmp`, so
+/// they must not be group/other-readable — findings and scan spill files within
+/// would otherwise be exposed to other local users. The mode is applied at
+/// creation time only.
+// ponytail: create-time 0700 only; a pre-existing/symlinked dir is not re-chmod'd —
+// upgrade to an explicit lstat + set_permissions if /tmp symlink TOCTOU matters.
+pub fn ensure_dir_secure(path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
+    use std::os::unix::fs::DirBuilderExt;
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(path)
+}
+
+/// Process-wide engagement scope, installed once at startup via [`init_scope`].
+/// When unset (e.g. in unit tests) or disabled, [`validate_target`] applies no
+/// scope gating, preserving the original behaviour.
+static SCOPE: OnceLock<ScopeConfig> = OnceLock::new();
+
+/// Install the engagement scope for the process. Called once at server startup;
+/// later calls are ignored (config is immutable after load).
+pub fn init_scope(scope: ScopeConfig) {
+    let _ = SCOPE.set(scope);
+}
+
+/// Validate a target's syntax, then enforce the configured engagement scope.
 ///
 /// Accepts: IPv4/v6 addresses, CIDR ranges, `host:port`, HTTP(S) URLs (including
 /// query strings with `&`), bare hostnames.
-/// Rejects: empty strings, shell metacharacters (`;|&$\`(){}<!>\n`), unsupported schemes.
+/// Rejects: empty strings, shell metacharacters (`;|&$\`(){}<!>\n`), unsupported
+/// schemes, and — when [`init_scope`] enabled a scope — out-of-scope targets.
+///
+/// This is the single target-aware chokepoint every tool handler and the
+/// background scan launcher pass through, so the scope gate here covers all paths.
+pub fn validate_target(target: &str) -> Result<(), PentestError> {
+    validate_syntax(target)?;
+    if let Some(scope) = SCOPE.get() {
+        check_scope(target, scope)?;
+    }
+    Ok(())
+}
+
+/// Syntax-only validation (IP/hostname/CIDR/URL, no shell metacharacters).
 ///
 /// URLs are parsed first so that query-string characters like `&` are not
 /// rejected — `Command::arg()` passes them as a single argument with no shell.
-pub fn validate_target(target: &str) -> Result<(), PentestError> {
+fn validate_syntax(target: &str) -> Result<(), PentestError> {
     if target.is_empty() {
         return Err(PentestError::InvalidTarget("empty target".into()));
     }
@@ -122,6 +164,122 @@ fn validate_hostname(host: &str) -> Result<(), PentestError> {
     }
 }
 
+/// Enforce the engagement scope on a syntactically valid target.
+///
+/// Deny rules win over allow rules. Loopback targets bypass the lists when
+/// `allow_localhost` is set. Returns [`PentestError::OutOfScope`] with an
+/// explicit non-retryable message — local models otherwise loop, reformatting
+/// an out-of-scope target.
+pub fn check_scope(target: &str, scope: &ScopeConfig) -> Result<(), PentestError> {
+    if !scope.enabled {
+        return Ok(());
+    }
+    let host = scope_host(target);
+
+    if scope.allow_localhost && is_loopback_host(&host) {
+        return Ok(());
+    }
+
+    // IP literal or CIDR target → match against the CIDR lists.
+    if let Some(net) = parse_net(&host) {
+        for denied in &scope.denied_cidrs {
+            if parse_net(denied).is_some_and(|d| nets_overlap(&d, &net)) {
+                return Err(out_of_scope(target, "matches a denied IP range"));
+            }
+        }
+        let allowed = scope
+            .allowed_cidrs
+            .iter()
+            .any(|a| parse_net(a).is_some_and(|an| an.contains(&net)));
+        return if allowed {
+            Ok(())
+        } else {
+            Err(out_of_scope(target, "no allowed IP range contains it"))
+        };
+    }
+
+    // Otherwise treat as a domain.
+    let host = host.to_ascii_lowercase();
+    if scope
+        .denied_domains
+        .iter()
+        .any(|d| domain_matches(&host, d))
+    {
+        return Err(out_of_scope(target, "matches a denied domain"));
+    }
+    if scope
+        .allowed_domains
+        .iter()
+        .any(|d| domain_matches(&host, d))
+    {
+        Ok(())
+    } else {
+        Err(out_of_scope(target, "not in the allowed domains"))
+    }
+}
+
+fn out_of_scope(target: &str, why: &str) -> PentestError {
+    PentestError::OutOfScope(format!(
+        "{target} is outside the authorized engagement scope ({why}); this is an \
+         authorization boundary — do not retry with a reformatted target"
+    ))
+}
+
+/// Extract the host token from a target (strips scheme, path, and `:port`),
+/// leaving IP literals and CIDRs intact.
+fn scope_host(target: &str) -> String {
+    if (target.starts_with("http://") || target.starts_with("https://"))
+        && let Ok(url) = url::Url::parse(target)
+        && let Some(host) = url.host_str()
+    {
+        return host.to_string();
+    }
+    // Leave IPs and CIDRs untouched (they legitimately contain ':' and '/').
+    if target.parse::<IpNet>().is_ok() || target.parse::<IpAddr>().is_ok() {
+        return target.to_string();
+    }
+    // host:port → strip the port (skip when the host itself is colon-y, i.e. IPv6).
+    if let Some((host, port)) = target.rsplit_once(':')
+        && !host.is_empty()
+        && !host.contains(':')
+        && port.parse::<u16>().is_ok()
+    {
+        return host.to_string();
+    }
+    target.to_string()
+}
+
+/// Parse a bare IP (as a host route — /32 or /128) or a CIDR into an [`IpNet`].
+fn parse_net(s: &str) -> Option<IpNet> {
+    if let Ok(net) = s.parse::<IpNet>() {
+        return Some(net);
+    }
+    let ip = s.parse::<IpAddr>().ok()?;
+    let prefix = if ip.is_ipv4() { 32 } else { 128 };
+    IpNet::new(ip, prefix).ok()
+}
+
+/// Two CIDR blocks overlap iff either contains the other's network address.
+fn nets_overlap(a: &IpNet, b: &IpNet) -> bool {
+    a.contains(&b.network()) || b.contains(&a.network())
+}
+
+/// True for `localhost`, `*.localhost`, and loopback IPs/CIDRs.
+fn is_loopback_host(host: &str) -> bool {
+    let lower = host.to_ascii_lowercase();
+    if lower == "localhost" || lower.ends_with(".localhost") {
+        return true;
+    }
+    parse_net(host).is_some_and(|n| n.network().is_loopback())
+}
+
+/// Domain suffix match: `host == domain` or `host` ends with `.domain`
+/// (so `example.com` matches `api.example.com` but not `notexample.com`).
+fn domain_matches(host: &str, domain: &str) -> bool {
+    let domain = domain.trim().trim_start_matches('.').to_ascii_lowercase();
+    !domain.is_empty() && (host == domain || host.ends_with(&format!(".{domain}")))
+}
+
 /// Truncate long output while preserving the most useful parts.
 ///
 /// Keeps the first 70% (headers, metadata, early results) and last 30%
@@ -161,7 +319,7 @@ pub fn truncate_output(output: &str, max_chars: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::SafetyConfig;
+    use crate::config::{SafetyConfig, ScopeConfig};
 
     fn test_config() -> SafetyConfig {
         SafetyConfig {
@@ -266,6 +424,90 @@ mod tests {
     fn target_allows_url_query_ampersand() {
         assert!(validate_target("http://localhost/sqli.php?title=test&action=search").is_ok());
         assert!(validate_target("https://example.com/page?a=1&b=2&c=3").is_ok());
+    }
+
+    // --- check_scope ---
+
+    fn scoped() -> ScopeConfig {
+        ScopeConfig {
+            enabled: true,
+            allowed_cidrs: vec!["10.0.0.0/8".into()],
+            allowed_domains: vec!["example.com".into()],
+            denied_cidrs: vec!["10.6.6.0/24".into()],
+            denied_domains: vec!["secret.example.com".into()],
+            allow_localhost: true,
+        }
+    }
+
+    #[test]
+    fn scope_disabled_allows_anything() {
+        let s = ScopeConfig::default();
+        assert!(check_scope("8.8.8.8", &s).is_ok());
+        assert!(check_scope("evil.com", &s).is_ok());
+    }
+
+    #[test]
+    fn scope_allows_in_range_ip_and_domain() {
+        let s = scoped();
+        assert!(check_scope("10.1.2.3", &s).is_ok());
+        assert!(check_scope("example.com", &s).is_ok());
+        assert!(check_scope("api.example.com", &s).is_ok());
+        assert!(check_scope("https://example.com/login", &s).is_ok());
+        assert!(check_scope("example.com:8443", &s).is_ok());
+    }
+
+    #[test]
+    fn scope_rejects_out_of_range() {
+        let s = scoped();
+        for t in [
+            "8.8.8.8",
+            "notexample.com",
+            "evil.org",
+            "https://evil.org/x",
+        ] {
+            assert!(
+                matches!(check_scope(t, &s), Err(PentestError::OutOfScope(_))),
+                "should be out of scope: {t}"
+            );
+        }
+    }
+
+    #[test]
+    fn scope_deny_wins_over_allow() {
+        let s = scoped();
+        // 10.6.6.5 is inside allowed 10.0.0.0/8 but also inside denied 10.6.6.0/24
+        assert!(matches!(
+            check_scope("10.6.6.5", &s),
+            Err(PentestError::OutOfScope(_))
+        ));
+        assert!(matches!(
+            check_scope("secret.example.com", &s),
+            Err(PentestError::OutOfScope(_))
+        ));
+    }
+
+    #[test]
+    fn scope_cidr_target_must_be_contained() {
+        let s = scoped();
+        assert!(check_scope("10.1.0.0/16", &s).is_ok()); // inside 10.0.0.0/8
+        assert!(matches!(
+            check_scope("192.168.0.0/16", &s),
+            Err(PentestError::OutOfScope(_))
+        ));
+    }
+
+    #[test]
+    fn scope_localhost_honours_flag() {
+        let s = scoped();
+        for t in ["127.0.0.1", "localhost", "::1", "http://localhost:3000/x"] {
+            assert!(check_scope(t, &s).is_ok(), "localhost should pass: {t}");
+        }
+        let mut blocked = scoped();
+        blocked.allow_localhost = false;
+        assert!(matches!(
+            check_scope("127.0.0.1", &blocked),
+            Err(PentestError::OutOfScope(_))
+        ));
     }
 
     #[test]

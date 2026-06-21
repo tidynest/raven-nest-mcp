@@ -14,13 +14,16 @@ use crate::tools::scans::{LaunchScanRequest, ScanIdRequest, ScanResultsRequest};
 use crate::tools::{
     dalfox::DalfoxRequest,
     dnsrecon::DnsreconRequest,
+    dnsx::DnsxRequest,
     enum4linux_ng::Enum4linuxRequest,
     feroxbuster::FeroxbusterRequest,
     ffuf::FfufRequest,
-    findings::{FindingIdRequest, GenerateReportRequest, SaveFindingRequest},
+    findings::{FindingIdRequest, GenerateReportRequest, ListByScanRequest, SaveFindingRequest},
     http::HttpRequest,
+    httpx::HttpxRequest,
     hydra::HydraRequest,
     john::JohnRequest,
+    katana::KatanaRequest,
     masscan::MasscanRequest,
     msf_auxiliary::MsfAuxiliaryRequest,
     msf_exploit::MsfExploitRequest,
@@ -71,9 +74,12 @@ impl RavenServer {
     /// Creates the output directory, findings store, scan manager, and budget tracker.
     pub fn new(config: raven_core::config::RavenConfig) -> Self {
         let config = std::sync::Arc::new(config);
+        // Install the engagement scope process-wide so safety::validate_target —
+        // the chokepoint every tool and the scan launcher share — enforces it.
+        raven_core::safety::init_scope(config.scope.clone());
         let scan_manager =
             raven_core::scan_manager::ScanManager::new(std::sync::Arc::clone(&config));
-        let _ = std::fs::create_dir_all(&config.execution.output_dir);
+        let _ = raven_core::safety::ensure_dir_secure(&config.execution.output_dir);
         let findings_dir = std::path::PathBuf::from(&config.execution.output_dir).join("findings");
         let finding_store = std::sync::Arc::new(std::sync::RwLock::new(
             raven_report::store::FindingStore::new(findings_dir)
@@ -95,8 +101,8 @@ impl RavenServer {
             tracing::info!("restored session cookies from disk");
         }
 
-        // Tool count: 17 security + 6 MSF + ping + http + 5 scan mgmt + 5 findings = 34
-        let tool_count = 34;
+        // Tool count: 19 security + 6 MSF + ping + http + 5 scan mgmt + 6 findings = 38
+        let tool_count = 38;
         let budget = std::sync::Arc::new(SessionBudget::new(
             config.safety.context_budget,
             tool_count,
@@ -434,6 +440,25 @@ impl RavenServer {
     }
 
     #[tool(
+        description = "Katana web crawler/endpoint discovery",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = true
+        )
+    )]
+    async fn run_katana(
+        &self,
+        peer: Peer<RoleServer>,
+        Parameters(req): Parameters<KatanaRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result(
+            crate::tools::katana::run(&self.config, req, Some(peer), self.budget.scale_cap(40))
+                .await,
+        )
+    }
+
+    #[tool(
         description = "John password cracker",
         annotations(destructive_hint = false, open_world_hint = false)
     )]
@@ -459,6 +484,40 @@ impl RavenServer {
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.wrap_result(
             crate::tools::subfinder::run(&self.config, req, self.budget.scale_cap(50)).await,
+        )
+    }
+
+    #[tool(
+        description = "Httpx HTTP prober/fingerprinter",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = true
+        )
+    )]
+    async fn run_httpx(
+        &self,
+        Parameters(req): Parameters<HttpxRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result(
+            crate::tools::httpx::run(&self.config, req, self.budget.scale_cap(30)).await,
+        )
+    }
+
+    #[tool(
+        description = "Dnsx DNS record resolver",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = true
+        )
+    )]
+    async fn run_dnsx(
+        &self,
+        Parameters(req): Parameters<DnsxRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result(
+            crate::tools::dnsx::run(&self.config, req, self.budget.scale_cap(30)).await,
         )
     }
 
@@ -672,6 +731,24 @@ impl RavenServer {
     }
 
     #[tool(
+        description = "List findings for a scan ID",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    fn list_findings_by_scan(
+        &self,
+        Parameters(req): Parameters<ListByScanRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result(crate::tools::findings::list_findings_by_scan(
+            &self.finding_store,
+            req,
+        ))
+    }
+
+    #[tool(
         description = "Delete finding",
         annotations(destructive_hint = true, open_world_hint = false)
     )]
@@ -725,18 +802,18 @@ Raven Nest - pentesting toolkit.
 
 ## Workflow
 1. ping_target first to verify connectivity.
-2. Recon: nmap, masscan (root), whatweb, subfinder (subdomains), enum4linux-ng (SMB/AD), dnsrecon (DNS).
-3. Web: nuclei, nikto, feroxbuster, ffuf, wpscan (WordPress), dalfox (XSS), sqlmap, hydra. testssl for TLS.
+2. Recon: nmap, masscan (root), whatweb, httpx (HTTP probe/fingerprint), subfinder (subdomains), dnsx (DNS records), enum4linux-ng (SMB/AD), dnsrecon (DNS).
+3. Web: katana (crawl/endpoints), nuclei, nikto, feroxbuster, ffuf, wpscan (WordPress), dalfox (XSS), sqlmap, hydra. testssl for TLS.
 4. Password: john (hash cracking).
 5. Exploit: msf_search > msf_module_info > msf_exploit (if Metasploit enabled).
 6. Targets: bare hostnames/IPs for nmap/ping/masscan; full URLs for web tools.
 7. Start with less aggressive scans. Check output for empty/rate-limited results.
-8. save_finding for each vuln, then generate_report.
+8. save_finding for each vuln (pass scan_id to link it to a launched scan; list_findings_by_scan recalls them), then generate_report.
 
 ## Tool Timing
-- Fast (1-5s): ping_target, run_whatweb, http_request, run_ffuf, run_masscan, run_subfinder, run_dalfox
+- Fast (1-5s): ping_target, run_whatweb, http_request, run_ffuf, run_masscan, run_subfinder, run_httpx, run_dnsx, run_dalfox
 - Medium (5-30s): run_nmap (quick/service), run_wpscan, run_dnsrecon, msf_search, msf_module_info
-- Slow (30-300s): run_nmap (os/vuln), run_nuclei, run_nikto, run_testssl, run_feroxbuster, run_sqlmap, run_hydra, run_enum4linux_ng, run_john, msf_exploit
+- Slow (30-300s): run_nmap (os/vuln), run_nuclei, run_nikto, run_testssl, run_feroxbuster, run_katana, run_sqlmap, run_hydra, run_enum4linux_ng, run_john, msf_exploit
 
 ## Context Budget
 Watch the [budget: ...] line in responses. When mode switches to compact/minimal, prioritize saving findings over running more scans.

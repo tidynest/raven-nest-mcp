@@ -16,8 +16,15 @@
 use crate::config::RavenConfig;
 use crate::error::PentestError;
 use crate::safety;
-use std::time::Duration;
+use std::sync::OnceLock;
+use std::time::{Duration, Instant};
 use tokio::process::Command;
+use tokio::sync::Semaphore;
+
+/// Process-wide cap on concurrent *synchronous* tool executions. Sized from
+/// `max_concurrent_execs` on first use. Background scans use [`run_unmetered`]
+/// and are bounded separately by `max_concurrent_scans`.
+static EXEC_SEM: OnceLock<Semaphore> = OnceLock::new();
 
 /// Describes how trustworthy the tool output is.
 ///
@@ -139,9 +146,42 @@ fn assess_quality(tool: &str, stdout: &str, stderr: &str) -> (OutputQuality, Opt
     (OutputQuality::Complete, None)
 }
 
-/// Execute an external tool with full safety enforcement.
+/// Execute an external tool, bounded by the global concurrent-execution cap.
 ///
-/// This is the **only** function that spawns tool subprocesses. The pipeline:
+/// This is the entry point for **synchronous** tool handlers. It acquires a
+/// permit from [`EXEC_SEM`] (sized from `max_concurrent_execs`) so an LLM firing
+/// many tool calls at once cannot spawn unbounded subprocesses, then delegates to
+/// [`run_inner`]. The permit is held for the whole subprocess lifetime.
+pub async fn run(
+    config: &RavenConfig,
+    tool: &str,
+    args: &[&str],
+    timeout: Option<u64>,
+) -> Result<CommandResult, PentestError> {
+    let sem = EXEC_SEM.get_or_init(|| Semaphore::new(config.execution.max_concurrent_execs.max(1)));
+    let _permit = sem
+        .acquire()
+        .await
+        .map_err(|_| PentestError::CommandFailed("executor semaphore closed".into()))?;
+    run_inner(config, tool, args, timeout).await
+}
+
+/// Like [`run`] but **without** acquiring the global execution permit.
+///
+/// Used by [`ScanManager`](crate::scan_manager::ScanManager) background tasks,
+/// which are already bounded by `max_concurrent_scans`. If those tasks also
+/// competed for exec permits, long-running scans could hold every permit and
+/// starve (or deadlock) synchronous tool calls.
+pub async fn run_unmetered(
+    config: &RavenConfig,
+    tool: &str,
+    args: &[&str],
+    timeout: Option<u64>,
+) -> Result<CommandResult, PentestError> {
+    run_inner(config, tool, args, timeout).await
+}
+
+/// The actual execution pipeline — the **only** function that spawns subprocesses:
 /// 1. Allowlist gate
 /// 2. Timeout resolution (explicit → per-tool config → global default)
 /// 3. Binary path resolution (custom path → `$PATH`)
@@ -149,7 +189,7 @@ fn assess_quality(tool: &str, stdout: &str, stderr: &str) -> (OutputQuality, Opt
 /// 5. `kill_on_drop(true)` ensures the child is killed if the future is cancelled
 /// 6. Output truncation to `max_output_chars`
 /// 7. Quality assessment on successful exits
-pub async fn run(
+async fn run_inner(
     config: &RavenConfig,
     tool: &str,
     args: &[&str],
@@ -157,13 +197,15 @@ pub async fn run(
 ) -> Result<CommandResult, PentestError> {
     safety::check_allowlist(tool, &config.safety)?;
 
+    let start = Instant::now();
     let timeout =
         Duration::from_secs(timeout.unwrap_or_else(|| config.execution.timeout_for(tool)));
     let binary = config.safety.resolve_tool_binary(tool);
 
     // Prepend sudo for tools that need privilege escalation (e.g. masscan, nmap -O).
     // Requires passwordless sudo configured for these binaries.
-    let mut cmd = if config.safety.needs_sudo(tool) {
+    let used_sudo = config.safety.needs_sudo(tool);
+    let mut cmd = if used_sudo {
         let mut c = Command::new("sudo");
         c.arg(binary);
         c
@@ -215,6 +257,20 @@ pub async fn run(
     } else {
         (OutputQuality::Complete, None)
     };
+
+    crate::audit::record(
+        config,
+        &crate::audit::AuditEntry {
+            tool,
+            args,
+            exit_code: output.status.code(),
+            success: output.status.success(),
+            duration_ms: start.elapsed().as_millis(),
+            sudo: used_sudo,
+            bytes_out: output.stdout.len() + output.stderr.len(),
+            quality: &format!("{quality:?}"),
+        },
+    );
 
     Ok(CommandResult {
         exit_code: output.status.code(),

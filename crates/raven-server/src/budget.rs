@@ -132,11 +132,9 @@ impl SessionBudget {
         let per_call = remaining / remaining_calls;
 
         // Percentage of budget consumed
-        let consumed_pct = if self.usable_budget > 0 {
-            ((self.usable_budget.saturating_sub(remaining)) * 100) / self.usable_budget
-        } else {
-            100
-        };
+        let consumed_pct = ((self.usable_budget.saturating_sub(remaining)) * 100)
+            .checked_div(self.usable_budget)
+            .unwrap_or(100);
 
         let mode = if remaining < 1000 || consumed_pct > 70 {
             OutputMode::Minimal
@@ -180,11 +178,9 @@ impl SessionBudget {
         let mode_label = if remaining < 1000 {
             "exhausted"
         } else {
-            let consumed_pct = if self.usable_budget > 0 {
-                ((self.usable_budget.saturating_sub(remaining)) * 100) / self.usable_budget
-            } else {
-                100
-            };
+            let consumed_pct = ((self.usable_budget.saturating_sub(remaining)) * 100)
+                .checked_div(self.usable_budget)
+                .unwrap_or(100);
             if consumed_pct > 70 {
                 "minimal"
             } else if consumed_pct > 40 {
@@ -206,11 +202,9 @@ impl SessionBudget {
             return OutputMode::Full;
         }
         let remaining = self.remaining();
-        let consumed_pct = if self.usable_budget > 0 {
-            ((self.usable_budget.saturating_sub(remaining)) * 100) / self.usable_budget
-        } else {
-            100
-        };
+        let consumed_pct = ((self.usable_budget.saturating_sub(remaining)) * 100)
+            .checked_div(self.usable_budget)
+            .unwrap_or(100);
         if remaining < 1000 || consumed_pct > 70 {
             OutputMode::Minimal
         } else if consumed_pct > 40 {

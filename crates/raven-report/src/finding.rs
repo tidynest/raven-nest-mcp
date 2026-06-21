@@ -34,6 +34,19 @@ impl std::fmt::Display for Severity {
     }
 }
 
+/// How a finding entered the store.
+///
+/// `Manual` findings come from an operator (or LLM) calling `save_finding`;
+/// `AutoExtracted` findings are reserved for future server-side extraction from
+/// scan output. Defaults to `Manual` so legacy `{id}.json` files — which predate
+/// this field — deserialize as operator-saved.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum FindingSource {
+    #[default]
+    Manual,
+    AutoExtracted,
+}
+
 /// Complete vulnerability finding, persisted as `{id}.json` in the findings directory.
 ///
 /// Created by [`save_finding`](raven_server::tools::findings::save_finding) through
@@ -62,6 +75,12 @@ pub struct Finding {
     pub cve: Option<String>,
     /// OWASP Top 10 category (e.g. "A03:2021 Injection").
     pub owasp_category: Option<String>,
+    /// Originating scan ID (UUID) when this finding came from a launched scan.
+    #[serde(default)]
+    pub scan_id: Option<String>,
+    /// How this finding entered the store (manual save vs. auto-extraction).
+    #[serde(default)]
+    pub source: FindingSource,
     /// When this finding was recorded.
     pub timestamp: DateTime<Utc>,
 }
@@ -87,6 +106,8 @@ impl Finding {
             cvss: None,
             cve: None,
             owasp_category: None,
+            scan_id: None,
+            source: FindingSource::Manual,
             timestamp: Utc::now(),
         }
     }
@@ -105,6 +126,10 @@ pub struct FindingMeta {
     pub severity: Severity,
     pub target: String,
     pub tool: String,
+    #[serde(default)]
+    pub scan_id: Option<String>,
+    #[serde(default)]
+    pub source: FindingSource,
     pub timestamp: DateTime<Utc>,
 }
 
@@ -116,6 +141,8 @@ impl From<&Finding> for FindingMeta {
             severity: f.severity.clone(),
             target: f.target.clone(),
             tool: f.tool.clone(),
+            scan_id: f.scan_id.clone(),
+            source: f.source,
             timestamp: f.timestamp,
         }
     }
