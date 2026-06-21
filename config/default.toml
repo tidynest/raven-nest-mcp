@@ -24,6 +24,13 @@ expected_tool_calls = 10
 # hydra_max_tasks = 4     # parallel tasks, default 4
 # masscan_max_rate = 1000 # packets/sec, default 1000
 
+# Auto-save findings extracted from scan output (currently nuclei only).
+# OFF by default — opt in. Qualifying findings are deduplicated and stored
+# with source = AutoExtracted. min_severity is one of info|low|medium|high|critical.
+# auto_save_findings = false
+# auto_save_min_severity = "medium"
+# auto_save_max_per_scan = 25
+
 # Tools invoked via sudo for privilege escalation.
 # Requires passwordless sudo — see /etc/sudoers.d/raven-nest
 sudo_tools = ["masscan", "nmap"]
