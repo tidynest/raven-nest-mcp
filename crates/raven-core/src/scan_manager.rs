@@ -78,6 +78,9 @@ struct ScanEntry {
     /// Handle to the tokio task running the scan. Taken (consumed) on cancel.
     handle: Option<JoinHandle<()>>,
     started_at: Instant,
+    /// When the scan reached a terminal state (completed/failed/cancelled).
+    /// `None` while running. Drives TTL eviction in [`ScanManager::prune_expired`].
+    terminal_at: Option<Instant>,
 }
 
 /// Thread-safe background scan manager.
@@ -99,6 +102,32 @@ impl ScanManager {
         self.scans
             .lock()
             .map_err(|_| PentestError::CommandFailed("scan state lock poisoned".into()))
+    }
+
+    /// Evict terminal (completed/failed/cancelled) scans older than the retention
+    /// TTL, deleting any spilled output file. Runs lazily under the caller's lock
+    /// on launch/status/list — no background timer. Running scans are never evicted.
+    fn prune_expired(&self, scans: &mut HashMap<String, ScanEntry>) {
+        let retention = self.config.execution.scan_retention_secs;
+        let expired: Vec<String> = scans
+            .iter()
+            .filter(|(_, e)| {
+                e.status != ScanStatus::Running
+                    && e.terminal_at
+                        .is_some_and(|t| t.elapsed().as_secs() >= retention)
+            })
+            .map(|(id, _)| id.clone())
+            .collect();
+        for id in &expired {
+            if let Some(entry) = scans.remove(id)
+                && let Some(ScanOutput::Disk(path)) = entry.output
+            {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+        if !expired.is_empty() {
+            tracing::debug!("pruned {} expired scan(s)", expired.len());
+        }
     }
 
     pub fn new(config: Arc<RavenConfig>) -> Self {
@@ -197,8 +226,9 @@ impl ScanManager {
         crate::safety::check_allowlist(tool, &self.config.safety)?;
         crate::safety::validate_target(target)?;
 
-        // Enforce concurrency limit
-        let scans = self.lock_scans()?;
+        // Evict expired scans, then enforce the concurrency limit
+        let mut scans = self.lock_scans()?;
+        self.prune_expired(&mut scans);
         let running = scans
             .values()
             .filter(|s| s.status == ScanStatus::Running)
@@ -222,7 +252,8 @@ impl ScanManager {
         // Spawn the scan as a background tokio task
         let handle = tokio::spawn(async move {
             let arg_refs: Vec<&str> = arg_strings.iter().map(|s| s.as_str()).collect();
-            let result = executor::run(&config, &tool_owned, &arg_refs, timeout_secs).await;
+            let result =
+                executor::run_unmetered(&config, &tool_owned, &arg_refs, timeout_secs).await;
 
             let mut scans = match scans_for_task.lock() {
                 Ok(guard) => guard,
@@ -239,6 +270,7 @@ impl ScanManager {
                 match result {
                     Ok(r) => {
                         entry.status = ScanStatus::Completed;
+                        entry.terminal_at = Some(Instant::now());
                         let output_str = if r.success {
                             r.stdout
                         } else {
@@ -249,7 +281,7 @@ impl ScanManager {
                         entry.output = Some(if output_str.len() > SPILL_THRESHOLD {
                             let scan_dir =
                                 std::path::Path::new(&config.execution.output_dir).join("scans");
-                            let _ = std::fs::create_dir_all(&scan_dir);
+                            let _ = crate::safety::ensure_dir_secure(&scan_dir);
                             let path = scan_dir.join(format!("{scan_id}.txt"));
                             let write_result = {
                                 use std::os::unix::fs::OpenOptionsExt;
@@ -285,6 +317,7 @@ impl ScanManager {
                     }
                     Err(e) => {
                         entry.status = ScanStatus::Failed(e.to_string());
+                        entry.terminal_at = Some(Instant::now());
                     }
                 }
             }
@@ -301,6 +334,7 @@ impl ScanManager {
                 output: None,
                 handle: Some(handle),
                 started_at: Instant::now(),
+                terminal_at: None,
             },
         );
 
@@ -316,7 +350,8 @@ impl ScanManager {
     ///
     /// Used by `raven-server::tools::scans::status` for the auto-inline feature.
     pub fn status_enriched(&self, id: &str) -> Result<Option<ScanStatusInfo>, PentestError> {
-        let scans = self.lock_scans()?;
+        let mut scans = self.lock_scans()?;
+        self.prune_expired(&mut scans);
         Ok(scans.get(id).map(|e| ScanStatusInfo {
             id: id.to_string(),
             tool: e.tool.clone(),
@@ -386,6 +421,7 @@ impl ScanManager {
 
         if entry.status == ScanStatus::Running {
             entry.status = ScanStatus::Cancelled;
+            entry.terminal_at = Some(Instant::now());
             if let Some(handle) = entry.handle.take() {
                 handle.abort();
             }
@@ -395,8 +431,9 @@ impl ScanManager {
 
     /// List enriched status for all tracked scans (running, completed, failed, cancelled).
     pub fn list(&self) -> Result<Vec<ScanStatusInfo>, PentestError> {
-        Ok(self
-            .lock_scans()?
+        let mut scans = self.lock_scans()?;
+        self.prune_expired(&mut scans);
+        Ok(scans
             .iter()
             .map(|(id, e)| ScanStatusInfo {
                 id: id.clone(),
@@ -478,6 +515,57 @@ mod tests {
             output_chars: None,
         };
         assert!(info.output_chars.is_none());
+    }
+
+    fn entry(status: ScanStatus, terminal_at: Option<Instant>) -> ScanEntry {
+        ScanEntry {
+            tool: "nmap".into(),
+            target: "10.0.0.1".into(),
+            status,
+            output: None,
+            handle: None,
+            started_at: Instant::now(),
+            terminal_at,
+        }
+    }
+
+    #[test]
+    fn prune_evicts_terminal_but_never_running() {
+        let mut cfg = RavenConfig::default();
+        cfg.execution.scan_retention_secs = 0; // evict terminal scans immediately
+        let mgr = ScanManager::new(Arc::new(cfg));
+        let mut scans = mgr.scans.lock().unwrap();
+        scans.insert(
+            "done".into(),
+            entry(ScanStatus::Completed, Some(Instant::now())),
+        );
+        scans.insert(
+            "failed".into(),
+            entry(ScanStatus::Failed("boom".into()), Some(Instant::now())),
+        );
+        scans.insert("running".into(), entry(ScanStatus::Running, None));
+        mgr.prune_expired(&mut scans);
+        assert!(!scans.contains_key("done"));
+        assert!(!scans.contains_key("failed"));
+        assert!(
+            scans.contains_key("running"),
+            "running scans must never be pruned"
+        );
+    }
+
+    #[test]
+    fn prune_keeps_fresh_terminal_within_ttl() {
+        let mgr = ScanManager::new(Arc::new(RavenConfig::default())); // 3600s TTL
+        let mut scans = mgr.scans.lock().unwrap();
+        scans.insert(
+            "fresh".into(),
+            entry(ScanStatus::Completed, Some(Instant::now())),
+        );
+        mgr.prune_expired(&mut scans);
+        assert!(
+            scans.contains_key("fresh"),
+            "recent terminal scan retained within TTL"
+        );
     }
 
     #[test]

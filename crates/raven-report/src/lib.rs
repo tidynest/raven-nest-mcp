@@ -8,9 +8,18 @@
 //!   [`FindingMeta`](finding::FindingMeta), [`Severity`](finding::Severity).
 //! - [`store`] — File-per-finding persistence with an in-memory index.
 //!   Handles legacy migration from the old single-file format.
-//! - [`markdown`] — Generates structured pentest reports with executive
-//!   summary, severity breakdown, and per-finding detail sections.
+//! - [`markdown`], [`json`], [`sarif`], [`html`] — Report generators, one per
+//!   output format. Each exposes `generate_report(&[&Finding], title) -> String`.
+//! - [`summary`] — Shared severity-count / overall-risk / tool-list helpers used
+//!   by every generator, so the summary numbers stay consistent across formats.
+//! - [`report`] — [`ReportFormat`](report::ReportFormat) selector mapping a
+//!   format name to its generator and file extension.
 
 pub mod finding;
+pub mod html;
+pub mod json;
 pub mod markdown;
+pub mod report;
+pub mod sarif;
 pub mod store;
+pub(crate) mod summary;

@@ -13,12 +13,14 @@ use rmcp::model::ErrorCode;
 /// Map [`PentestError`] variants to semantically correct MCP error codes.
 ///
 /// - `InvalidTarget` → `INVALID_PARAMS` (caller sent bad input)
-/// - `ToolNotAllowed` → `INVALID_REQUEST` (tool not in allowlist)
+/// - `ToolNotAllowed` / `OutOfScope` → `INVALID_REQUEST` (authorization boundary)
 /// - Everything else → `INTERNAL_ERROR` (server-side failure)
 pub fn to_mcp(err: PentestError) -> rmcp::ErrorData {
     let (code, msg) = match &err {
         PentestError::InvalidTarget(_) => (ErrorCode::INVALID_PARAMS, err.to_string()),
-        PentestError::ToolNotAllowed(_) => (ErrorCode::INVALID_REQUEST, err.to_string()),
+        PentestError::ToolNotAllowed(_) | PentestError::OutOfScope(_) => {
+            (ErrorCode::INVALID_REQUEST, err.to_string())
+        }
         PentestError::MsfNotRunning(_) => (ErrorCode::INTERNAL_ERROR, err.to_string()),
         PentestError::MsfRpcError(_) => (ErrorCode::INTERNAL_ERROR, err.to_string()),
         PentestError::CommandTimeout(_)

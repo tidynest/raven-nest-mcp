@@ -8,7 +8,8 @@
 //! Called by [`raven_server::tools::findings::generate_report`] which also
 //! persists the output to `{output_dir}/report-{timestamp}.md`.
 
-use crate::finding::{Finding, Severity};
+use crate::finding::Finding;
+use crate::summary::{count_by_severity, overall_risk, unique_tools};
 
 /// Escape markdown special characters in user-supplied text.
 ///
@@ -87,10 +88,7 @@ pub fn generate_report(findings: &[&Finding], title: &str) -> String {
 
     // Tools Used — deduplicated list
     report.push_str("## Tools Used\n\n");
-    let mut tools: Vec<&str> = findings.iter().map(|f| f.tool.as_str()).collect();
-    tools.sort_unstable();
-    tools.dedup();
-    for t in &tools {
+    for t in &unique_tools(findings) {
         report.push_str(&format!("- {t}\n"));
     }
     report.push('\n');
@@ -135,39 +133,10 @@ pub fn generate_report(findings: &[&Finding], title: &str) -> String {
     report
 }
 
-/// Determine the overall risk level from severity counts.
-fn overall_risk(counts: &(usize, usize, usize, usize, usize)) -> &'static str {
-    if counts.0 > 0 {
-        "Critical"
-    } else if counts.1 > 0 {
-        "High"
-    } else if counts.2 > 0 {
-        "Medium"
-    } else if counts.3 > 0 {
-        "Low"
-    } else if counts.4 > 0 {
-        "Informational"
-    } else {
-        "None"
-    }
-}
-
-/// Count findings by each severity level. Returns (critical, high, medium, low, info).
-fn count_by_severity(findings: &[&Finding]) -> (usize, usize, usize, usize, usize) {
-    let count = |s: &Severity| findings.iter().filter(|f| f.severity == *s).count();
-    (
-        count(&Severity::Critical),
-        count(&Severity::High),
-        count(&Severity::Medium),
-        count(&Severity::Low),
-        count(&Severity::Info),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::finding::Finding;
+    use crate::finding::{Finding, Severity};
 
     fn make(title: &str, sev: Severity) -> Finding {
         Finding::new(
