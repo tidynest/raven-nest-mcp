@@ -27,6 +27,8 @@ pub struct RavenConfig {
     pub network: NetworkConfig,
     #[serde(default)]
     pub metasploit: MetasploitConfig,
+    #[serde(default)]
+    pub scope: ScopeConfig,
 }
 
 /// Controls which tools may run and how aggressively they operate.
@@ -88,6 +90,12 @@ fn default_masscan_max_rate() -> u32 {
 fn default_expected_tool_calls() -> usize {
     10
 }
+fn default_scan_retention_secs() -> u64 {
+    3600
+}
+fn default_max_concurrent_execs() -> usize {
+    4
+}
 
 /// Execution environment: timeouts, concurrency, and filesystem paths.
 #[derive(Clone, Debug, Deserialize)]
@@ -102,6 +110,16 @@ pub struct ExecutionConfig {
     /// Per-tool timeout overrides (seconds). Falls back to `default_timeout_secs`.
     #[serde(default)]
     pub timeouts: HashMap<String, u64>,
+    /// Seconds to retain a completed/failed/cancelled scan before it is evicted
+    /// (and its spilled output file deleted). Default 3600 (1h). Bounds the
+    /// otherwise unbounded in-memory scan registry on long-lived servers.
+    #[serde(default = "default_scan_retention_secs")]
+    pub scan_retention_secs: u64,
+    /// Max concurrent *synchronous* tool executions, separate from
+    /// `max_concurrent_scans` (which bounds background scans). Default 4 —
+    /// prevents an LLM from spawning unbounded subprocesses via parallel calls.
+    #[serde(default = "default_max_concurrent_execs")]
+    pub max_concurrent_execs: usize,
 }
 
 /// Optional proxy configuration injected into tool subprocesses.
@@ -180,6 +198,61 @@ impl Default for MetasploitConfig {
     }
 }
 
+/// Engagement scope — an operator-configured authorization allowlist.
+///
+/// Disabled by default (`enabled = false`), preserving current behaviour where
+/// any syntactically valid target may be scanned. When enabled, every target is
+/// gated by [`safety::check_scope`](crate::safety::check_scope): it must match an
+/// `allowed_*` entry and must not match a `denied_*` entry (deny wins).
+#[derive(Clone, Debug, Deserialize)]
+#[serde(default)]
+pub struct ScopeConfig {
+    /// Master switch — when false (default), no scope gating is applied.
+    pub enabled: bool,
+    /// In-scope IP ranges (CIDR like `10.0.0.0/8`, or a bare IP = single host).
+    pub allowed_cidrs: Vec<String>,
+    /// In-scope domains. Matches the domain and its subdomains (`example.com`
+    /// matches `example.com` and `api.example.com`, not `notexample.com`).
+    pub allowed_domains: Vec<String>,
+    /// Explicitly out-of-scope IP ranges — checked before the allow list (deny
+    /// wins). Useful for carving out e.g. cloud metadata (`169.254.169.254/32`).
+    pub denied_cidrs: Vec<String>,
+    /// Explicitly out-of-scope domains — checked before the allow list (deny wins).
+    pub denied_domains: Vec<String>,
+    /// Always allow loopback targets (`localhost`, `127.0.0.0/8`, `::1`) regardless
+    /// of the lists. Default true so local lab targets (Juice Shop, DVWA) keep working.
+    pub allow_localhost: bool,
+}
+
+impl Default for ScopeConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            allowed_cidrs: Vec::new(),
+            allowed_domains: Vec::new(),
+            denied_cidrs: Vec::new(),
+            denied_domains: Vec::new(),
+            allow_localhost: true,
+        }
+    }
+}
+
+impl ScopeConfig {
+    /// Reject malformed CIDR/IP entries at startup so scope failures surface
+    /// before any tool runs, not mid-engagement.
+    pub fn validate(&self) -> Result<(), String> {
+        for entry in self.allowed_cidrs.iter().chain(&self.denied_cidrs) {
+            if entry.parse::<ipnet::IpNet>().is_err() && entry.parse::<std::net::IpAddr>().is_err()
+            {
+                return Err(format!(
+                    "scope: '{entry}' is not a valid CIDR or IP address"
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 impl ExecutionConfig {
     /// Look up timeout for a specific tool, falling back to the default.
     pub fn timeout_for(&self, tool: &str) -> u64 {
@@ -187,6 +260,18 @@ impl ExecutionConfig {
             .get(tool)
             .copied()
             .unwrap_or(self.default_timeout_secs)
+    }
+
+    /// Reject zero-valued limits that would break the scan registry or deadlock
+    /// the executor (0 permits). Called at startup via [`RavenConfig::validate`].
+    pub fn validate(&self) -> Result<(), String> {
+        if self.scan_retention_secs == 0 {
+            return Err("scan_retention_secs must be > 0".into());
+        }
+        if self.max_concurrent_execs == 0 {
+            return Err("max_concurrent_execs must be > 0".into());
+        }
+        Ok(())
     }
 }
 
@@ -265,6 +350,8 @@ impl RavenConfig {
     pub fn validate(&self) -> Result<(), String> {
         self.safety.validate()?;
         self.metasploit.validate()?;
+        self.scope.validate()?;
+        self.execution.validate()?;
         Ok(())
     }
 
@@ -331,6 +418,9 @@ impl Default for RavenConfig {
                     "dalfox".into(),
                     "dnsrecon".into(),
                     "john".into(),
+                    "httpx".into(),
+                    "dnsx".into(),
+                    "katana".into(),
                 ],
                 max_output_chars: 50_000,
                 tool_paths: HashMap::new(),
@@ -347,9 +437,12 @@ impl Default for RavenConfig {
                 max_concurrent_scans: 3,
                 output_dir: "/tmp/raven-nest".into(),
                 timeouts: HashMap::new(),
+                scan_retention_secs: default_scan_retention_secs(),
+                max_concurrent_execs: default_max_concurrent_execs(),
             },
             network: NetworkConfig::default(),
             metasploit: MetasploitConfig::default(),
+            scope: ScopeConfig::default(),
         }
     }
 }
@@ -364,6 +457,8 @@ mod tests {
             max_concurrent_scans: 3,
             output_dir: "/tmp/test".into(),
             timeouts: HashMap::from([("nmap".into(), 900), ("nuclei".into(), 1200)]),
+            scan_retention_secs: default_scan_retention_secs(),
+            max_concurrent_execs: default_max_concurrent_execs(),
         }
     }
 

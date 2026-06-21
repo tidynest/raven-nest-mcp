@@ -5,6 +5,7 @@ allowed_tools = [
     "sqlmap", "hydra", "masscan",
     "subfinder", "wpscan", "enum4linux-ng",
     "dalfox", "dnsrecon", "john",
+    "httpx", "dnsx", "katana",
 ]
 max_output_chars = 50000
 
@@ -27,13 +28,34 @@ expected_tool_calls = 10
 # Requires passwordless sudo — see /etc/sudoers.d/raven-nest
 sudo_tools = ["masscan", "nmap"]
 
-# Custom binary paths for tools not on $PATH
+# Custom binary paths for tools not resolvable via $PATH.
+# Set per-host as needed (e.g. for gem/cargo/pipx installs); leave empty otherwise.
 [safety.tool_paths]
-wpscan = "/home/bakri/.local/share/gem/ruby/3.4.0/bin/wpscan"
+# wpscan = "/path/to/wpscan"
+
+# Engagement scope — an authorization allowlist. DISABLED by default, so any
+# syntactically valid target may be scanned. When enabled=true, every target must
+# match an allowed_* entry AND must not match a denied_* entry (deny wins).
+# Loopback (localhost / 127.0.0.0/8 / ::1) is allowed regardless unless
+# allow_localhost=false. allowed_domains matches the domain and its subdomains.
+# [scope]
+# enabled = true
+# allowed_cidrs = ["10.0.0.0/8", "192.168.0.0/16"]
+# allowed_domains = ["example.com"]
+# denied_cidrs = ["169.254.169.254/32"]   # e.g. cloud metadata endpoint
+# denied_domains = []
+# allow_localhost = true
 
 [execution]
 default_timeout_secs = 600
 max_concurrent_scans = 3
+# Max concurrent synchronous tool executions (default 4). Separate from
+# max_concurrent_scans; bounds parallel run_* calls so an agent can't spawn
+# unbounded subprocesses.
+# max_concurrent_execs = 4
+# Seconds to retain a finished scan before it (and its spilled output) is
+# evicted from the in-memory registry (default 3600 = 1h).
+# scan_retention_secs = 3600
 # SECURITY: /tmp is world-writable. For production, use a restricted location
 # owned by the service user with mode 0700 (e.g. /var/lib/raven-nest).
 output_dir = "/tmp/raven-nest"

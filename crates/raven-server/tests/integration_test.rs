@@ -37,6 +37,7 @@ fn save_req(title: &str, severity: &str) -> SaveFindingRequest {
         cvss: None,
         cve: None,
         owasp_category: None,
+        scan_id: None,
     }
 }
 
@@ -167,6 +168,7 @@ fn generate_report_produces_markdown() {
         &config,
         GenerateReportRequest {
             title: Some("Test Report".into()),
+            format: None,
         },
     )
     .unwrap();
@@ -186,10 +188,61 @@ fn generate_report_uses_default_title() {
     let result = raven_server::tools::findings::generate_report(
         &store,
         &config,
-        GenerateReportRequest { title: None },
+        GenerateReportRequest {
+            title: None,
+            format: None,
+        },
     )
     .unwrap();
     let text = extract_text(&result.content);
     assert!(text.contains("Report saved to:"));
     assert!(text.contains("0 finding(s)"));
+}
+
+#[test]
+fn generate_report_writes_each_format_with_correct_extension() {
+    for (fmt, ext) in [("json", "json"), ("sarif", "sarif"), ("html", "html")] {
+        let (store, dir) = test_store();
+        raven_server::tools::findings::save_finding(&store, save_req("XSS", "high")).unwrap();
+
+        let mut config = raven_core::config::RavenConfig::default();
+        config.execution.output_dir = dir.path().to_str().unwrap().into();
+
+        let result = raven_server::tools::findings::generate_report(
+            &store,
+            &config,
+            GenerateReportRequest {
+                title: Some("Fmt".into()),
+                format: Some(fmt.into()),
+            },
+        )
+        .unwrap();
+        let text = extract_text(&result.content);
+        assert!(text.contains("Report saved to:"), "format {fmt}");
+
+        // A file with the expected extension must have been written.
+        let written = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .any(|e| e.path().extension().is_some_and(|x| x == ext));
+        assert!(written, "expected a .{ext} report for format {fmt}");
+    }
+}
+
+#[test]
+fn generate_report_rejects_invalid_format() {
+    let (store, dir) = test_store();
+    let mut config = raven_core::config::RavenConfig::default();
+    config.execution.output_dir = dir.path().to_str().unwrap().into();
+
+    let err = raven_server::tools::findings::generate_report(
+        &store,
+        &config,
+        GenerateReportRequest {
+            title: None,
+            format: Some("pdf".into()),
+        },
+    )
+    .unwrap_err();
+    assert!(err.message.contains("invalid format"));
 }

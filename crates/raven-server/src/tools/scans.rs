@@ -15,6 +15,14 @@ use rmcp::{
 /// Outputs smaller than this are included directly in the status response.
 const AUTO_INLINE_LIMIT: usize = 10_000;
 
+/// Build a success result carrying human text + machine-readable `structured_content`
+/// (so clients read `scan_id`/`status` as fields instead of parsing prose).
+fn success_with(text: impl Into<String>, structured: serde_json::Value) -> CallToolResult {
+    let mut result = CallToolResult::success(vec![Content::text(text.into())]);
+    result.structured_content = Some(structured);
+    result
+}
+
 /// MCP request schema for `launch_scan`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -67,9 +75,10 @@ pub fn launch(
         _ => "First poll recommended after 15s",
     };
 
-    Ok(CallToolResult::success(vec![Content::text(format!(
-        "Scan launched. ID: {id}\n{poll_hint}"
-    ))]))
+    Ok(success_with(
+        format!("Scan launched. ID: {id}\n{poll_hint}"),
+        serde_json::json!({ "scan_id": id }),
+    ))
 }
 
 /// Check scan status with auto-inline: completed outputs under 10K chars
@@ -83,9 +92,10 @@ pub fn status(
         .map_err(crate::error::to_mcp)?;
 
     let Some(info) = info else {
-        return Ok(CallToolResult::success(vec![Content::text(
+        return Ok(success_with(
             "scan not found",
-        )]));
+            serde_json::json!({ "found": false }),
+        ));
     };
 
     let status_str = match &info.status {
@@ -119,7 +129,15 @@ pub fn status(
         }
     }
 
-    Ok(CallToolResult::success(vec![Content::text(text)]))
+    let structured = serde_json::json!({
+        "scan_id": req.scan_id,
+        "tool": info.tool,
+        "target": info.target,
+        "status": status_str,
+        "elapsed_secs": info.elapsed_secs,
+        "output_chars": info.output_chars,
+    });
+    Ok(success_with(text, structured))
 }
 
 /// Get a paginated slice of scan output (character-based offset/limit).

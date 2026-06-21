@@ -12,6 +12,7 @@
 //! - [`scan_manager`] — Background scan orchestration with concurrency limits
 //!   and memory-spill-to-disk for large outputs.
 
+pub mod audit;
 pub mod config;
 pub mod error;
 pub mod executor;

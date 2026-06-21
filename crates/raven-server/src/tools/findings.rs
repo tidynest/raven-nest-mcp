@@ -1,15 +1,15 @@
 //! Finding management handlers (save, get, list, delete, report generation).
 //!
 //! These handlers bridge the MCP interface to [`FindingStore`] for persistence
-//! and [`markdown::generate_report`](markdown::generate_report)
-//! for report output. The store is protected by `RwLock` — reads (list, get)
-//! take a shared lock, writes (save, delete) take an exclusive lock.
+//! and [`ReportFormat`](raven_report::report::ReportFormat) for report output
+//! (markdown, JSON, SARIF, or HTML). The store is protected by `RwLock` — reads
+//! (list, get) take a shared lock, writes (save, delete) take an exclusive lock.
 //!
-//! Reports are both returned in the MCP response and saved to disk at
-//! `{output_dir}/report-{timestamp}.md`.
+//! Reports are saved to disk at `{output_dir}/report-{timestamp}.{ext}` and a
+//! compact summary is returned in the MCP response.
 
 use raven_report::finding::{Finding, Severity};
-use raven_report::markdown;
+use raven_report::report::ReportFormat;
 use raven_report::store::FindingStore;
 use rmcp::{
     model::{CallToolResult, Content},
@@ -41,6 +41,11 @@ pub struct SaveFindingRequest {
     pub cve: Option<String>,
     #[schemars(description = "OWASP Top 10 category (e.g. 'A03:2021 Injection')")]
     pub owasp_category: Option<String>,
+    #[serde(default)]
+    #[schemars(
+        description = "Originating scan ID (UUID), if this finding came from a launched scan"
+    )]
+    pub scan_id: Option<String>,
 }
 
 /// MCP request schema for `get_finding` and `delete_finding`.
@@ -51,12 +56,22 @@ pub struct FindingIdRequest {
     pub finding_id: String,
 }
 
+/// MCP request schema for `list_findings_by_scan`.
+#[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ListByScanRequest {
+    #[schemars(description = "Scan ID (UUID) to list findings for")]
+    pub scan_id: String,
+}
+
 /// MCP request schema for `generate_report`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct GenerateReportRequest {
     #[schemars(description = "Report title")]
     pub title: Option<String>,
+    #[schemars(description = "Report format: 'markdown' (default), 'json', 'sarif', 'html'")]
+    pub format: Option<String>,
 }
 
 /// Parse a severity string (case-insensitive) into a [`Severity`] enum.
@@ -74,6 +89,16 @@ fn parse_severity(s: &str) -> Result<Severity, rmcp::ErrorData> {
     }
 }
 
+/// Build a success result carrying both human-readable text and a machine-readable
+/// `structured_content` object, so clients can read fields instead of parsing prose.
+/// `wrap_result` only mutates text content, so the structured payload passes through
+/// uncapped.
+fn success_with(text: impl Into<String>, structured: serde_json::Value) -> CallToolResult {
+    let mut result = CallToolResult::success(vec![Content::text(text.into())]);
+    result.structured_content = Some(structured);
+    result
+}
+
 /// Save a new finding to the store. Returns the generated finding ID.
 pub fn save_finding(
     store: &RwLock<FindingStore>,
@@ -86,6 +111,17 @@ pub fn save_finding(
     finding.cvss = req.cvss;
     finding.cve = req.cve;
     finding.owasp_category = req.owasp_category;
+    if let Some(scan_id) = req.scan_id {
+        // Validate it parses as a UUID so the scan reverse-index stays consistent
+        // with launched scan IDs. source stays Manual (the Finding::new default).
+        uuid::Uuid::parse_str(&scan_id).map_err(|_| {
+            rmcp::ErrorData::invalid_params(
+                format!("invalid scan_id '{scan_id}' — must be a UUID"),
+                None,
+            )
+        })?;
+        finding.scan_id = Some(scan_id);
+    }
 
     let id = store
         .write()
@@ -93,9 +129,10 @@ pub fn save_finding(
         .insert(finding)
         .map_err(|e| rmcp::ErrorData::internal_error(e, None))?;
 
-    Ok(CallToolResult::success(vec![Content::text(format!(
-        "Finding saved. ID: {id}"
-    ))]))
+    Ok(success_with(
+        format!("Finding saved. ID: {id}"),
+        serde_json::json!({ "finding_id": id }),
+    ))
 }
 
 /// Retrieve a finding by ID, returning its full JSON representation.
@@ -107,14 +144,19 @@ pub fn get_finding(
         .read()
         .map_err(|_| rmcp::ErrorData::internal_error("store lock poisoned", None))?;
 
-    let text = match store.get(&req.finding_id) {
-        Some(f) => {
-            serde_json::to_string_pretty(&f).unwrap_or_else(|e| format!("serialisation error: {e}"))
-        }
-        None => "finding not found".into(),
+    let (text, structured) = match store.get(&req.finding_id) {
+        Some(f) => (
+            serde_json::to_string_pretty(&f)
+                .unwrap_or_else(|e| format!("serialisation error: {e}")),
+            serde_json::json!({ "found": true, "finding": f }),
+        ),
+        None => (
+            "finding not found".to_string(),
+            serde_json::json!({ "found": false }),
+        ),
     };
 
-    Ok(CallToolResult::success(vec![Content::text(text)]))
+    Ok(success_with(text, structured))
 }
 
 /// List all findings as `ID | [Severity] Title`, sorted by severity.
@@ -125,7 +167,10 @@ pub fn list_findings(store: &RwLock<FindingStore>) -> Result<CallToolResult, rmc
 
     let findings = store.list();
     if findings.is_empty() {
-        return Ok(CallToolResult::success(vec![Content::text("no findings")]));
+        return Ok(success_with(
+            "no findings",
+            serde_json::json!({ "findings": [] }),
+        ));
     }
 
     let lines: Vec<String> = findings
@@ -133,9 +178,48 @@ pub fn list_findings(store: &RwLock<FindingStore>) -> Result<CallToolResult, rmc
         .map(|f| format!("{} | [{}] {}", f.id, f.severity, f.title))
         .collect();
 
-    Ok(CallToolResult::success(vec![Content::text(
+    Ok(success_with(
         lines.join("\n"),
-    )]))
+        serde_json::json!({ "findings": findings }),
+    ))
+}
+
+/// List findings produced by a given scan, sorted by severity.
+///
+/// Mirrors [`list_findings`] but scopes the results to one scan via
+/// [`FindingStore::list_by_scan`]. The `scan_id` must be a UUID.
+pub fn list_findings_by_scan(
+    store: &RwLock<FindingStore>,
+    req: ListByScanRequest,
+) -> Result<CallToolResult, rmcp::ErrorData> {
+    uuid::Uuid::parse_str(&req.scan_id).map_err(|_| {
+        rmcp::ErrorData::invalid_params(
+            format!("invalid scan_id '{}' — must be a UUID", req.scan_id),
+            None,
+        )
+    })?;
+
+    let store = store
+        .read()
+        .map_err(|_| rmcp::ErrorData::internal_error("store lock poisoned", None))?;
+
+    let findings = store.list_by_scan(&req.scan_id);
+    if findings.is_empty() {
+        return Ok(success_with(
+            "no findings for scan",
+            serde_json::json!({ "scan_id": req.scan_id, "findings": [] }),
+        ));
+    }
+
+    let lines: Vec<String> = findings
+        .iter()
+        .map(|f| format!("{} | [{}] {}", f.id, f.severity, f.title))
+        .collect();
+
+    Ok(success_with(
+        lines.join("\n"),
+        serde_json::json!({ "scan_id": req.scan_id, "findings": findings }),
+    ))
 }
 
 /// Delete a finding by ID from the store and disk.
@@ -153,19 +237,34 @@ pub fn delete_finding(
     } else {
         "finding not found"
     };
-    Ok(CallToolResult::success(vec![Content::text(text)]))
+    Ok(success_with(
+        text,
+        serde_json::json!({ "deleted": deleted, "finding_id": req.finding_id }),
+    ))
 }
 
-/// Generate a Markdown report from all stored findings and save it to disk.
+/// Generate a report from all stored findings and save it to disk.
 ///
-/// The report is both returned in the MCP response and persisted to
-/// `{output_dir}/report-{timestamp}.md`. If disk write fails, the report
-/// is still returned to the client.
+/// The output format is chosen via `req.format` (`markdown` default, plus
+/// `json`, `sarif`, `html`) and the file is persisted to
+/// `{output_dir}/report-{timestamp}.{ext}`. On disk-write failure the markdown
+/// body is still returned (legacy behavior); the other formats return an
+/// internal error rather than dumping a large body into the response.
 pub fn generate_report(
     store: &RwLock<FindingStore>,
     config: &raven_core::config::RavenConfig,
     req: GenerateReportRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
+    let format = match req.format.as_deref() {
+        None => ReportFormat::default(),
+        Some(s) => ReportFormat::parse(s).ok_or_else(|| {
+            rmcp::ErrorData::invalid_params(
+                format!("invalid format '{s}' — must be: markdown, json, sarif, html"),
+                None,
+            )
+        })?,
+    };
+
     let store = store
         .read()
         .map_err(|_| rmcp::ErrorData::internal_error("store lock poisoned", None))?;
@@ -173,16 +272,25 @@ pub fn generate_report(
     let all = store.load_all();
     let refs: Vec<&Finding> = all.iter().collect();
     let title = req.title.as_deref().unwrap_or("Penetration Test Report");
-    let report = markdown::generate_report(&refs, title);
+    let report = format.render(&refs, title);
 
     // Persist to disk alongside findings
     let date = chrono::Local::now().format("%Y-%m-%d_%H%M%S");
-    let filename = format!("report-{date}.md");
+    let filename = format!("report-{date}.{}", format.extension());
     let path = std::path::Path::new(&config.execution.output_dir).join(&filename);
 
     if let Err(e) = std::fs::write(&path, &report) {
         tracing::warn!("failed to write report: {e}");
-        return Ok(CallToolResult::success(vec![Content::text(report)]));
+        // Markdown keeps the legacy behavior of returning the body so the
+        // operator still receives the report; other formats can be large and
+        // machine-oriented, so surface an error instead.
+        return match format {
+            ReportFormat::Markdown => Ok(CallToolResult::success(vec![Content::text(report)])),
+            _ => Err(rmcp::ErrorData::internal_error(
+                format!("failed to write report to {}: {e}", path.display()),
+                None,
+            )),
+        };
     }
 
     // Return a compact summary instead of the full report to save context.
@@ -209,7 +317,14 @@ pub fn generate_report(
         format!("{} finding(s): {}", refs.len(), breakdown.join(", "))
     };
     let output = format!("Report saved to: {}\n{summary}", path.display());
-    Ok(CallToolResult::success(vec![Content::text(output)]))
+    Ok(success_with(
+        output,
+        serde_json::json!({
+            "path": path.display().to_string(),
+            "total": refs.len(),
+            "counts": severity_counts,
+        }),
+    ))
 }
 
 #[cfg(test)]
