@@ -883,6 +883,10 @@ impl ServerHandler for RavenServer {
             .enable_tools()
             .enable_logging()
             .build();
+        // Advertise the product identity (not the rmcp SDK default) so clients
+        // read the real raven-nest name/version from the handshake.
+        info.server_info.name = "raven-nest".into();
+        info.server_info.version = env!("CARGO_PKG_VERSION").into();
         info.instructions = Some(SERVER_INSTRUCTIONS.into());
         info
     }
