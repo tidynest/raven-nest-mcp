@@ -24,14 +24,17 @@ sudo pacman -S nmap nikto whatweb testssl.sh sqlmap hydra masscan wpscan john
 # AUR tools
 yay -S feroxbuster-bin ffuf-bin enum4linux-ng dalfox-bin
 
-# Go tools (ProjectDiscovery)
-# Install nuclei and subfinder via Go or GitHub releases:
+# Go tools (ProjectDiscovery) — nuclei, subfinder, httpx, dnsx, katana
 # go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
 # go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
+# go install github.com/projectdiscovery/httpx/cmd/httpx@latest
+# go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest
+# go install github.com/projectdiscovery/katana/cmd/katana@latest
 # After install, update nuclei templates: nuclei -ut
 
 # Python tools
 # pip install dnsrecon
+# pipx install netexec    # provides the `nxc` binary — gated, off by default
 ```
 
 `ping` is available by default on all Linux systems.
@@ -130,8 +133,9 @@ see the [Configuration](#configuration) section.
 
 ## Configuration
 
-Edit `config/default.toml` to customise behaviour. The config file has four
-sections: `[safety]`, `[execution]`, `[network]`, and `[metasploit]`.
+Edit `config/default.toml` to customise behaviour. The config file has these
+sections: `[safety]`, `[scope]`, `[execution]`, `[network]`, `[metasploit]`, and
+`[netexec]`.
 
 ### Config Resolution Chain
 
@@ -155,10 +159,17 @@ allowed_tools = [
     "sqlmap", "hydra", "masscan",
     "subfinder", "wpscan", "enum4linux-ng",
     "dalfox", "dnsrecon", "john",
+    "httpx", "dnsx", "katana",
+    "nxc",
 ]
 max_output_chars = 50000
 # context_budget = 65536
 # expected_tool_calls = 10
+
+# Auto-save findings extracted from scan output (nuclei only). Opt-in.
+# auto_save_findings = false
+# auto_save_min_severity = "medium"   # info|low|medium|high|critical
+# auto_save_max_per_scan = 25
 
 # Safety limits for dangerous tools
 # sqlmap_max_level = 2
@@ -184,6 +195,9 @@ max_output_chars = 50000
 | `tool_paths` | table | empty | Map of tool name to absolute binary path, for tools not on `$PATH`. Falls back to `$PATH` lookup if not specified. |
 | `sudo_tools` | string list | `[]` | Tools invoked via `sudo` for privilege escalation. See [sudo_tools](#sudo_tools--privilege-escalation) below. |
 | `expected_tool_calls` | integer | 10 | Expected tool calls per session. Used by the session budget tracker to plan per-call output allocation. Higher values yield smaller per-call caps. Typical pentest: 6-12 calls. |
+| `auto_save_findings` | bool | `false` | Auto-extract findings from scan output (currently nuclei only) into the finding store. Opt-in. |
+| `auto_save_min_severity` | string | `medium` | Minimum severity an auto-extracted finding must meet to be saved (`info`–`critical`). |
+| `auto_save_max_per_scan` | integer | 25 | Cap on auto-extracted findings saved per scan. |
 
 #### Context Budget
 
@@ -248,6 +262,9 @@ the budget system (Full = 100%, Compact = 50%, Minimal = 25%, minimum 3):
 | enum4linux-ng | 20 items per section | truncated per section |
 | dalfox | 20 XSS findings | "+N more" |
 | dnsrecon | 30 DNS records | "+N more" |
+| httpx | 30 results | "+N more" |
+| dnsx | 30 records | "+N more" |
+| katana | 40 endpoints | "+N more" |
 
 These caps are applied before the budget tracker's per-call enforcement.
 
@@ -286,6 +303,32 @@ their root-privilege check when sudo is configured.
 
 Edit the username and paths in the sudoers file for your environment.
 
+### `[scope]` — Engagement Authorization
+
+Off by default — any syntactically valid target may be scanned. When
+`enabled = true`, `validate_target` (the chokepoint every tool and the scan
+launcher share) requires each target to match an allowed entry **and** not match
+a denied entry (deny wins). Loopback is always allowed unless `allow_localhost = false`.
+
+```toml
+# [scope]
+# enabled = true
+# allowed_cidrs = ["10.0.0.0/8", "192.168.0.0/16"]
+# allowed_domains = ["example.com"]          # matches the domain and its subdomains
+# denied_cidrs = ["169.254.169.254/32"]      # e.g. cloud metadata endpoint
+# denied_domains = []
+# allow_localhost = true
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `false` | Master switch. When false, no scope checks run. |
+| `allowed_cidrs` | string list | `[]` | Permitted IP ranges. A target IP must fall within one. |
+| `allowed_domains` | string list | `[]` | Permitted domains; matches the domain and its subdomains. |
+| `denied_cidrs` | string list | `[]` | Blocked IP ranges (deny wins over allow). |
+| `denied_domains` | string list | `[]` | Blocked domains (deny wins over allow). |
+| `allow_localhost` | bool | `true` | Allow loopback (`localhost`, `127.0.0.0/8`, `::1`) regardless of the allowlists. |
+
 ### `[execution]` — Timeouts, Concurrency, Output
 
 ```toml
@@ -293,6 +336,8 @@ Edit the username and paths in the sudoers file for your environment.
 default_timeout_secs = 600
 max_concurrent_scans = 3
 output_dir = "/tmp/raven-nest"
+# max_concurrent_execs = 4      # cap on parallel synchronous run_* executions
+# scan_retention_secs = 3600    # seconds a finished scan is kept before eviction
 
 # Per-tool timeout overrides (seconds)
 # [execution.timeouts]
@@ -308,6 +353,8 @@ output_dir = "/tmp/raven-nest"
 | `max_concurrent_scans` | integer | 3 | Max background scans (`launch_scan`) running simultaneously. Additional launches are rejected until a slot opens. |
 | `output_dir` | string | `/tmp/raven-nest` | Base directory for reports, findings, and scan output. Created automatically on startup. |
 | `timeouts` | table | empty | Per-tool timeout overrides in seconds. Falls back to `default_timeout_secs` for tools not listed. |
+| `max_concurrent_execs` | integer | 4 | Cap on concurrent synchronous tool executions (`run_*`). Separate from `max_concurrent_scans`; bounds parallel subprocesses an agent can spawn. |
+| `scan_retention_secs` | integer | 3600 | Seconds to retain a finished background scan (and its spilled output) before eviction from the registry. |
 
 **When to change timeouts:** Vulnerability scans (`nuclei`, `nikto`, `testssl.sh`)
 and OS detection (`nmap -O`) can take several minutes on large targets. Increase
@@ -364,20 +411,39 @@ require_confirmation = true
 | `require_confirmation` | bool | `true` | Require double-call to execute exploits |
 | `blocked_modules` | string list | `[]` | Regex patterns for blocked modules |
 
+### `[netexec]` — Credentialed Enumeration (Gated)
+
+Disabled by default. The `run_netexec` tool refuses to run unless
+`enabled = true`. Even when enabled it permits only **read-only enumeration**
+(auth, shares, users, groups, loggedon, sessions, disks, pass-pol) against a
+**single host** with a **single scalar credential** — no command/module
+execution, no credential lists or spraying, no CIDR ranges. Requires the `nxc`
+binary on `PATH` (or set `[safety.tool_paths].nxc`).
+
+```toml
+# [netexec]
+# enabled = true
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `enabled` | bool | `false` | Master switch — `run_netexec` returns an error when false. |
+
 ---
 
 ## Tools Reference
 
-The server exposes up to 34 tools across 8 categories. Tool count depends on
-configuration — Metasploit tools (6) are only registered when `metasploit.enabled = true`.
+The server exposes up to 41 tools. Tool count depends on configuration —
+Metasploit tools (6) register only when `metasploit.enabled = true`, and
+`run_netexec` only when `netexec.enabled = true`.
 
 ### Tool Timing Overview
 
 | Category | Tools | Expected Duration |
 |----------|-------|-------------------|
-| **Fast** (1-5s) | `ping_target`, `run_whatweb`, `http_request`, `run_ffuf`, `run_masscan`, `run_subfinder`, `run_dalfox` | Immediate results |
+| **Fast** (1-5s) | `ping_target`, `run_whatweb`, `http_request`, `run_ffuf`, `run_masscan`, `run_subfinder`, `run_httpx`, `run_dnsx`, `run_dalfox` | Immediate results |
 | **Medium** (5-30s) | `run_nmap` (quick/service), `run_wpscan`, `run_dnsrecon`, `msf_search`, `msf_module_info` | Wait for completion |
-| **Slow** (30-300s) | `run_nmap` (os/vuln), `run_nuclei`, `run_nikto`, `run_testssl`, `run_feroxbuster`, `run_sqlmap`, `run_hydra`, `run_enum4linux_ng`, `run_john`, `msf_exploit` | Consider `launch_scan` for background execution |
+| **Slow** (30-300s) | `run_nmap` (os/vuln), `run_nuclei`, `run_nikto`, `run_testssl`, `run_feroxbuster`, `run_katana`, `run_sqlmap`, `run_hydra`, `run_enum4linux_ng`, `run_john`, `run_netexec`, `msf_exploit` | Consider `launch_scan` for background execution |
 
 ---
 
@@ -482,6 +548,27 @@ record lines.
 |-----------|------|----------|-------------|
 | `target` | string | yes | Domain to enumerate |
 | `scan_type` | string | no | `standard` (default), `zone_transfer`, `srv` |
+| `timeout_secs` | integer | no | Timeout in seconds |
+
+#### `run_httpx`
+HTTP/HTTPS prober and fingerprinter. Probes a host or URL for live web services,
+status codes, titles, technologies, and TLS details. Output is parsed into
+compact per-URL lines.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `target` | string | yes | URL or host to probe |
+| `scan_type` | string | no | `probe` (default), `fingerprint`, `full` |
+| `timeout_secs` | integer | no | Timeout in seconds |
+
+#### `run_dnsx`
+Fast DNS resolver and record toolkit. Resolves A/AAAA and queries record types
+(MX, NS, TXT, CNAME, etc.). Output is parsed into record lines.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `target` | string | yes | Domain to resolve |
+| `scan_type` | string | no | `resolve` (default), `records`, `recon` |
 | `timeout_secs` | integer | no | Timeout in seconds |
 
 #### `run_enum4linux_ng`
@@ -621,6 +708,17 @@ lines containing status codes, sizes, and word counts.
 | `threads` | integer | no | Concurrent threads (default 40; 10 for localhost; max 150) |
 | `cookie` | string | no | Cookie string for authenticated fuzzing (e.g. `PHPSESSID=abc123`) |
 
+#### `run_katana`
+Web crawler and endpoint discovery. Crawls a target to enumerate URLs, forms,
+and JavaScript endpoints. Output is parsed into a deduplicated endpoint list.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `target` | string | yes | URL to crawl |
+| `scan_type` | string | no | `passive`, `standard` (default), `deep` |
+| `depth` | integer | no | Crawl depth, 1-5 (default 3) |
+| `timeout_secs` | integer | no | Timeout in seconds |
+
 ---
 
 ### Exploitation
@@ -668,6 +766,27 @@ and session status.
 | `wordlist` | string | no | Path to wordlist file |
 | `format` | string | no | Hash format (e.g. `raw-md5`, `bcrypt`, `sha512crypt`) |
 | `max_run_time` | integer | no | Max runtime in seconds (default 300, max 600) |
+
+---
+
+### NetExec (Gated)
+
+Disabled by default — see [`[netexec]`](#netexec--credentialed-enumeration-gated).
+Read-only, single-host, single-credential enumeration only.
+
+#### `run_netexec`
+Authenticate to a host and run a read-only enumeration action via NetExec
+(`nxc`). Refuses to run unless `netexec.enabled = true`. Rejects CIDR ranges,
+credential lists/files, and any command/module execution.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `protocol` | string | yes | `smb`, `winrm`, `ssh`, `ldap`, `mssql`, `ftp`, `rdp` |
+| `target` | string | yes | Single host or IP (no CIDR ranges) |
+| `username` | string | yes | Username (single value, not a list or file) |
+| `password` | string | conditional | Password (single). Provide `password` **or** `hash`, not both. |
+| `hash` | string | conditional | NTLM hash for pass-the-hash (single). Provide `password` **or** `hash`. |
+| `action` | string | no | Read-only action: `auth` (default), `shares`, `users`, `groups`, `loggedon`, `sessions`, `disks`, `pass-pol` |
 
 ---
 
@@ -834,6 +953,7 @@ bounded memory (only metadata is kept in RAM; full data lives on disk).
 | `cvss` | float | no | CVSS score (0.0-10.0) |
 | `cve` | string | no | CVE identifier (e.g. `CVE-2024-1234`) |
 | `owasp_category` | string | no | OWASP Top 10 category (e.g. `A03:2021 Injection`) |
+| `scan_id` | string | no | Originating scan ID (UUID) — links the finding to a launched scan; recall via `list_findings_by_scan` |
 
 #### `get_finding`
 Retrieve full details of a finding as JSON.
@@ -846,6 +966,13 @@ Retrieve full details of a finding as JSON.
 List all findings sorted by severity (Critical first). No parameters.
 Returns `ID | [Severity] Title` for each finding.
 
+#### `list_findings_by_scan`
+List findings linked to a specific scan ID (set via `save_finding`'s `scan_id`).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `scan_id` | string | yes | Scan ID (UUID) to list findings for |
+
 #### `delete_finding`
 Remove a finding. The individual file is deleted from disk and the index is updated.
 
@@ -854,21 +981,42 @@ Remove a finding. The individual file is deleted from disk and the index is upda
 | `finding_id` | string | yes | Finding ID |
 
 #### `generate_report`
-Generate a markdown pentest report from all saved findings. The report includes
+Generate a pentest report from all saved findings. Markdown (default) includes
 a table of contents, methodology section, tools used, OWASP category mapping,
-and findings grouped by severity. The report is automatically saved to
-`{output_dir}/report-{timestamp}.md`. Returns a brief summary (finding count by
-severity) instead of the full report content to conserve context.
+and findings grouped by severity; JSON, SARIF, and HTML are also available via
+`format`. The report is automatically saved to
+`{output_dir}/report-{timestamp}.{ext}` (extension per format). Returns a brief
+summary (finding count by severity) instead of the full report to conserve context.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `title` | string | no | Report title (default "Penetration Test Report") |
+| `format` | string | no | `markdown` (default), `json`, `sarif`, `html` |
 
 > **Persistence:** Findings are stored as individual JSON files at
 > `{output_dir}/findings/{uuid}.json` and survive server restarts. The
 > server loads all existing findings from disk on startup. Reports are
-> written to `{output_dir}/report-{timestamp}.md` and are never deleted
-> automatically.
+> written to `{output_dir}/report-{timestamp}.{ext}` and are never deleted
+> automatically. With an active engagement, findings and reports are scoped to
+> `{output_dir}/engagements/{name}/` instead (see [Engagement](#engagement)).
+
+### Engagement
+
+Engagements scope findings and reports to a per-client/per-target subdirectory,
+so separate jobs don't co-mingle. Switching is filesystem-backed — the active
+engagement's findings live under `{output_dir}/engagements/{name}/findings/` and
+its reports alongside.
+
+#### `set_engagement`
+Switch the active engagement, creating it on first use. Subsequent
+`save_finding` / `generate_report` calls scope to it.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | yes | Engagement name (letters, digits, `-`, `_`, `.`) |
+
+#### `list_engagements`
+List all engagements and show which is active. No parameters.
 
 ---
 
@@ -907,9 +1055,9 @@ numbers. This handles a common LLM quirk where models serialize `2` as `"2"`.
 Fields with lenient deserialization: `count` (ping), `port` (nikto, hydra,
 msf_exploit, msf_auxiliary), `threads` (feroxbuster, ffuf), `rate` (masscan),
 `level` (sqlmap), `risk` (sqlmap), `tasks` (hydra), `timeout_secs` (nikto,
-http_request, launch_scan, subfinder, enum4linux-ng, dalfox, dnsrecon,
-john `max_run_time`), `offset` (get_scan_results), `limit` (get_scan_results,
-msf_search), `lport` (msf_exploit), `session_id` (msf_sessions).
+http_request, launch_scan, subfinder, enum4linux-ng, dalfox, dnsrecon, httpx,
+dnsx, katana, john `max_run_time`), `depth` (katana), `offset` (get_scan_results),
+`limit` (get_scan_results, msf_search), `lport` (msf_exploit), `session_id` (msf_sessions).
 
 Invalid strings (e.g. `"abc"`) produce a clear parse error. `null` and
 omitted fields both resolve to `None` (the default is used).
@@ -951,6 +1099,8 @@ is spawned:
    - Hostnames: alphanumerics, hyphens, dots; max 253 chars; no
      leading/trailing hyphens; per-label validation (each dot-separated
      label must not start or end with a hyphen, and must not be empty).
+   - When `[scope]` is enabled, the target must match an allowed CIDR/domain
+     and must not match a denied one (deny wins); loopback allowed unless disabled.
 
 3. **Argument building** — users pick presets (e.g. `scan_type: "service"`),
    never raw CLI flags. The server translates presets into safe argument lists.
@@ -989,6 +1139,10 @@ is spawned:
     exploit confirmation gate, and session command filtering. See
     [docs/METASPLOIT.md](METASPLOIT.md).
 
+11. **Audit logging** — every tool invocation is appended to
+    `{output_dir}/audit.log` (JSON lines) with the tool, target, and
+    credential-redacted arguments. Best-effort; never blocks the tool call.
+
 ---
 
 ## Output Processing
@@ -1019,6 +1173,9 @@ prevent context overflow (see [Parser Result Caps](#parser-result-caps)).
 | enum4linux-ng | Section parser | OS, shares, users, groups, password policy. 20 items/section. |
 | dalfox | JSON parser | XSS findings with injection type, parameter, payload. Capped at 20. |
 | dnsrecon | JSON parser | DNS records as `TYPE NAME VALUE`. Capped at 30. |
+| httpx | Line parser | Per-URL status, title, tech, TLS. Capped at 30. |
+| dnsx | Line parser | Resolved records as `TYPE NAME VALUE`. Capped at 30. |
+| katana | Line parser | Crawled/deduplicated endpoints. Capped at 40. |
 | john | Line filter | Cracked `password (username)` pairs, session status. |
 
 ### HTTP Response Processing
@@ -1139,8 +1296,8 @@ Assistant: [calls run_nikto with target: "http://target.example.com",
 
 A comprehensive test harness at `tests/manual_test_harness.py` spawns the
 MCP server as a subprocess and communicates via JSON-RPC 2.0 over stdin/stdout.
-Additionally, 163 Rust unit tests cover parsers, config, safety, budget
-tracking, and request validation.
+Additionally, 294 Rust unit and integration tests cover parsers, config,
+safety, budget tracking, and request validation.
 
 ```bash
 # Run all phases

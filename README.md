@@ -4,14 +4,16 @@ A pentesting toolkit that runs as an [MCP](https://modelcontextprotocol.io/) ser
 
 ## What It Does
 
-Raven Nest wraps 16 security tools plus Metasploit Framework behind an MCP interface with input validation, output quality assessment, session-aware context budgeting, and configurable safety limits. It handles tool execution, background scan management, vulnerability finding persistence, and markdown report generation. 34 MCP endpoints total.
+Raven Nest wraps 20 security tools plus Metasploit Framework behind an MCP interface with input validation, output quality assessment, session-aware context budgeting, and configurable safety limits. It handles tool execution, background scan management, vulnerability finding persistence, and multi-format report generation (Markdown, JSON, SARIF, HTML). 41 MCP endpoints total.
 
 ### Supported Tools
 
 | Category | Tools |
 |----------|-------|
-| Recon | nmap, masscan, whatweb, subfinder, dnsrecon |
+| Recon | nmap, masscan, whatweb, httpx, subfinder, dnsx, dnsrecon |
+| Crawling | katana |
 | SMB/AD | enum4linux-ng |
+| Credentialed enum (gated) | netexec |
 | Vulnerability | nuclei, nikto, wpscan, dalfox (XSS) |
 | Web fuzzing | feroxbuster, ffuf |
 | Exploitation | sqlmap, hydra |
@@ -20,7 +22,8 @@ Raven Nest wraps 16 security tools plus Metasploit Framework behind an MCP inter
 | Metasploit | msf\_search, msf\_module\_info, msf\_exploit, msf\_auxiliary, msf\_sessions, msf\_post |
 | Utility | ping\_target, http\_request |
 | Scan management | launch\_scan, get\_scan\_status, get\_scan\_results, list\_scans, cancel\_scan |
-| Findings | save\_finding, get\_finding, list\_findings, delete\_finding, generate\_report |
+| Findings | save\_finding, get\_finding, list\_findings, list\_findings\_by\_scan, delete\_finding, generate\_report |
+| Engagement | set\_engagement, list\_engagements |
 
 ## Quick Start
 
@@ -69,11 +72,16 @@ allowed_tools = ["nmap", "nuclei", "nikto", "whatweb", "masscan", ". . ."]
 context_budget = 65536          # Model context window in chars (0 = disabled)
 expected_tool_calls = 10        # Anticipated calls per session
 sudo_tools = ["masscan", "nmap"] # Tools invoked via passwordless sudo
+# auto_save_findings = false     # opt-in: auto-extract nuclei findings
 
 [execution]
 default_timeout_secs = 600
 max_concurrent_scans = 3
 output_dir = "/tmp/raven-nest"
+
+# [scope]                        # engagement authorization allowlist (deny-wins)
+# enabled = true
+# allowed_domains = ["example.com"]
 
 # [network]
 # http_proxy = "http://127.0.0.1:8080"
@@ -83,6 +91,9 @@ output_dir = "/tmp/raven-nest"
 # host = "127.0.0.1"
 # port = 55553
 # password = "changeme"
+
+# [netexec]                      # gated, read-only credentialed enumeration
+# enabled = true
 ```
 
 See [docs/USAGE.md](docs/USAGE.md) for the full parameter reference and per-tool configuration options.
@@ -106,6 +117,8 @@ Additional hardening:
 - **File permissions** -- cookie files and scan spill files are created with `0o600` (owner-only)
 - **Markdown escaping** -- report generation escapes user-supplied finding fields to prevent markdown injection
 - **Finding ID validation** -- finding get/delete operations require valid UUID format, preventing path traversal
+- **Engagement scope** -- an optional authorization allowlist (`[scope]`): when enabled, every target must match an allowed CIDR/domain and must not match a denied one (deny wins); loopback is allowed unless disabled. Off by default
+- **Audit logging** -- every tool execution is appended to `{output_dir}/audit.log` with the tool, target, and redacted arguments
 
 Metasploit integration adds a 5-layer safety model: disabled by default, per-tool allowlisting, path-boundary module blocklist, exploit confirmation gate (double-call to execute), and session command filtering. Passwords are redacted from error messages, and TLS certificate bypass is restricted to localhost connections. See [docs/METASPLOIT.md](docs/METASPLOIT.md).
 
@@ -125,7 +138,7 @@ When the budget is exhausted, the server returns a message directing the AI to s
 
 ## Report Generation
 
-The `generate_report` endpoint produces a structured markdown report containing:
+The `generate_report` endpoint produces a structured report -- Markdown by default, or JSON, SARIF, or HTML via the `format` parameter -- containing:
 
 - **Table of Contents** with linked findings
 - **Executive Summary** with severity breakdown table and overall risk rating
@@ -137,7 +150,7 @@ Findings support an `owasp_category` field for mapping vulnerabilities to the OW
 
 ## Output Parsers
 
-All 16 security tools have structured output parsers that extract key data from raw tool output:
+Every security tool has a structured output parser that extracts key data from raw tool output:
 
 - **nmap** -- XML parser with NSE script extraction (vulners CVEs by CVSS)
 - **nuclei** -- JSONL parser with severity filtering
@@ -145,7 +158,8 @@ All 16 security tools have structured output parsers that extract key data from 
 - **sqlmap** -- injection type and parameter extraction
 - **testssl** -- vulnerability and certificate finding extraction
 - **hydra/whatweb** -- credential and technology identification
-- **subfinder/dnsrecon** -- subdomain and DNS record extraction
+- **subfinder/dnsrecon/dnsx** -- subdomain and DNS record extraction
+- **httpx/katana** -- HTTP fingerprint and crawled-endpoint extraction
 - **dalfox/wpscan/enum4linux-ng/john** -- structured finding extraction
 
 All parsers return `Option<String>` and fall back to raw output when parsing fails. Result limits scale dynamically based on the active budget mode.
@@ -156,7 +170,7 @@ The `http_request` tool maintains a shared cookie jar that persists within a ses
 
 ## Testing
 
-179 unit and integration tests across 3 crates:
+294 unit and integration tests across 3 crates:
 
 ```bash
 cargo test --workspace
@@ -164,10 +178,10 @@ cargo test --workspace
 
 | Crate | Tests |
 |-------|-------|
-| raven-core | 49 |
-| raven-report | 18 |
-| raven-server | 104 |
-| Integration | 8 |
+| raven-core | 86 |
+| raven-report | 54 |
+| raven-server | 144 |
+| Integration | 10 |
 
 A Python-based MCP integration test harness is also available:
 
@@ -181,9 +195,9 @@ python3 -u tests/manual_test_harness.py phase0   # single phase
 ```
 crates/
   raven-core/     # Safety validation, subprocess execution, config (TOML),
-                  # scan manager (background scans with disk spill)
+                  # scan manager (background scans with disk spill), audit log
   raven-report/   # Finding types (with OWASP categories), file-per-finding
-                  # persistence, markdown report generator
+                  # persistence, multi-format report generators (md/json/sarif/html)
   raven-server/   # MCP server (rmcp), tool handlers (one module per tool),
                   # context budget tracker, output parsers, progress ticker
 config/

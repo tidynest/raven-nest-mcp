@@ -7,29 +7,29 @@ Ordered by impact. Unchecked = not started.
 
 ### High Priority
 
-- [ ] **Auto-finding extraction from scan output**
+- [x] **Auto-finding extraction from scan output** — *shipped (nuclei only; opt-in via `[safety] auto_save_findings`).*
   Extend existing tool parsers to optionally emit structured findings alongside text. Nuclei already tags severity (`[info]`/`[critical]`), nikto flags warnings, nmap identifies vulnerable services. Connect parsers to the finding store with a confidence threshold to filter noise.
   *Affected crates:* `raven-core` (parsers), `raven-report` (store)
 
-- [ ] **Target scope management**
+- [x] **Target scope management**
   `[scope]` config section with allowed CIDRs, domains, URLs. Gate `validate_target()` against the scope allowlist before every tool invocation. Reject out-of-scope targets with a clear error. Critical for professional engagements.
   *Affected crates:* `raven-core` (config, validation)
 
-- [ ] **Scan-to-finding linking**
+- [x] **Scan-to-finding linking**
   Optional `scan_id: Option<Uuid>` on `SaveFindingRequest`. Link findings to their source scan. Enables "show all findings from scan X" and better report traceability.
   *Affected crates:* `raven-report` (finding model, store)
 
-- [ ] **Engagement / project management**
+- [x] **Engagement / project management** — *shipped in lean form: filesystem-scoped engagements via `set_engagement` (creates on first use) + `list_engagements`; each scopes its own findings + reports subdir. No separate timeline/client-info metadata.*
   Named engagements with scope, timeline, client info, notes. Each engagement scopes its own output directory, findings, and reports. New tools: `create_engagement`, `switch_engagement`, `list_engagements`.
   *Affected crates:* `raven-core` (new manager), `raven-report` (scoped store)
 
 ### Medium Priority
 
-- [ ] **Additional report formats (SARIF, JSON, HTML)**
+- [x] **Additional report formats (SARIF, JSON, HTML)**
   SARIF for CI/CD and vulnerability management platforms. JSON for programmatic use. HTML for standalone distribution. Finding data model is already structured — mostly serialisation.
   *Affected crates:* `raven-report`
 
-- [ ] **Finding deduplication**
+- [x] **Finding deduplication**
   Detect same title + target + tool before saving. Warn or merge. Keeps reports clean during iterative scanning.
   *Affected crates:* `raven-report` (store)
 
@@ -109,7 +109,7 @@ Ideas that may become relevant as the project matures.
   Multiple operators sharing a findings store. Move from file-per-finding to a shared database (SQLite or Postgres). Conflict resolution for concurrent edits.
   *Affected crates:* `raven-report` (storage backend)
 
-- [ ] **Engagement timeline / audit log**
+- [x] **Engagement timeline / audit log** — *partially shipped: append-only `{output_dir}/audit.log` records every tool invocation with redacted args + timestamp. Per-finding/report actions not yet logged.*
   Record every action: scans launched, findings saved, reports generated, with timestamps. Exportable for evidence of methodology in compliance audits.
   *Affected crates:* `raven-core` (new audit module)
 
