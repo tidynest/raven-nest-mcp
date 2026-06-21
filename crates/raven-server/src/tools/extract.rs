@@ -87,6 +87,113 @@ pub fn extract_nuclei(raw: &str) -> Vec<ExtractedFinding> {
     out
 }
 
+/// Cap a finding title to `n` chars (UTF-8 safe), appending '…' if cut.
+fn truncate_title(s: &str, n: usize) -> String {
+    if s.chars().count() > n {
+        format!("{}…", s.chars().take(n).collect::<String>())
+    } else {
+        s.to_string()
+    }
+}
+
+/// Extract findings from nikto's text output. Nikto emits no severity, so every
+/// finding is tagged Low (conservative). Target/banner/run-summary lines are
+/// dropped — only the `+`-prefixed findings remain.
+pub fn extract_nikto(raw: &str) -> Vec<ExtractedFinding> {
+    raw.lines()
+        .map(str::trim)
+        .filter(|l| l.starts_with('+'))
+        .filter_map(|l| {
+            let body = l.trim_start_matches('+').trim();
+            if body.is_empty()
+                || body.starts_with("Target ")
+                || body.starts_with("Start Time")
+                || body.starts_with("End Time")
+                || body.contains("host(s) tested")
+                || body.contains("requests:")
+                || body.contains("item(s) reported")
+            {
+                return None;
+            }
+            Some(ExtractedFinding {
+                title: truncate_title(body, 120),
+                severity: Severity::Low,
+                evidence: body.to_string(),
+                cve: None,
+            })
+        })
+        .collect()
+}
+
+/// Extract XSS findings from dalfox JSON output (one object per line). Every
+/// confirmed injection is High. Mirrors the field access in
+/// [`dalfox::parse_dalfox_json`](crate::tools::dalfox).
+pub fn extract_dalfox(raw: &str) -> Vec<ExtractedFinding> {
+    let mut out = Vec::new();
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || !trimmed.starts_with('{') {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) else {
+            continue;
+        };
+        let xss_type = v
+            .get("inject_type")
+            .or_else(|| v.get("type"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("XSS");
+        let param = v.get("param").and_then(|v| v.as_str()).unwrap_or("?");
+        let payload = v
+            .get("payload")
+            .or_else(|| v.get("data"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        if payload.is_empty() {
+            continue;
+        }
+        out.push(ExtractedFinding {
+            title: format!("XSS ({xss_type}) in parameter `{param}`"),
+            severity: Severity::High,
+            evidence: format!("param={param} payload={payload}"),
+            cve: None,
+        });
+    }
+    out
+}
+
+/// Map a CVSS base score to a [`Severity`] using the official FIRST.org CVSS
+/// qualitative severity rating scale — identical in CVSS v3.0/v3.1/v4.0:
+/// 9.0–10.0 Critical · 7.0–8.9 High · 4.0–6.9 Medium · 0.1–3.9 Low · 0.0 None.
+/// Raven has no `None`, so 0.0 (and any out-of-range value) maps to `Info`.
+/// Ref: <https://www.first.org/cvss/v4.0/specification-document> §"Qualitative Severity Rating Scale".
+pub fn severity_from_cvss(score: f32) -> Severity {
+    match score {
+        s if s >= 9.0 => Severity::Critical,
+        s if s >= 7.0 => Severity::High,
+        s if s >= 4.0 => Severity::Medium,
+        s if s >= 0.1 => Severity::Low,
+        _ => Severity::Info,
+    }
+}
+
+/// Extract findings from nmap XML — one per CVE reported by the `vulners` NSE
+/// script, severity derived from CVSS. Sorted worst-first so the per-scan cap
+/// keeps the most severe. Deduplicated downstream by [`auto_save`].
+pub fn extract_nmap(raw: &str) -> Vec<ExtractedFinding> {
+    let mut pairs = crate::tools::nmap::collect_vulners(raw);
+    pairs.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    pairs
+        .into_iter()
+        .map(|(cve, cvss)| ExtractedFinding {
+            title: format!("{cve} (CVSS {cvss})"),
+            severity: severity_from_cvss(cvss),
+            evidence: format!("nmap vulners: {cve} CVSS {cvss}"),
+            cve: Some(cve),
+        })
+        .collect()
+}
+
 /// Persist auto-extracted findings, gated by config.
 ///
 /// No-op unless `auto_save_findings` is enabled. Findings less severe than
@@ -240,5 +347,61 @@ not json
             extract_nuclei(JSONL),
         );
         assert_eq!(s.read().unwrap().list().len(), 2);
+    }
+
+    #[test]
+    fn extract_nikto_keeps_findings_drops_metadata() {
+        let raw = "+ Target IP:          10.0.0.1\n\
+                   + Target Port:        80\n\
+                   + /: X-Frame-Options header is not present.\n\
+                   + OSVDB-3092: /admin/: This might be interesting.\n\
+                   + 7915 requests: 0 error(s) and 2 item(s) reported\n\
+                   + 1 host(s) tested";
+        let f = extract_nikto(raw);
+        assert_eq!(f.len(), 2); // target/requests/host lines dropped
+        assert!(f.iter().all(|x| x.severity == Severity::Low));
+        assert!(f[0].title.contains("X-Frame-Options"));
+    }
+
+    #[test]
+    fn extract_dalfox_marks_xss_high() {
+        let json = "{\"inject_type\":\"inHTML-URL\",\"param\":\"q\",\"payload\":\"<script>alert(1)</script>\"}\n\
+                    {\"type\":\"V\",\"param\":\"s\",\"payload\":\"\"}";
+        let f = extract_dalfox(json);
+        assert_eq!(f.len(), 1); // empty-payload row skipped
+        assert_eq!(f[0].severity, Severity::High);
+        assert_eq!(f[0].title, "XSS (inHTML-URL) in parameter `q`");
+    }
+
+    #[test]
+    fn severity_from_cvss_matches_first_org_bands() {
+        assert_eq!(severity_from_cvss(9.8), Severity::Critical);
+        assert_eq!(severity_from_cvss(9.0), Severity::Critical);
+        assert_eq!(severity_from_cvss(8.9), Severity::High);
+        assert_eq!(severity_from_cvss(7.0), Severity::High);
+        assert_eq!(severity_from_cvss(4.0), Severity::Medium);
+        assert_eq!(severity_from_cvss(3.9), Severity::Low);
+        assert_eq!(severity_from_cvss(0.1), Severity::Low);
+        assert_eq!(severity_from_cvss(0.0), Severity::Info);
+    }
+
+    #[test]
+    fn extract_nmap_maps_vulners_cvss_sorted() {
+        let xml = r#"<?xml version="1.0"?>
+<nmaprun>
+  <host><ports><port portid="80" protocol="tcp">
+    <script id="vulners">
+      <table key="cpe:/a:apache">
+        <table><elem key="id">CVE-2017-9798</elem><elem key="cvss">7.5</elem></table>
+        <table><elem key="id">CVE-2021-44790</elem><elem key="cvss">9.8</elem></table>
+      </table>
+    </script>
+  </port></ports></host>
+</nmaprun>"#;
+        let f = extract_nmap(xml);
+        assert_eq!(f.len(), 2);
+        assert_eq!(f[0].cve.as_deref(), Some("CVE-2021-44790")); // worst-first
+        assert_eq!(f[0].severity, Severity::Critical);
+        assert_eq!(f[1].severity, Severity::High);
     }
 }

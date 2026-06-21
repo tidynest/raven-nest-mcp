@@ -36,7 +36,7 @@ pub async fn run(
     req: NmapRequest,
     peer: Option<Peer<RoleServer>>,
     result_limit: usize,
-) -> Result<CallToolResult, rmcp::ErrorData> {
+) -> Result<(CallToolResult, Vec<crate::tools::extract::ExtractedFinding>), rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
     let _ticker =
@@ -84,9 +84,11 @@ pub async fn run(
         .map_err(crate::error::to_mcp)?;
 
     // Try structured XML parsing; fall back to raw output on failure
+    let mut findings = Vec::new();
     let structured = parse_nmap_xml(&result.stdout, result_limit);
     let output = match structured {
         Some(summary) => {
+            findings = crate::tools::extract::extract_nmap(&result.stdout);
             let mut out = summary;
             if let Some(ref warning) = result.warning {
                 out.push_str(&format!("\n\n⚠ {warning}"));
@@ -96,7 +98,10 @@ pub async fn run(
         None => crate::error::format_result("nmap", &result),
     };
 
-    Ok(CallToolResult::success(vec![Content::text(output)]))
+    Ok((
+        CallToolResult::success(vec![Content::text(output)]),
+        findings,
+    ))
 }
 
 /// Compress multi-line script output to a single line with "+N more" suffix.
@@ -124,6 +129,59 @@ fn summarize_script_output(output: &str, max_len: usize) -> String {
     }
 }
 
+/// Extract `(CVE id, CVSS score)` pairs from a `vulners` NSE `<script>` node.
+///
+/// Walks the nested `<table key="cpe:…"><table><elem key="id">/<elem key="cvss">`
+/// structure. Shared by the display path ([`format_nse_script`]) and
+/// auto-extraction ([`collect_vulners`]).
+fn vulners_pairs(script: &roxmltree::Node) -> Vec<(String, f32)> {
+    let mut cves = Vec::new();
+    for outer_table in script.children().filter(|n| n.tag_name().name() == "table") {
+        for entry in outer_table
+            .children()
+            .filter(|n| n.tag_name().name() == "table")
+        {
+            let cve_id = entry
+                .children()
+                .find(|e| e.tag_name().name() == "elem" && e.attribute("key") == Some("id"))
+                .and_then(|e| e.text());
+            let cvss = entry
+                .children()
+                .find(|e| e.tag_name().name() == "elem" && e.attribute("key") == Some("cvss"))
+                .and_then(|e| e.text())
+                .and_then(|s| s.parse::<f32>().ok());
+            if let (Some(id), Some(score)) = (cve_id, cvss) {
+                cves.push((id.to_string(), score));
+            }
+        }
+    }
+    cves
+}
+
+/// Collect `(CVE, CVSS)` pairs from every `vulners` script in nmap XML output.
+///
+/// Strips any non-XML prefix and parses leniently (same as [`parse_nmap_xml`]);
+/// returns an empty vec if the XML doesn't parse. Used by auto-extraction.
+pub fn collect_vulners(xml: &str) -> Vec<(String, f32)> {
+    let xml = xml
+        .find("<?xml")
+        .or_else(|| xml.find("<nmaprun"))
+        .map(|i| &xml[i..])
+        .unwrap_or(xml);
+    let opts = roxmltree::ParsingOptions {
+        allow_dtd: true,
+        ..Default::default()
+    };
+    let Ok(doc) = roxmltree::Document::parse_with_options(xml, opts) else {
+        return Vec::new();
+    };
+    doc.root_element()
+        .descendants()
+        .filter(|n| n.tag_name().name() == "script" && n.attribute("id") == Some("vulners"))
+        .flat_map(|s| vulners_pairs(&s))
+        .collect()
+}
+
 /// Format an NSE `<script>` element into a compact one- or few-line summary.
 ///
 /// Special handling for `vulners`: parses the nested `<table>/<elem>` structure
@@ -134,27 +192,7 @@ fn format_nse_script(script: &roxmltree::Node) -> Option<String> {
     let id = script.attribute("id")?;
 
     if id == "vulners" {
-        // Parse structured vulners output: <table key="cpe:..."><table><elem key="id">...</elem><elem key="cvss">...</elem></table>...</table>
-        let mut cves: Vec<(String, f32)> = Vec::new();
-        for outer_table in script.children().filter(|n| n.tag_name().name() == "table") {
-            for entry in outer_table
-                .children()
-                .filter(|n| n.tag_name().name() == "table")
-            {
-                let cve_id = entry
-                    .children()
-                    .find(|e| e.tag_name().name() == "elem" && e.attribute("key") == Some("id"))
-                    .and_then(|e| e.text());
-                let cvss = entry
-                    .children()
-                    .find(|e| e.tag_name().name() == "elem" && e.attribute("key") == Some("cvss"))
-                    .and_then(|e| e.text())
-                    .and_then(|s| s.parse::<f32>().ok());
-                if let (Some(id), Some(score)) = (cve_id, cvss) {
-                    cves.push((id.to_string(), score));
-                }
-            }
-        }
+        let mut cves = vulners_pairs(script);
         if cves.is_empty() {
             // Fall back to output attribute if structured parsing found nothing
             let out = script.attribute("output").unwrap_or("");

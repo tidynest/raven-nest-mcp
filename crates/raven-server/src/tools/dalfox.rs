@@ -28,7 +28,7 @@ pub async fn run(
     config: &RavenConfig,
     req: DalfoxRequest,
     result_limit: usize,
-) -> Result<CallToolResult, rmcp::ErrorData> {
+) -> Result<(CallToolResult, Vec<crate::tools::extract::ExtractedFinding>), rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
     let mut args = vec![
@@ -51,7 +51,9 @@ pub async fn run(
         .await
         .map_err(crate::error::to_mcp)?;
 
+    let mut findings = Vec::new();
     let output = if result.success {
+        findings = crate::tools::extract::extract_dalfox(&result.stdout);
         let mut out = parse_dalfox_json(&result.stdout, result_limit)
             .unwrap_or_else(|| result.stdout.clone());
         if let Some(ref warning) = result.warning {
@@ -61,7 +63,10 @@ pub async fn run(
     } else {
         crate::error::format_result("dalfox", &result)
     };
-    Ok(CallToolResult::success(vec![Content::text(output)]))
+    Ok((
+        CallToolResult::success(vec![Content::text(output)]),
+        findings,
+    ))
 }
 
 /// Parse dalfox JSON output into compact XSS finding lines.
