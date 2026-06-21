@@ -16,6 +16,5 @@ allow = [
     "ISC",
     "BSD-3-Clause",
     "Unicode-3.0",        # ICU / zerovec / yoke family (via idna -> url/reqwest)
-    "Zlib",
     "CDLA-Permissive-2.0",
 ]
