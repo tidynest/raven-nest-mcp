@@ -33,7 +33,7 @@ pub async fn run(
     req: NucleiRequest,
     peer: Option<Peer<RoleServer>>,
     result_limit: usize,
-) -> Result<CallToolResult, rmcp::ErrorData> {
+) -> Result<(CallToolResult, Vec<crate::tools::extract::ExtractedFinding>), rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
     let _ticker = peer
@@ -61,7 +61,9 @@ pub async fn run(
         .await
         .map_err(crate::error::to_mcp)?;
 
+    let mut findings = Vec::new();
     let output = if result.success {
+        findings = crate::tools::extract::extract_nuclei(&result.stdout);
         let mut out = parse_nuclei_jsonl(&result.stdout, result_limit)
             .unwrap_or_else(|| result.stdout.clone());
         if let Some(ref warning) = result.warning {
@@ -71,7 +73,10 @@ pub async fn run(
     } else {
         crate::error::format_result("nuclei", &result)
     };
-    Ok(CallToolResult::success(vec![Content::text(output)]))
+    Ok((
+        CallToolResult::success(vec![Content::text(output)]),
+        findings,
+    ))
 }
 
 /// Parse nuclei JSONL output into a compact findings summary.
