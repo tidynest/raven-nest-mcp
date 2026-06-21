@@ -15,7 +15,9 @@ reqwest = { workspace = true }
 rmp-serde = { workspace = true }
 rmpv = { workspace = true }
 url = { workspace = true }
+ipnet = { workspace = true }
 uuid = { workspace = true }
+chrono = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

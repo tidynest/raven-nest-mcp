@@ -253,13 +253,16 @@ pub mod lenient;
 
 pub mod dalfox;
 pub mod dnsrecon;
+pub mod dnsx;
 pub mod enum4linux_ng;
 pub mod feroxbuster;
 pub mod ffuf;
 pub mod findings;
 pub mod http;
+pub mod httpx;
 pub mod hydra;
 pub mod john;
+pub mod katana;
 pub mod masscan;
 pub mod msf_auxiliary;
 pub mod msf_exploit;
