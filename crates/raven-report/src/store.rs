@@ -257,6 +257,16 @@ impl FindingStore {
             .collect()
     }
 
+    /// The engagement root — the parent of the findings directory. Per-engagement
+    /// artifacts (e.g. generated reports) are written here so they scope with the
+    /// store: the default store yields `{output_dir}`, an engagement store yields
+    /// `{output_dir}/engagements/{name}`.
+    pub fn base_dir(&self) -> &std::path::Path {
+        self.findings_dir
+            .parent()
+            .unwrap_or(self.findings_dir.as_path())
+    }
+
     /// Build the filesystem path for a finding's JSON file.
     fn finding_path(&self, id: &str) -> PathBuf {
         self.findings_dir.join(format!("{id}.json"))
@@ -635,5 +645,13 @@ mod tests {
             "fingerprint must remain live while a duplicate still exists"
         );
         assert_eq!(store.list().len(), 1);
+    }
+
+    #[test]
+    fn base_dir_is_findings_parent() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("engagements").join("acme");
+        let store = FindingStore::new(base.join("findings")).unwrap();
+        assert_eq!(store.base_dir(), base);
     }
 }
