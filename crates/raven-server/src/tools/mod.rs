@@ -254,6 +254,7 @@ pub mod lenient;
 pub mod dalfox;
 pub mod dnsrecon;
 pub mod dnsx;
+pub mod engagement;
 pub mod enum4linux_ng;
 pub mod extract;
 pub mod feroxbuster;

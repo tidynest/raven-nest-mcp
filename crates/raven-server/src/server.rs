@@ -15,6 +15,7 @@ use crate::tools::{
     dalfox::DalfoxRequest,
     dnsrecon::DnsreconRequest,
     dnsx::DnsxRequest,
+    engagement::SetEngagementRequest,
     enum4linux_ng::Enum4linuxRequest,
     feroxbuster::FeroxbusterRequest,
     ffuf::FfufRequest,
@@ -101,8 +102,8 @@ impl RavenServer {
             tracing::info!("restored session cookies from disk");
         }
 
-        // Tool count: 19 security + 6 MSF + ping + http + 5 scan mgmt + 6 findings = 38
-        let tool_count = 38;
+        // Tool count: 19 security + 6 MSF + ping + http + 5 scan mgmt + 6 findings + 2 engagement = 40
+        let tool_count = 40;
         let budget = std::sync::Arc::new(SessionBudget::new(
             config.safety.context_budget,
             tool_count,
@@ -786,8 +787,43 @@ impl RavenServer {
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.wrap_result(crate::tools::findings::generate_report(
             &self.finding_store,
+            req,
+        ))
+    }
+
+    // ── Engagement scoping ───────────────────────────────────────────
+
+    #[tool(
+        description = "Switch the active engagement (separate findings + report scope per client/target); creates it on first use",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    fn set_engagement(
+        &self,
+        Parameters(req): Parameters<SetEngagementRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result(crate::tools::engagement::set_engagement(
+            &self.finding_store,
             &self.config,
             req,
+        ))
+    }
+
+    #[tool(
+        description = "List engagements and show which is active",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    fn list_engagements(&self) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result(crate::tools::engagement::list_engagements(
+            &self.finding_store,
+            &self.config,
         ))
     }
 }
