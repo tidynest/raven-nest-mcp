@@ -29,6 +29,8 @@ pub struct RavenConfig {
     pub metasploit: MetasploitConfig,
     #[serde(default)]
     pub scope: ScopeConfig,
+    #[serde(default)]
+    pub netexec: NetExecConfig,
 }
 
 /// Controls which tools may run and how aggressively they operate.
@@ -272,6 +274,19 @@ impl ScopeConfig {
     }
 }
 
+/// NetExec (credentialed network execution) integration — disabled by default.
+///
+/// NetExec authenticates to network services (SMB/WinRM/SSH/…) with operator
+/// credentials. It is intrusive, so it ships **off**; the `run_netexec` handler
+/// refuses until `enabled = true`. Even then it exposes only curated read-only
+/// enumeration actions against a single host with a single scalar credential.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct NetExecConfig {
+    /// Master switch — the `run_netexec` tool refuses unless this is true.
+    pub enabled: bool,
+}
+
 impl ExecutionConfig {
     /// Look up timeout for a specific tool, falling back to the default.
     pub fn timeout_for(&self, tool: &str) -> u64 {
@@ -448,6 +463,7 @@ impl Default for RavenConfig {
                     "httpx".into(),
                     "dnsx".into(),
                     "katana".into(),
+                    "nxc".into(),
                 ],
                 max_output_chars: 50_000,
                 tool_paths: HashMap::new(),
@@ -473,6 +489,7 @@ impl Default for RavenConfig {
             network: NetworkConfig::default(),
             metasploit: MetasploitConfig::default(),
             scope: ScopeConfig::default(),
+            netexec: NetExecConfig::default(),
         }
     }
 }

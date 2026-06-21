@@ -6,6 +6,7 @@ allowed_tools = [
     "subfinder", "wpscan", "enum4linux-ng",
     "dalfox", "dnsrecon", "john",
     "httpx", "dnsx", "katana",
+    "nxc",
 ]
 max_output_chars = 50000
 
@@ -91,3 +92,12 @@ output_dir = "/tmp/raven-nest"
 # max_concurrent_exploits = 1
 # require_confirmation = true
 # blocked_modules = []
+
+# NetExec — credentialed network execution (SMB/WinRM/SSH/...). DISABLED by
+# default and intrusive: the run_netexec tool refuses unless enabled = true.
+# Even when enabled it permits only read-only enumeration actions (auth, shares,
+# users, groups, loggedon, sessions, disks, pass-pol) against a SINGLE host with
+# a SINGLE scalar credential — no command/module execution, no lists/spray.
+# Requires the `nxc` binary on PATH (or set [safety.tool_paths].nxc).
+# [netexec]
+# enabled = true

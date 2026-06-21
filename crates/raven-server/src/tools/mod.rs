@@ -272,6 +272,7 @@ pub mod msf_module_info;
 pub mod msf_post;
 pub mod msf_search;
 pub mod msf_sessions;
+pub mod netexec;
 pub mod nikto;
 pub mod nmap;
 pub mod nuclei;
