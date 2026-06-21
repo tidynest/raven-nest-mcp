@@ -333,6 +333,9 @@ mod tests {
             context_budget: 0,
             sudo_tools: Vec::new(),
             expected_tool_calls: 10,
+            auto_save_findings: false,
+            auto_save_min_severity: "medium".into(),
+            auto_save_max_per_scan: 25,
         }
     }
 

@@ -290,10 +290,20 @@ impl RavenServer {
         peer: Peer<RoleServer>,
         Parameters(req): Parameters<NucleiRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(
+        let target = req.target.clone();
+        let (result, findings) =
             crate::tools::nuclei::run(&self.config, req, Some(peer), self.budget.scale_cap(25))
-                .await,
-        )
+                .await?;
+        // Best-effort auto-save (no-op unless enabled in config); never blocks the response.
+        crate::tools::extract::auto_save(
+            &self.finding_store,
+            &self.config,
+            "nuclei",
+            &target,
+            None,
+            findings,
+        );
+        self.wrap_result(Ok(result))
     }
 
     #[tool(
