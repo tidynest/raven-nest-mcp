@@ -26,6 +26,7 @@ const SECRET_FLAGS: &[&str] = &[
     "--api-key",
     "--auth",
     "--header",
+    "-H", // header (nuclei cookie) / NTLM hash (nxc) — always credential-bearing
 ];
 
 /// Short flags that carry a credential ONLY for credential-brute tools
@@ -34,8 +35,9 @@ const SECRET_FLAGS: &[&str] = &[
 /// args in the trail instead of over-redacting them.
 const CRED_SHORT_FLAGS: &[&str] = &["-p", "-P"];
 
-/// Tools for which [`CRED_SHORT_FLAGS`] are treated as secret-bearing.
-const CRED_TOOLS: &[&str] = &["hydra"];
+/// Tools for which [`CRED_SHORT_FLAGS`] are treated as secret-bearing
+/// (hydra `-p`/`-P`, NetExec `-p` password).
+const CRED_TOOLS: &[&str] = &["hydra", "nxc"];
 
 /// Substrings marking an inline argument as carrying a credential
 /// (e.g. a hydra form string `user=^USER^&pass=^PASS^`).
@@ -182,5 +184,23 @@ mod tests {
         // hydra: `-p` is a password, MUST be redacted
         let hydra = redact("hydra", &["-p", "hunter2", "ssh://10.0.0.1"]);
         assert_eq!(hydra[1], "<redacted>");
+    }
+
+    #[test]
+    fn redacts_netexec_credentials() {
+        // nxc password (-p) and hash (-H) must both be redacted; target stays.
+        let pw = redact(
+            "nxc",
+            &["smb", "10.0.0.1", "-u", "admin", "-p", "Secret123"],
+        );
+        assert_eq!(pw[4], "-p");
+        assert_eq!(pw[5], "<redacted>");
+        assert_eq!(pw[1], "10.0.0.1");
+        let h = redact(
+            "nxc",
+            &["smb", "10.0.0.1", "-u", "admin", "-H", "aabbcc:ddeeff"],
+        );
+        assert_eq!(h[4], "-H");
+        assert_eq!(h[5], "<redacted>");
     }
 }

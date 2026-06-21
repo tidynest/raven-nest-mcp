@@ -32,6 +32,7 @@ use crate::tools::{
     msf_post::MsfPostRequest,
     msf_search::MsfSearchRequest,
     msf_sessions::MsfSessionsRequest,
+    netexec::NetExecRequest,
     nikto::NiktoRequest,
     nmap::NmapRequest,
     nuclei::NucleiRequest,
@@ -102,8 +103,8 @@ impl RavenServer {
             tracing::info!("restored session cookies from disk");
         }
 
-        // Tool count: 19 security + 6 MSF + ping + http + 5 scan mgmt + 6 findings + 2 engagement = 40
-        let tool_count = 40;
+        // Tool count: 20 security + 6 MSF + ping + http + 5 scan mgmt + 6 findings + 2 engagement = 41
+        let tool_count = 41;
         let budget = std::sync::Arc::new(SessionBudget::new(
             config.safety.context_budget,
             tool_count,
@@ -825,6 +826,24 @@ impl RavenServer {
             &self.finding_store,
             &self.config,
         ))
+    }
+
+    // ── NetExec (gated, credentialed) ────────────────────────────────
+
+    #[tool(
+        description = "NetExec: authenticate + read-only enumerate a single host (gated, off by default). Single scalar credential; no command/module execution.",
+        annotations(
+            read_only_hint = false,
+            destructive_hint = true,
+            open_world_hint = true
+        )
+    )]
+    async fn run_netexec(
+        &self,
+        peer: Peer<RoleServer>,
+        Parameters(req): Parameters<NetExecRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result(crate::tools::netexec::run(&self.config, req, Some(peer)).await)
     }
 }
 
