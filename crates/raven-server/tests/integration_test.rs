@@ -20,7 +20,9 @@ use tempfile::TempDir;
 /// Create an isolated FindingStore backed by a temp directory.
 fn test_store() -> (RwLock<FindingStore>, TempDir) {
     let dir = TempDir::new().unwrap();
-    let store = FindingStore::new(dir.path().to_path_buf()).unwrap();
+    // Root the store at <dir>/findings (matching production layout) so the
+    // store's base_dir() — where reports are written — is <dir>.
+    let store = FindingStore::new(dir.path().join("findings")).unwrap();
     (RwLock::new(store), dir)
 }
 
@@ -160,12 +162,8 @@ fn generate_report_produces_markdown() {
     let (store, _dir) = test_store();
     raven_server::tools::findings::save_finding(&store, save_req("XSS", "high")).unwrap();
 
-    let mut config = raven_core::config::RavenConfig::default();
-    config.execution.output_dir = _dir.path().to_str().unwrap().into();
-
     let result = raven_server::tools::findings::generate_report(
         &store,
-        &config,
         GenerateReportRequest {
             title: Some("Test Report".into()),
             format: None,
@@ -182,12 +180,8 @@ fn generate_report_produces_markdown() {
 fn generate_report_uses_default_title() {
     let (store, _dir) = test_store();
 
-    let mut config = raven_core::config::RavenConfig::default();
-    config.execution.output_dir = _dir.path().to_str().unwrap().into();
-
     let result = raven_server::tools::findings::generate_report(
         &store,
-        &config,
         GenerateReportRequest {
             title: None,
             format: None,
@@ -205,12 +199,8 @@ fn generate_report_writes_each_format_with_correct_extension() {
         let (store, dir) = test_store();
         raven_server::tools::findings::save_finding(&store, save_req("XSS", "high")).unwrap();
 
-        let mut config = raven_core::config::RavenConfig::default();
-        config.execution.output_dir = dir.path().to_str().unwrap().into();
-
         let result = raven_server::tools::findings::generate_report(
             &store,
-            &config,
             GenerateReportRequest {
                 title: Some("Fmt".into()),
                 format: Some(fmt.into()),
@@ -231,13 +221,10 @@ fn generate_report_writes_each_format_with_correct_extension() {
 
 #[test]
 fn generate_report_rejects_invalid_format() {
-    let (store, dir) = test_store();
-    let mut config = raven_core::config::RavenConfig::default();
-    config.execution.output_dir = dir.path().to_str().unwrap().into();
+    let (store, _dir) = test_store();
 
     let err = raven_server::tools::findings::generate_report(
         &store,
-        &config,
         GenerateReportRequest {
             title: None,
             format: Some("pdf".into()),

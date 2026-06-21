@@ -29,6 +29,8 @@ pub struct RavenConfig {
     pub metasploit: MetasploitConfig,
     #[serde(default)]
     pub scope: ScopeConfig,
+    #[serde(default)]
+    pub netexec: NetExecConfig,
 }
 
 /// Controls which tools may run and how aggressively they operate.
@@ -73,6 +75,19 @@ pub struct SafetyConfig {
     /// Default 10 — typical pentest workflow is 6-12 tool calls.
     #[serde(default = "default_expected_tool_calls")]
     pub expected_tool_calls: usize,
+    /// Auto-save findings extracted from scan output (currently nuclei only).
+    /// Off by default — the operator opts in. When true, qualifying findings
+    /// are deduplicated and persisted with `source = AutoExtracted`.
+    #[serde(default)]
+    pub auto_save_findings: bool,
+    /// Minimum severity an auto-extracted finding must meet to be saved
+    /// (`info|low|medium|high|critical`). Default `"medium"`.
+    #[serde(default = "default_auto_save_min_severity")]
+    pub auto_save_min_severity: String,
+    /// Cap on auto-saved findings per scan — bounds finding spam and disk use.
+    /// Default 25.
+    #[serde(default = "default_auto_save_max_per_scan")]
+    pub auto_save_max_per_scan: usize,
 }
 
 fn default_sqlmap_max_level() -> u8 {
@@ -89,6 +104,12 @@ fn default_masscan_max_rate() -> u32 {
 }
 fn default_expected_tool_calls() -> usize {
     10
+}
+fn default_auto_save_min_severity() -> String {
+    "medium".into()
+}
+fn default_auto_save_max_per_scan() -> usize {
+    25
 }
 fn default_scan_retention_secs() -> u64 {
     3600
@@ -253,6 +274,19 @@ impl ScopeConfig {
     }
 }
 
+/// NetExec (credentialed network execution) integration — disabled by default.
+///
+/// NetExec authenticates to network services (SMB/WinRM/SSH/…) with operator
+/// credentials. It is intrusive, so it ships **off**; the `run_netexec` handler
+/// refuses until `enabled = true`. Even then it exposes only curated read-only
+/// enumeration actions against a single host with a single scalar credential.
+#[derive(Clone, Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct NetExecConfig {
+    /// Master switch — the `run_netexec` tool refuses unless this is true.
+    pub enabled: bool,
+}
+
 impl ExecutionConfig {
     /// Look up timeout for a specific tool, falling back to the default.
     pub fn timeout_for(&self, tool: &str) -> u64 {
@@ -333,6 +367,14 @@ impl SafetyConfig {
         }
         if self.expected_tool_calls == 0 {
             return Err("expected_tool_calls must be > 0".into());
+        }
+        if !["info", "low", "medium", "high", "critical"]
+            .contains(&self.auto_save_min_severity.to_ascii_lowercase().as_str())
+        {
+            return Err(format!(
+                "auto_save_min_severity must be one of info|low|medium|high|critical, got '{}'",
+                self.auto_save_min_severity
+            ));
         }
         Ok(())
     }
@@ -421,6 +463,7 @@ impl Default for RavenConfig {
                     "httpx".into(),
                     "dnsx".into(),
                     "katana".into(),
+                    "nxc".into(),
                 ],
                 max_output_chars: 50_000,
                 tool_paths: HashMap::new(),
@@ -431,6 +474,9 @@ impl Default for RavenConfig {
                 context_budget: 0,
                 sudo_tools: Vec::new(),
                 expected_tool_calls: default_expected_tool_calls(),
+                auto_save_findings: false,
+                auto_save_min_severity: default_auto_save_min_severity(),
+                auto_save_max_per_scan: default_auto_save_max_per_scan(),
             },
             execution: ExecutionConfig {
                 default_timeout_secs: 600,
@@ -443,6 +489,7 @@ impl Default for RavenConfig {
             network: NetworkConfig::default(),
             metasploit: MetasploitConfig::default(),
             scope: ScopeConfig::default(),
+            netexec: NetExecConfig::default(),
         }
     }
 }
@@ -488,6 +535,9 @@ mod tests {
             context_budget: 0,
             sudo_tools: Vec::new(),
             expected_tool_calls: default_expected_tool_calls(),
+            auto_save_findings: false,
+            auto_save_min_severity: default_auto_save_min_severity(),
+            auto_save_max_per_scan: default_auto_save_max_per_scan(),
         }
     }
 
@@ -653,5 +703,20 @@ mod tests {
         cfg.context_budget = 131_072;
         assert_eq!(cfg.effective_max_output_chars(), 32_768);
         assert_eq!(cfg.effective_max_response_body(), 21_845);
+    }
+
+    #[test]
+    fn auto_save_defaults() {
+        let cfg = RavenConfig::default();
+        assert!(!cfg.safety.auto_save_findings);
+        assert_eq!(cfg.safety.auto_save_min_severity, "medium");
+        assert_eq!(cfg.safety.auto_save_max_per_scan, 25);
+    }
+
+    #[test]
+    fn safety_validate_rejects_bad_auto_save_severity() {
+        let mut cfg = RavenConfig::default();
+        cfg.safety.auto_save_min_severity = "extreme".into();
+        assert!(cfg.safety.validate().is_err());
     }
 }

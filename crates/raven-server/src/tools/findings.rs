@@ -5,8 +5,9 @@
 //! (markdown, JSON, SARIF, or HTML). The store is protected by `RwLock` — reads
 //! (list, get) take a shared lock, writes (save, delete) take an exclusive lock.
 //!
-//! Reports are saved to disk at `{output_dir}/report-{timestamp}.{ext}` and a
-//! compact summary is returned in the MCP response.
+//! Reports are saved to disk in the active engagement's directory as
+//! `report-{timestamp}.{ext}` (default store → `{output_dir}`) and a compact
+//! summary is returned in the MCP response.
 
 use raven_report::finding::{Finding, Severity};
 use raven_report::report::ReportFormat;
@@ -93,7 +94,10 @@ fn parse_severity(s: &str) -> Result<Severity, rmcp::ErrorData> {
 /// `structured_content` object, so clients can read fields instead of parsing prose.
 /// `wrap_result` only mutates text content, so the structured payload passes through
 /// uncapped.
-fn success_with(text: impl Into<String>, structured: serde_json::Value) -> CallToolResult {
+pub(crate) fn success_with(
+    text: impl Into<String>,
+    structured: serde_json::Value,
+) -> CallToolResult {
     let mut result = CallToolResult::success(vec![Content::text(text.into())]);
     result.structured_content = Some(structured);
     result
@@ -246,13 +250,12 @@ pub fn delete_finding(
 /// Generate a report from all stored findings and save it to disk.
 ///
 /// The output format is chosen via `req.format` (`markdown` default, plus
-/// `json`, `sarif`, `html`) and the file is persisted to
-/// `{output_dir}/report-{timestamp}.{ext}`. On disk-write failure the markdown
+/// `json`, `sarif`, `html`) and the file is persisted to the active engagement's
+/// directory as `report-{timestamp}.{ext}`. On disk-write failure the markdown
 /// body is still returned (legacy behavior); the other formats return an
 /// internal error rather than dumping a large body into the response.
 pub fn generate_report(
     store: &RwLock<FindingStore>,
-    config: &raven_core::config::RavenConfig,
     req: GenerateReportRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     let format = match req.format.as_deref() {
@@ -277,7 +280,8 @@ pub fn generate_report(
     // Persist to disk alongside findings
     let date = chrono::Local::now().format("%Y-%m-%d_%H%M%S");
     let filename = format!("report-{date}.{}", format.extension());
-    let path = std::path::Path::new(&config.execution.output_dir).join(&filename);
+    // Write into the active engagement's directory (default store -> output_dir).
+    let path = store.base_dir().join(&filename);
 
     if let Err(e) = std::fs::write(&path, &report) {
         tracing::warn!("failed to write report: {e}");

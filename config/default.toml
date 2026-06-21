@@ -6,6 +6,7 @@ allowed_tools = [
     "subfinder", "wpscan", "enum4linux-ng",
     "dalfox", "dnsrecon", "john",
     "httpx", "dnsx", "katana",
+    "nxc",
 ]
 max_output_chars = 50000
 
@@ -23,6 +24,13 @@ expected_tool_calls = 10
 # sqlmap_max_risk = 1     # 1-3, default 1
 # hydra_max_tasks = 4     # parallel tasks, default 4
 # masscan_max_rate = 1000 # packets/sec, default 1000
+
+# Auto-save findings extracted from scan output (currently nuclei only).
+# OFF by default — opt in. Qualifying findings are deduplicated and stored
+# with source = AutoExtracted. min_severity is one of info|low|medium|high|critical.
+# auto_save_findings = false
+# auto_save_min_severity = "medium"
+# auto_save_max_per_scan = 25
 
 # Tools invoked via sudo for privilege escalation.
 # Requires passwordless sudo — see /etc/sudoers.d/raven-nest
@@ -84,3 +92,12 @@ output_dir = "/tmp/raven-nest"
 # max_concurrent_exploits = 1
 # require_confirmation = true
 # blocked_modules = []
+
+# NetExec — credentialed network execution (SMB/WinRM/SSH/...). DISABLED by
+# default and intrusive: the run_netexec tool refuses unless enabled = true.
+# Even when enabled it permits only read-only enumeration actions (auth, shares,
+# users, groups, loggedon, sessions, disks, pass-pol) against a SINGLE host with
+# a SINGLE scalar credential — no command/module execution, no lists/spray.
+# Requires the `nxc` binary on PATH (or set [safety.tool_paths].nxc).
+# [netexec]
+# enabled = true
