@@ -1,7 +1,8 @@
 //! Findings storage and report generation for the Raven Nest toolkit.
 //!
 //! This crate owns the persistence layer for pentest findings and the
-//! markdown report generator. It has no dependency on MCP or the server —
+//! multi-format report generators (Markdown, JSON, SARIF, HTML). It has no
+//! dependency on MCP or the server —
 //! only `raven-server::tools::findings` calls into it.
 //!
 //! - [`finding`] — Data types: [`Finding`](finding::Finding),
