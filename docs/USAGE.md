@@ -338,6 +338,7 @@ max_concurrent_scans = 3
 output_dir = "/tmp/raven-nest"
 # max_concurrent_execs = 4      # cap on parallel synchronous run_* executions
 # scan_retention_secs = 3600    # seconds a finished scan is kept before eviction
+# min_exec_gap_ms = 0           # proactive cooldown between tool launches (0 = off)
 
 # Per-tool timeout overrides (seconds)
 # [execution.timeouts]
@@ -355,6 +356,7 @@ output_dir = "/tmp/raven-nest"
 | `timeouts` | table | empty | Per-tool timeout overrides in seconds. Falls back to `default_timeout_secs` for tools not listed. |
 | `max_concurrent_execs` | integer | 4 | Cap on concurrent synchronous tool executions (`run_*`). Separate from `max_concurrent_scans`; bounds parallel subprocesses an agent can spawn. |
 | `scan_retention_secs` | integer | 3600 | Seconds to retain a finished background scan (and its spilled output) before eviction from the registry. |
+| `min_exec_gap_ms` | integer | 0 | Proactive cooldown: minimum milliseconds between consecutive tool launches (process-wide). Spaces out back-to-back aggressive tools so they don't trip a target's WAF/rate-limiter. 0 disables; max 60000. Complements the reactive WAF detection. |
 
 **When to change timeouts:** Vulnerability scans (`nuclei`, `nikto`, `testssl.sh`)
 and OS detection (`nmap -O`) can take several minutes on large targets. Increase
@@ -703,7 +705,7 @@ lines containing status codes, sizes, and word counts.
 | `wordlist` | string | no | Path to wordlist (default: raft-medium-words.txt) |
 | `method` | string | no | HTTP method (default `GET`) |
 | `headers` | string | no | Custom headers (comma-separated `Name: Value` pairs) |
-| `match_codes` | string | no | Match HTTP status codes (e.g. `200,301,302`) |
+| `match_codes` | string | no | Match HTTP status codes (e.g. `200,301,302`) or `all`. Defaults to `200,204,301,302,307,401,403,405,500` — pinned so results don't depend on ffuf's version-specific default (which narrowed to 2XX, hiding redirects and 401/403). |
 | `filter_size` | string | no | Filter responses by size in bytes |
 | `threads` | integer | no | Concurrent threads (default 40; 10 for localhost; max 150) |
 | `cookie` | string | no | Cookie string for authenticated fuzzing (e.g. `PHPSESSID=abc123`) |
