@@ -6,7 +6,7 @@ allowed_tools = [
     "subfinder", "wpscan", "enum4linux-ng",
     "dalfox", "dnsrecon", "john",
     "httpx", "dnsx", "katana",
-    "nxc", "gitleaks",
+    "nxc", "gitleaks", "trufflehog",
 ]
 max_output_chars = 50000
 

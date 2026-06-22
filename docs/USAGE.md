@@ -22,7 +22,7 @@ starts regardless, but tool calls will fail if the binary isn't installed.
 sudo pacman -S nmap nikto whatweb testssl.sh sqlmap hydra masscan wpscan john gitleaks
 
 # AUR tools
-yay -S feroxbuster-bin ffuf-bin enum4linux-ng dalfox-bin
+yay -S feroxbuster-bin ffuf-bin enum4linux-ng dalfox-bin trufflehog-bin
 
 # Go tools (ProjectDiscovery) — nuclei, subfinder, httpx, dnsx, katana
 # go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
@@ -160,7 +160,7 @@ allowed_tools = [
     "subfinder", "wpscan", "enum4linux-ng",
     "dalfox", "dnsrecon", "john",
     "httpx", "dnsx", "katana",
-    "nxc", "gitleaks",
+    "nxc", "gitleaks", "trufflehog",
 ]
 max_output_chars = 50000
 # context_budget = 65536
@@ -443,7 +443,7 @@ Metasploit tools (6) register only when `metasploit.enabled = true`, and
 |----------|-------|-------------------|
 | **Fast** (1-5s) | `ping_target`, `run_whatweb`, `http_request`, `run_ffuf`, `run_masscan`, `run_subfinder`, `run_httpx`, `run_dnsx`, `run_dalfox` | Immediate results |
 | **Medium** (5-30s) | `run_nmap` (quick/service), `run_wpscan`, `run_dnsrecon`, `msf_search`, `msf_module_info` | Wait for completion |
-| **Slow** (30-300s) | `run_nmap` (os/vuln), `run_nuclei`, `run_nikto`, `run_testssl`, `run_feroxbuster`, `run_katana`, `run_sqlmap`, `run_hydra`, `run_enum4linux_ng`, `run_john`, `run_gitleaks`, `run_netexec`, `msf_exploit` | Consider `launch_scan` for background execution |
+| **Slow** (30-300s) | `run_nmap` (os/vuln), `run_nuclei`, `run_nikto`, `run_testssl`, `run_feroxbuster`, `run_katana`, `run_sqlmap`, `run_hydra`, `run_enum4linux_ng`, `run_john`, `run_gitleaks`, `run_trufflehog`, `run_netexec`, `msf_exploit` | Consider `launch_scan` for background execution |
 
 ---
 
@@ -783,6 +783,24 @@ redacted by default and never echoed in the summary — only the rule id and
 | `path` | string | yes | Directory or git repo to scan (must be under the output directory) |
 | `scan_git_history` | boolean | no | Scan full git commit history instead of the working tree (default false) |
 | `show_secrets` | boolean | no | Reveal secret values instead of redacting them (default false) |
+
+---
+
+#### `run_trufflehog`
+Scan a directory tree for secrets via trufflehog. Unlike gitleaks it can
+*verify* a secret by testing it against its live API — this is **off by
+default** because verification makes outbound calls to third-party services
+with discovered credentials; enable `verify` only when that is in scope. Path
+is confined to the output directory (same gate as `run_john`). Secret values
+are never echoed in the summary — only the detector name and `file:line`.
+
+> **Safety:** this handler never passes `--trust-local-git-config`
+> (CVE-2025-41390 RCE); it scans the working tree only.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | string | yes | Directory to scan (must be under the output directory) |
+| `verify` | boolean | no | Verify secrets against their live APIs — makes outbound calls with found credentials (default false) |
 
 ---
 

@@ -4,7 +4,7 @@ A pentesting toolkit that runs as an [MCP](https://modelcontextprotocol.io/) ser
 
 ## What It Does
 
-Raven Nest wraps 21 security tools plus Metasploit Framework behind an MCP interface with input validation, output quality assessment, session-aware context budgeting, and configurable safety limits. It handles tool execution, background scan management, vulnerability finding persistence, and multi-format report generation (Markdown, JSON, SARIF, HTML). 42 MCP endpoints total.
+Raven Nest wraps 22 security tools plus Metasploit Framework behind an MCP interface with input validation, output quality assessment, session-aware context budgeting, and configurable safety limits. It handles tool execution, background scan management, vulnerability finding persistence, and multi-format report generation (Markdown, JSON, SARIF, HTML). 43 MCP endpoints total.
 
 ### Supported Tools
 
@@ -18,7 +18,7 @@ Raven Nest wraps 21 security tools plus Metasploit Framework behind an MCP inter
 | Web fuzzing | feroxbuster, ffuf |
 | Exploitation | sqlmap, hydra |
 | Password cracking | john |
-| Secret scanning | gitleaks |
+| Secret scanning | gitleaks, trufflehog |
 | TLS/SSL | testssl.sh |
 | Metasploit | msf\_search, msf\_module\_info, msf\_exploit, msf\_auxiliary, msf\_sessions, msf\_post |
 | Utility | ping\_target, http\_request |
@@ -171,7 +171,7 @@ The `http_request` tool maintains a shared cookie jar that persists within a ses
 
 ## Testing
 
-302 unit and integration tests across 3 crates:
+305 unit and integration tests across 3 crates:
 
 ```bash
 cargo test --workspace
@@ -181,7 +181,7 @@ cargo test --workspace
 |-------|-------|
 | raven-core | 86 |
 | raven-report | 54 |
-| raven-server | 152 |
+| raven-server | 155 |
 | Integration | 10 |
 
 A Python-based MCP integration test harness is also available:
