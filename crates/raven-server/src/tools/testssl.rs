@@ -31,7 +31,7 @@ pub async fn run(
     config: &RavenConfig,
     req: TestsslRequest,
     peer: Option<Peer<RoleServer>>,
-) -> Result<CallToolResult, rmcp::ErrorData> {
+) -> Result<(CallToolResult, Vec<crate::tools::extract::ExtractedFinding>), rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
     let _ticker = peer
@@ -59,7 +59,9 @@ pub async fn run(
         .await
         .map_err(crate::error::to_mcp)?;
 
+    let mut findings = Vec::new();
     let output = if result.success {
+        findings = crate::tools::extract::extract_testssl(&result.stdout);
         let mut out = parse_testssl_output(&result.stdout).unwrap_or_else(|| result.stdout.clone());
         if let Some(ref warning) = result.warning {
             out.push_str(&format!("\n\n⚠ {warning}"));
@@ -68,7 +70,10 @@ pub async fn run(
     } else {
         crate::error::format_result("testssl.sh", &result)
     };
-    Ok(CallToolResult::success(vec![Content::text(output)]))
+    Ok((
+        CallToolResult::success(vec![Content::text(output)]),
+        findings,
+    ))
 }
 
 /// Parse testssl.sh output, extracting vulnerability findings and certificate info.

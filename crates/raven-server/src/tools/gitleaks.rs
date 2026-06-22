@@ -37,7 +37,7 @@ pub async fn run(
     config: &RavenConfig,
     req: GitleaksRequest,
     peer: Option<rmcp::Peer<rmcp::RoleServer>>,
-) -> Result<CallToolResult, rmcp::ErrorData> {
+) -> Result<(CallToolResult, Vec<crate::tools::extract::ExtractedFinding>), rmcp::ErrorData> {
     // Confine the scan root to the engagement workspace (same gate as john).
     super::validate_file_path(&req.path, &config.execution.output_dir)?;
 
@@ -72,12 +72,19 @@ pub async fn run(
 
     // gitleaks exit codes: 0 = no leaks, 1 = leaks found (our success case),
     // anything else = a real error.
+    let mut findings = Vec::new();
     let output = match result.exit_code {
         Some(0) => "No secrets detected.".to_string(),
-        Some(1) => parse_gitleaks(&result.stdout).unwrap_or_else(|| result.stdout.clone()),
+        Some(1) => {
+            findings = crate::tools::extract::extract_gitleaks(&result.stdout);
+            parse_gitleaks(&result.stdout).unwrap_or_else(|| result.stdout.clone())
+        }
         _ => crate::error::format_result("gitleaks", &result),
     };
-    Ok(CallToolResult::success(vec![Content::text(output)]))
+    Ok((
+        CallToolResult::success(vec![Content::text(output)]),
+        findings,
+    ))
 }
 
 /// One entry from a gitleaks JSON report. Only the fields used in the summary

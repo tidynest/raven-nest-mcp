@@ -361,7 +361,17 @@ impl RavenServer {
         peer: Peer<RoleServer>,
         Parameters(req): Parameters<TestsslRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::testssl::run(&self.config, req, Some(peer)).await)
+        let target = req.target.clone();
+        let (result, findings) = crate::tools::testssl::run(&self.config, req, Some(peer)).await?;
+        crate::tools::extract::auto_save(
+            &self.finding_store,
+            &self.config,
+            "testssl",
+            &target,
+            None,
+            findings,
+        );
+        self.wrap_result(Ok(result))
     }
 
     #[tool(
@@ -397,7 +407,17 @@ impl RavenServer {
         peer: Peer<RoleServer>,
         Parameters(req): Parameters<SqlmapRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::sqlmap::run(&self.config, req, Some(peer)).await)
+        let target = req.url.clone();
+        let (result, findings) = crate::tools::sqlmap::run(&self.config, req, Some(peer)).await?;
+        crate::tools::extract::auto_save(
+            &self.finding_store,
+            &self.config,
+            "sqlmap",
+            &target,
+            None,
+            findings,
+        );
+        self.wrap_result(Ok(result))
     }
 
     #[tool(
@@ -521,7 +541,17 @@ impl RavenServer {
         peer: Peer<RoleServer>,
         Parameters(req): Parameters<GitleaksRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::gitleaks::run(&self.config, req, Some(peer)).await)
+        let target = req.path.clone();
+        let (result, findings) = crate::tools::gitleaks::run(&self.config, req, Some(peer)).await?;
+        crate::tools::extract::auto_save(
+            &self.finding_store,
+            &self.config,
+            "gitleaks",
+            &target,
+            None,
+            findings,
+        );
+        self.wrap_result(Ok(result))
     }
 
     #[tool(
@@ -533,7 +563,18 @@ impl RavenServer {
         peer: Peer<RoleServer>,
         Parameters(req): Parameters<TrufflehogRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::trufflehog::run(&self.config, req, Some(peer)).await)
+        let target = req.path.clone();
+        let (result, findings) =
+            crate::tools::trufflehog::run(&self.config, req, Some(peer)).await?;
+        crate::tools::extract::auto_save(
+            &self.finding_store,
+            &self.config,
+            "trufflehog",
+            &target,
+            None,
+            findings,
+        );
+        self.wrap_result(Ok(result))
     }
 
     #[tool(

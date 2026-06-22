@@ -25,7 +25,8 @@ expected_tool_calls = 10
 # hydra_max_tasks = 4     # parallel tasks, default 4
 # masscan_max_rate = 1000 # packets/sec, default 1000
 
-# Auto-save findings extracted from scan output (currently nuclei only).
+# Auto-save findings extracted from scan output (nmap, nuclei, nikto, dalfox,
+# sqlmap, testssl, gitleaks, trufflehog).
 # OFF by default — opt in. Qualifying findings are deduplicated and stored
 # with source = AutoExtracted. min_severity is one of info|low|medium|high|critical.
 # auto_save_findings = false

@@ -166,7 +166,7 @@ max_output_chars = 50000
 # context_budget = 65536
 # expected_tool_calls = 10
 
-# Auto-save findings extracted from scan output (nuclei only). Opt-in.
+# Auto-save findings extracted from scan output (8 scanners — see table). Opt-in.
 # auto_save_findings = false
 # auto_save_min_severity = "medium"   # info|low|medium|high|critical
 # auto_save_max_per_scan = 25
@@ -195,7 +195,7 @@ max_output_chars = 50000
 | `tool_paths` | table | empty | Map of tool name to absolute binary path, for tools not on `$PATH`. Falls back to `$PATH` lookup if not specified. |
 | `sudo_tools` | string list | `[]` | Tools invoked via `sudo` for privilege escalation. See [sudo_tools](#sudo_tools--privilege-escalation) below. |
 | `expected_tool_calls` | integer | 10 | Expected tool calls per session. Used by the session budget tracker to plan per-call output allocation. Higher values yield smaller per-call caps. Typical pentest: 6-12 calls. |
-| `auto_save_findings` | bool | `false` | Auto-extract findings from scan output (currently nuclei only) into the finding store. Opt-in. |
+| `auto_save_findings` | bool | `false` | Auto-extract findings from scan output (nmap, nuclei, nikto, dalfox, sqlmap, testssl, gitleaks, trufflehog) into the finding store. Opt-in. |
 | `auto_save_min_severity` | string | `medium` | Minimum severity an auto-extracted finding must meet to be saved (`info`–`critical`). |
 | `auto_save_max_per_scan` | integer | 25 | Cap on auto-extracted findings saved per scan. |
 

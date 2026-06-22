@@ -56,8 +56,11 @@ Background scans take a parallel path: `launch_scan` hands the command to the
 
 ## Auto-saved findings
 
-Only four handlers auto-extract findings (`nmap`, `nuclei`, `nikto`, `dalfox`)
-via `extract::auto_save` at [server.rs:281](../crates/raven-server/src/server.rs#L281).
+Eight handlers auto-extract findings (`nmap`, `nuclei`, `nikto`, `dalfox`,
+`sqlmap`, `testssl`, `gitleaks`, `trufflehog`) via `extract::auto_save` at
+[server.rs:283](../crates/raven-server/src/server.rs#L283). The two secret
+scanners read only location/identifier fields — a secret value never enters a
+finding.
 Gated by `auto_save_findings` config, deduped on insert, capped per scan. All
 other findings are saved explicitly by the client through `save_finding`.
 Either way the `FindingStore` is the single owner — auto-save is just one writer.
