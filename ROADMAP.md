@@ -75,8 +75,8 @@ Ordered by impact. Unchecked = not started.
   Push findings to Defect Dojo, Jira, GitHub/GitLab Issues via their APIs.
   *Affected crates:* new crate or `raven-report`
 
-- [ ] **Rate limiting per target**
-  Cap requests/second to individual targets for HTTP-based tools. Currently only masscan has a rate limit.
+- [ ] **Rate limiting per target** — *partial: a global proactive cooldown (`[execution] min_exec_gap_ms`) now spaces consecutive tool launches; a true per-host token bucket (independent targets in parallel) is still open.*
+  Cap requests/second to individual targets for HTTP-based tools. masscan also has its own packet-rate cap.
   *Affected crates:* `raven-core`
 
 - [ ] **CI/CD mode support**

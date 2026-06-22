@@ -45,7 +45,7 @@ easier for smaller models to handle.
 
 ## Tool Installation
 
-Raven Nest exposes **41 MCP endpoints** wrapping 20 security tools + 6
+Raven Nest exposes **43 MCP endpoints** wrapping 22 security tools + 6
 Metasploit modules + ping/http + 5 scan management + 6 finding management +
 2 engagement.
 
@@ -145,7 +145,7 @@ match Ollama's protocol.
 | Qwen3.5 35B-A3B (MoE) | 23 GB | Good (batch) | Excellent in batch mode, fabricates in single-step interactive. 32K context. |
 | Hermes 3 8B | 4.7 GB | Marginal | Individual tool calls work, but can't chain in batch. Tool substitution (whatweb->http_request). sqlmap always silent. |
 | Granite 4.0 (3.4B) | 2.1 GB | Marginal | Chains 2-4 calls autonomously (best non-Qwen chaining). Param hallucination: passes cookie to nmap, invalid scan_type values. |
-| Llama 3-Groq 8B | 4.7 GB | Limited | Uses Ollama tool API correctly, but 8K context fatally small for 41 tools. Can't chain calls or call generate_report. |
+| Llama 3-Groq 8B | 4.7 GB | Limited | Uses Ollama tool API correctly, but 8K context fatally small for 43 tools. Can't chain calls or call generate_report. |
 | Granite 3.3 8B | 5 GB | **Incompatible** | Outputs tool names as plain text instead of structured API calls. |
 | xLAM-2-8B-fc-r | 8.5 GB | **Incompatible** | Outputs tool calls as JSON arrays in text. Correct tool names and params, but ollmcp can't intercept them. |
 | Phi-4-mini (3.8B) | 2.5 GB | **Incompatible** | Outputs tool calls as Python-like pseudo-code text. Never triggers Ollama tool API. |
@@ -156,7 +156,7 @@ match Ollama's protocol.
 
 ### Models to Avoid
 
-- **Ministral 3B/8B** — fails silently with >2 tools attached (fatal for 41 tools)
+- **Ministral 3B/8B** — fails silently with >2 tools attached (fatal for 43 tools)
 - **Mistral Nemo 12B** — MCP role bug breaks multi-turn tool use
 - **xLAM 8B (v1)** — F1 score 0.570, frequently misses tools
 - **xLAM-2-8B-fc-r (v2)** — despite BFCL #4, outputs JSON text instead of using Ollama tool API
@@ -173,7 +173,7 @@ dynamically adjusts per-tool output caps to prevent context overflow.
 ### How It Works
 
 On startup, the budget subtracts estimated overhead from `context_budget`:
-- Tool schema descriptions (~350 chars x 41 tools = ~14,350 chars)
+- Tool schema descriptions (~350 chars x 43 tools = ~15,050 chars)
 - Server instructions (~500 chars)
 - AI reasoning per turn (~1,500 chars x `expected_tool_calls`)
 

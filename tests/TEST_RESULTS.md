@@ -8,18 +8,19 @@
 
 | Crate | Tests | Pass | Fail |
 |-------|------:|-----:|-----:|
-| raven-core | 86 | 86 | 0 |
+| raven-core | 88 | 88 | 0 |
 | raven-report | 54 | 54 | 0 |
-| raven-server | 144 | 144 | 0 |
+| raven-server | 162 | 162 | 0 |
 | integration | 10 | 10 | 0 |
-| **Total** | **294** | **294** | **0** |
+| **Total** | **314** | **314** | **0** |
 
-**Result:** All 294 tests pass.
+**Result:** All 314 tests pass (as of v0.2.0).
 
 > The per-module enumeration below is the 2026-03-29 baseline (179 tests). The
-> +115 tests added by the hardening campaign (recon tools, engagement, scope,
-> audit, report formats, auto-extract) are counted in the summary above but not
-> itemized here — regenerate the full list with `cargo test --workspace -- --list`.
+> +135 tests added since (recon tools, engagement, scope, audit, report formats,
+> auto-extract across 8 scanners, secret scanning [gitleaks/trufflehog], ffuf
+> match-code default, proactive launch cooldown) are counted in the summary above
+> but not itemized here — regenerate with `cargo test --workspace -- --list`.
 
 ---
 
