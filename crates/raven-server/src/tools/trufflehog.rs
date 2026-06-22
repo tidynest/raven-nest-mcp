@@ -40,7 +40,7 @@ pub async fn run(
     config: &RavenConfig,
     req: TrufflehogRequest,
     peer: Option<rmcp::Peer<rmcp::RoleServer>>,
-) -> Result<CallToolResult, rmcp::ErrorData> {
+) -> Result<(CallToolResult, Vec<crate::tools::extract::ExtractedFinding>), rmcp::ErrorData> {
     // Confine the scan root to the engagement workspace (same gate as john).
     super::validate_file_path(&req.path, &config.execution.output_dir)?;
 
@@ -59,12 +59,17 @@ pub async fn run(
         .await
         .map_err(crate::error::to_mcp)?;
 
+    let mut findings = Vec::new();
     let output = if result.success {
+        findings = crate::tools::extract::extract_trufflehog(&result.stdout);
         parse_trufflehog(&result.stdout).unwrap_or_else(|| result.stdout.clone())
     } else {
         crate::error::format_result("trufflehog", &result)
     };
-    Ok(CallToolResult::success(vec![Content::text(output)]))
+    Ok((
+        CallToolResult::success(vec![Content::text(output)]),
+        findings,
+    ))
 }
 
 /// One finding from trufflehog's JSONL output. Only the fields used in the

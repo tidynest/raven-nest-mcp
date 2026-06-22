@@ -73,7 +73,7 @@ allowed_tools = ["nmap", "nuclei", "nikto", "whatweb", "masscan", ". . ."]
 context_budget = 65536          # Model context window in chars (0 = disabled)
 expected_tool_calls = 10        # Anticipated calls per session
 sudo_tools = ["masscan", "nmap"] # Tools invoked via passwordless sudo
-# auto_save_findings = false     # opt-in: auto-extract nuclei findings
+# auto_save_findings = false     # opt-in: auto-extract findings from scanners
 
 [execution]
 default_timeout_secs = 600
@@ -171,7 +171,7 @@ The `http_request` tool maintains a shared cookie jar that persists within a ses
 
 ## Testing
 
-305 unit and integration tests across 3 crates:
+310 unit and integration tests across 3 crates:
 
 ```bash
 cargo test --workspace
@@ -181,7 +181,7 @@ cargo test --workspace
 |-------|-------|
 | raven-core | 86 |
 | raven-report | 54 |
-| raven-server | 155 |
+| raven-server | 160 |
 | Integration | 10 |
 
 A Python-based MCP integration test harness is also available:

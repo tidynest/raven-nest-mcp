@@ -5,9 +5,10 @@
 //! parses those results into [`ExtractedFinding`]s and persists the qualifying
 //! ones via [`auto_save`] — deduplicated and tagged `source = AutoExtracted`.
 //!
-//! Currently only nuclei (clean 1:1 severity + CVE classification) is wired.
-//! [`auto_save`] is tool-agnostic, so further parsers (nikto, dalfox, nmap) can
-//! be added later without touching the persistence path.
+//! [`auto_save`] is tool-agnostic; each tool gets an `extract_*` parser that
+//! yields rows. Wired: nuclei, nikto, dalfox, nmap, sqlmap, testssl, gitleaks,
+//! trufflehog. The secret scanners (gitleaks/trufflehog) deliberately read only
+//! location + identifier fields — a secret value never reaches a finding.
 
 use raven_core::config::RavenConfig;
 use raven_report::finding::{Finding, FindingSource, Severity};
@@ -192,6 +193,178 @@ pub fn extract_nmap(raw: &str) -> Vec<ExtractedFinding> {
             cve: Some(cve),
         })
         .collect()
+}
+
+/// Find the first `CVE-YYYY-NNNN` token in a line, if any. Avoids a regex dep:
+/// anchors on `CVE-` and consumes the following alphanumeric/`-` run.
+fn find_cve(line: &str) -> Option<String> {
+    let start = line.find("CVE-")?;
+    let rest = &line[start..];
+    let end = rest
+        .char_indices()
+        .find(|&(_, c)| !(c.is_ascii_alphanumeric() || c == '-'))
+        .map_or(rest.len(), |(i, _)| i);
+    let cve = &rest[..end];
+    (cve.len() >= 8).then(|| cve.to_string()) // at least "CVE-YYYY"
+}
+
+/// Extract SQL-injection findings from sqlmap text output. sqlmap only emits a
+/// `Parameter: <p> (<METHOD>)` line inside a confirmed injection-point block, so
+/// each such line is one High finding; the following `Type:` lines enrich its
+/// evidence. A clean ("not injectable") run yields nothing.
+///
+/// ponytail: anchors on the `Parameter:`/`Type:` line prefixes — robust to
+/// sqlmap's verbose progress noise without parsing the whole block structure.
+pub fn extract_sqlmap(raw: &str) -> Vec<ExtractedFinding> {
+    let clean = crate::tools::strip_ansi(raw);
+    let mut out: Vec<ExtractedFinding> = Vec::new();
+    for line in clean.lines() {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix("Parameter: ") {
+            out.push(ExtractedFinding {
+                title: format!("SQL injection in parameter {rest}"),
+                severity: Severity::High,
+                evidence: format!("sqlmap: {rest}"),
+                cve: None,
+            });
+        } else if t.starts_with("Type:")
+            && let Some(last) = out.last_mut()
+        {
+            last.evidence.push_str(&format!("; {t}"));
+        }
+    }
+    out
+}
+
+/// Extract TLS findings from testssl.sh text output — one per line tagged
+/// `VULNERABLE` (the negated "not vulnerable" lines are excluded). testssl's
+/// text mode drops its own severity rating, so every confirmed vuln is High;
+/// a CVE is pulled from the line when present.
+///
+/// ponytail: flat High severity. For per-CVE bands, run testssl `--json` and
+/// read its `severity` field instead.
+pub fn extract_testssl(raw: &str) -> Vec<ExtractedFinding> {
+    let clean = crate::tools::strip_ansi(raw);
+    clean
+        .lines()
+        .map(str::trim)
+        .filter(|l| l.contains("VULNERABLE") && !l.contains("not vulnerable"))
+        .map(|l| {
+            let name = l.split("VULNERABLE").next().unwrap_or(l).trim();
+            let title = if name.is_empty() {
+                "TLS vulnerability".to_string()
+            } else {
+                truncate_title(name, 120)
+            };
+            ExtractedFinding {
+                title: format!("TLS: {title}"),
+                severity: Severity::High,
+                evidence: l.to_string(),
+                cve: find_cve(l),
+            }
+        })
+        .collect()
+}
+
+/// Extract secret findings from a gitleaks JSON report. Each leak is High.
+///
+/// SECURITY: reads only rule/location/description — the `Secret` and `Match`
+/// fields are never touched, so a live secret value cannot reach a finding.
+pub fn extract_gitleaks(raw: &str) -> Vec<ExtractedFinding> {
+    let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(raw.trim()) else {
+        return Vec::new();
+    };
+    arr.iter()
+        .filter_map(|v| {
+            let rule = v
+                .get("RuleID")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let file = v
+                .get("File")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            if rule.is_empty() && file.is_empty() {
+                return None;
+            }
+            let line = v
+                .get("StartLine")
+                .and_then(serde_json::Value::as_i64)
+                .unwrap_or(0);
+            let desc = v
+                .get("Description")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let commit = v
+                .get("Commit")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("");
+            let loc = if commit.is_empty() {
+                format!("{file}:{line}")
+            } else {
+                format!("{file}:{line} (commit {})", &commit[..commit.len().min(8)])
+            };
+            Some(ExtractedFinding {
+                title: format!("Secret: {rule}"),
+                severity: Severity::High,
+                evidence: format!("{loc} — {desc}"),
+                cve: None,
+            })
+        })
+        .collect()
+}
+
+/// Extract secret findings from trufflehog JSONL. A *verified* secret (live
+/// credential) is Critical; an unverified detection is High.
+///
+/// SECURITY: reads only detector/verified/location — the `Raw`/`RawV2`/
+/// `Redacted` fields are never touched, so a secret value cannot reach a finding.
+pub fn extract_trufflehog(raw: &str) -> Vec<ExtractedFinding> {
+    let mut out = Vec::new();
+    for line in raw.lines() {
+        let t = line.trim();
+        if t.is_empty() || !t.starts_with('{') {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(t) else {
+            continue;
+        };
+        let detector = v
+            .get("DetectorName")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("");
+        if detector.is_empty() {
+            continue;
+        }
+        let verified = v
+            .get("Verified")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        let fs = v
+            .get("SourceMetadata")
+            .and_then(|m| m.get("Data"))
+            .and_then(|d| d.get("Filesystem"));
+        let file = fs
+            .and_then(|f| f.get("file"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("unknown");
+        let line_no = fs
+            .and_then(|f| f.get("line"))
+            .and_then(serde_json::Value::as_i64)
+            .unwrap_or(0);
+        let (severity, mark) = if verified {
+            (Severity::Critical, " (verified)")
+        } else {
+            (Severity::High, "")
+        };
+        out.push(ExtractedFinding {
+            title: format!("Secret: {detector}{mark}"),
+            severity,
+            evidence: format!("{file}:{line_no}"),
+            cve: None,
+        });
+    }
+    out
 }
 
 /// Persist auto-extracted findings, gated by config.
@@ -383,6 +556,62 @@ not json
         assert_eq!(severity_from_cvss(3.9), Severity::Low);
         assert_eq!(severity_from_cvss(0.1), Severity::Low);
         assert_eq!(severity_from_cvss(0.0), Severity::Info);
+    }
+
+    #[test]
+    fn extract_sqlmap_flags_injectable_params() {
+        let raw = "sqlmap identified the following injection point(s):\n---\n\
+                   Parameter: id (GET)\n    Type: boolean-based blind\n    \
+                   Title: AND boolean-based blind\n---\nback-end DBMS: MySQL";
+        let f = extract_sqlmap(raw);
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].severity, Severity::High);
+        assert!(f[0].title.contains("id (GET)"));
+        assert!(f[0].evidence.contains("boolean-based blind"));
+    }
+
+    #[test]
+    fn extract_sqlmap_ignores_clean_scan() {
+        assert!(extract_sqlmap("[WARNING] parameters do not appear to be injectable").is_empty());
+    }
+
+    #[test]
+    fn extract_testssl_flags_only_vulnerable_with_cve() {
+        let raw = "Heartbleed (CVE-2014-0160)   VULNERABLE (NOT ok)\n\
+                   CCS (CVE-2014-0224)          not vulnerable (OK)";
+        let f = extract_testssl(raw);
+        assert_eq!(f.len(), 1); // "not vulnerable" line excluded
+        assert_eq!(f[0].severity, Severity::High);
+        assert_eq!(f[0].cve.as_deref(), Some("CVE-2014-0160"));
+        assert!(f[0].title.contains("Heartbleed"));
+    }
+
+    #[test]
+    fn extract_gitleaks_never_emits_secret_value() {
+        let json = r#"[{"RuleID":"generic-api-key","Description":"API key","File":"src/config.js","StartLine":12,"Secret":"AKIALEAKEDVALUE","Match":"key=AKIALEAKEDVALUE","Commit":"abcdef1234567890"}]"#;
+        let f = extract_gitleaks(json);
+        assert_eq!(f.len(), 1);
+        assert_eq!(f[0].severity, Severity::High);
+        assert!(f[0].title.contains("generic-api-key"));
+        assert!(f[0].evidence.contains("src/config.js:12"));
+        let blob = format!("{}|{}", f[0].title, f[0].evidence);
+        assert!(!blob.contains("AKIALEAKEDVALUE")); // SECURITY: no secret leak
+    }
+
+    #[test]
+    fn extract_trufflehog_verified_is_critical_no_leak() {
+        let raw = "{\"SourceMetadata\":{\"Data\":{\"Filesystem\":{\"file\":\"a.env\",\"line\":1}}},\"DetectorName\":\"AWS\",\"Verified\":false,\"Raw\":\"AKIALEAK\"}\n\
+                   {\"SourceMetadata\":{\"Data\":{\"Filesystem\":{\"file\":\"k.txt\",\"line\":9}}},\"DetectorName\":\"Github\",\"Verified\":true,\"Raw\":\"ghp_LEAK\"}";
+        let f = extract_trufflehog(raw);
+        assert_eq!(f.len(), 2);
+        assert_eq!(f[0].severity, Severity::High); // unverified
+        assert_eq!(f[1].severity, Severity::Critical); // verified
+        assert!(f[1].title.contains("verified"));
+        let blob: String = f
+            .iter()
+            .map(|x| format!("{}{}", x.title, x.evidence))
+            .collect();
+        assert!(!blob.contains("AKIALEAK") && !blob.contains("ghp_LEAK")); // SECURITY
     }
 
     #[test]
