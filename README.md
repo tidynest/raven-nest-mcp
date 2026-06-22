@@ -4,7 +4,7 @@ A pentesting toolkit that runs as an [MCP](https://modelcontextprotocol.io/) ser
 
 ## What It Does
 
-Raven Nest wraps 20 security tools plus Metasploit Framework behind an MCP interface with input validation, output quality assessment, session-aware context budgeting, and configurable safety limits. It handles tool execution, background scan management, vulnerability finding persistence, and multi-format report generation (Markdown, JSON, SARIF, HTML). 41 MCP endpoints total.
+Raven Nest wraps 21 security tools plus Metasploit Framework behind an MCP interface with input validation, output quality assessment, session-aware context budgeting, and configurable safety limits. It handles tool execution, background scan management, vulnerability finding persistence, and multi-format report generation (Markdown, JSON, SARIF, HTML). 42 MCP endpoints total.
 
 ### Supported Tools
 
@@ -18,6 +18,7 @@ Raven Nest wraps 20 security tools plus Metasploit Framework behind an MCP inter
 | Web fuzzing | feroxbuster, ffuf |
 | Exploitation | sqlmap, hydra |
 | Password cracking | john |
+| Secret scanning | gitleaks |
 | TLS/SSL | testssl.sh |
 | Metasploit | msf\_search, msf\_module\_info, msf\_exploit, msf\_auxiliary, msf\_sessions, msf\_post |
 | Utility | ping\_target, http\_request |
@@ -170,7 +171,7 @@ The `http_request` tool maintains a shared cookie jar that persists within a ses
 
 ## Testing
 
-294 unit and integration tests across 3 crates:
+302 unit and integration tests across 3 crates:
 
 ```bash
 cargo test --workspace
@@ -180,7 +181,7 @@ cargo test --workspace
 |-------|-------|
 | raven-core | 86 |
 | raven-report | 54 |
-| raven-server | 144 |
+| raven-server | 152 |
 | Integration | 10 |
 
 A Python-based MCP integration test harness is also available:
@@ -212,6 +213,7 @@ tests/
 - [docs/USAGE.md](docs/USAGE.md) -- tool installation, configuration reference, full parameter docs
 - [docs/LOCAL_AI_INTEGRATION.md](docs/LOCAL_AI_INTEGRATION.md) -- using Raven Nest with local models (Ollama, LM Studio)
 - [docs/METASPLOIT.md](docs/METASPLOIT.md) -- Metasploit Framework integration setup and safety model
+- [docs/DATA_FLOW.md](docs/DATA_FLOW.md) -- data flow and sources of truth: which module owns each piece of state
 
 ## License
 

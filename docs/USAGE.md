@@ -19,7 +19,7 @@ starts regardless, but tool calls will fail if the binary isn't installed.
 
 ```bash
 # Core tools (official repos — Arch Linux)
-sudo pacman -S nmap nikto whatweb testssl.sh sqlmap hydra masscan wpscan john
+sudo pacman -S nmap nikto whatweb testssl.sh sqlmap hydra masscan wpscan john gitleaks
 
 # AUR tools
 yay -S feroxbuster-bin ffuf-bin enum4linux-ng dalfox-bin
@@ -160,7 +160,7 @@ allowed_tools = [
     "subfinder", "wpscan", "enum4linux-ng",
     "dalfox", "dnsrecon", "john",
     "httpx", "dnsx", "katana",
-    "nxc",
+    "nxc", "gitleaks",
 ]
 max_output_chars = 50000
 # context_budget = 65536
@@ -443,7 +443,7 @@ Metasploit tools (6) register only when `metasploit.enabled = true`, and
 |----------|-------|-------------------|
 | **Fast** (1-5s) | `ping_target`, `run_whatweb`, `http_request`, `run_ffuf`, `run_masscan`, `run_subfinder`, `run_httpx`, `run_dnsx`, `run_dalfox` | Immediate results |
 | **Medium** (5-30s) | `run_nmap` (quick/service), `run_wpscan`, `run_dnsrecon`, `msf_search`, `msf_module_info` | Wait for completion |
-| **Slow** (30-300s) | `run_nmap` (os/vuln), `run_nuclei`, `run_nikto`, `run_testssl`, `run_feroxbuster`, `run_katana`, `run_sqlmap`, `run_hydra`, `run_enum4linux_ng`, `run_john`, `run_netexec`, `msf_exploit` | Consider `launch_scan` for background execution |
+| **Slow** (30-300s) | `run_nmap` (os/vuln), `run_nuclei`, `run_nikto`, `run_testssl`, `run_feroxbuster`, `run_katana`, `run_sqlmap`, `run_hydra`, `run_enum4linux_ng`, `run_john`, `run_gitleaks`, `run_netexec`, `msf_exploit` | Consider `launch_scan` for background execution |
 
 ---
 
@@ -766,6 +766,23 @@ and session status.
 | `wordlist` | string | no | Path to wordlist file |
 | `format` | string | no | Hash format (e.g. `raw-md5`, `bcrypt`, `sha512crypt`) |
 | `max_run_time` | integer | no | Max runtime in seconds (default 300, max 600) |
+
+---
+
+#### `run_gitleaks`
+Scan a directory's working tree or a git repo's full commit history for
+committed secrets (API keys, tokens, private keys) via gitleaks. The scan path
+is confined to the configured output directory (same gate as `run_john`), so
+clone target repos into the engagement workspace first. Secret values are
+redacted by default and never echoed in the summary — only the rule id and
+`file:line` (plus short commit, in history mode) are returned. Exit code 1
+(secrets found) is treated as success, not an error.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `path` | string | yes | Directory or git repo to scan (must be under the output directory) |
+| `scan_git_history` | boolean | no | Scan full git commit history instead of the working tree (default false) |
+| `show_secrets` | boolean | no | Reveal secret values instead of redacting them (default false) |
 
 ---
 

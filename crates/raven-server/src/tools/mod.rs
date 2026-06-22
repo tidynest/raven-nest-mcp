@@ -260,6 +260,7 @@ pub mod extract;
 pub mod feroxbuster;
 pub mod ffuf;
 pub mod findings;
+pub mod gitleaks;
 pub mod http;
 pub mod httpx;
 pub mod hydra;
