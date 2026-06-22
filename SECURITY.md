@@ -12,7 +12,7 @@ the default branch (`main`) receives security fixes.
 
 | Version | Supported |
 | ------- | --------- |
-| 0.1.x (latest `main`) | :white_check_mark: |
+| 0.2.x (latest `main`) | :white_check_mark: |
 | older / forks | :x: |
 
 ## Reporting a Vulnerability

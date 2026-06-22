@@ -1333,7 +1333,7 @@ Assistant: [calls run_nikto with target: "http://target.example.com",
 
 A comprehensive test harness at `tests/manual_test_harness.py` spawns the
 MCP server as a subprocess and communicates via JSON-RPC 2.0 over stdin/stdout.
-Additionally, 294 Rust unit and integration tests cover parsers, config,
+Additionally, 314 Rust unit and integration tests cover parsers, config,
 safety, budget tracking, and request validation.
 
 ```bash
