@@ -20,6 +20,7 @@ use crate::tools::{
     feroxbuster::FeroxbusterRequest,
     ffuf::FfufRequest,
     findings::{FindingIdRequest, GenerateReportRequest, ListByScanRequest, SaveFindingRequest},
+    gitleaks::GitleaksRequest,
     http::HttpRequest,
     httpx::HttpxRequest,
     hydra::HydraRequest,
@@ -508,6 +509,18 @@ impl RavenServer {
         Parameters(req): Parameters<JohnRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.wrap_result(crate::tools::john::run(&self.config, req, Some(peer)).await)
+    }
+
+    #[tool(
+        description = "gitleaks secret scanner (dir or git-history)",
+        annotations(destructive_hint = false, open_world_hint = false)
+    )]
+    async fn run_gitleaks(
+        &self,
+        peer: Peer<RoleServer>,
+        Parameters(req): Parameters<GitleaksRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result(crate::tools::gitleaks::run(&self.config, req, Some(peer)).await)
     }
 
     #[tool(
