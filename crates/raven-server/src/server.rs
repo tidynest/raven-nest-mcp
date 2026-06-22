@@ -41,6 +41,7 @@ use crate::tools::{
     sqlmap::SqlmapRequest,
     subfinder::SubfinderRequest,
     testssl::TestsslRequest,
+    trufflehog::TrufflehogRequest,
     whatweb::WhatwebRequest,
     wpscan::WpscanRequest,
 };
@@ -521,6 +522,18 @@ impl RavenServer {
         Parameters(req): Parameters<GitleaksRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.wrap_result(crate::tools::gitleaks::run(&self.config, req, Some(peer)).await)
+    }
+
+    #[tool(
+        description = "trufflehog secret scanner with optional live verification",
+        annotations(destructive_hint = false, open_world_hint = false)
+    )]
+    async fn run_trufflehog(
+        &self,
+        peer: Peer<RoleServer>,
+        Parameters(req): Parameters<TrufflehogRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result(crate::tools::trufflehog::run(&self.config, req, Some(peer)).await)
     }
 
     #[tool(

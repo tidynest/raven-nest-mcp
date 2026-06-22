@@ -282,5 +282,6 @@ pub mod scans;
 pub mod sqlmap;
 pub mod subfinder;
 pub mod testssl;
+pub mod trufflehog;
 pub mod whatweb;
 pub mod wpscan;
