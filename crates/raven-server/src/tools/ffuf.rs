@@ -16,6 +16,12 @@ use rmcp::{
 /// Default wordlist path (SecLists raft-medium-words).
 const DEFAULT_WORDLIST: &str = "/usr/share/seclists/Discovery/Web-Content/raft-medium-words.txt";
 
+/// Default HTTP status codes to match. Pinned so results don't depend on ffuf's
+/// version-specific built-in default (newer builds narrowed to 2XX, silently
+/// hiding redirects and 401/403 — exactly the protected/interesting resources a
+/// pentest wants). Callers can override, including `"all"`.
+const DEFAULT_MATCH_CODES: &str = "200,204,301,302,307,401,403,405,500";
+
 /// MCP request schema for `run_ffuf`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -28,7 +34,9 @@ pub struct FfufRequest {
     pub method: Option<String>,
     #[schemars(description = "Custom headers as 'Name: Value' (repeatable, comma-separated)")]
     pub headers: Option<String>,
-    #[schemars(description = "Match HTTP status codes (e.g. '200,301,302')")]
+    #[schemars(
+        description = "Match HTTP status codes (e.g. '200,301,302' or 'all'); default 200,204,301,302,307,401,403,405,500"
+    )]
     pub match_codes: Option<String>,
     #[schemars(description = "Filter responses by size (bytes)")]
     pub filter_size: Option<String>,
@@ -93,9 +101,16 @@ pub async fn run(
         }
     }
 
-    if let Some(ref codes) = req.match_codes {
-        args.extend(["-mc".into(), codes.clone()]);
+    // Always pass an explicit -mc so behaviour doesn't depend on ffuf's
+    // version-specific default. Validate the set (digits/commas/hyphens or "all").
+    let codes = req.match_codes.as_deref().unwrap_or(DEFAULT_MATCH_CODES);
+    if !valid_match_codes(codes) {
+        return Err(rmcp::ErrorData::invalid_params(
+            "match_codes must be digits/commas/hyphens (e.g. '200,301,403') or 'all'",
+            None,
+        ));
     }
+    args.extend(["-mc".into(), codes.to_string()]);
 
     if let Some(ref size) = req.filter_size {
         args.extend(["-fs".into(), size.clone()]);
@@ -120,6 +135,17 @@ pub async fn run(
         crate::error::format_result("ffuf", &result)
     };
     Ok(CallToolResult::success(vec![Content::text(output)]))
+}
+
+/// True if `codes` is a valid ffuf `-mc` value: `"all"` or a digits/commas/
+/// hyphens spec like `"200,301,403"` or `"200-299"`. `Command::arg` already
+/// blocks shell injection; this rejects malformed input before ffuf sees it.
+fn valid_match_codes(codes: &str) -> bool {
+    !codes.is_empty()
+        && (codes == "all"
+            || codes
+                .chars()
+                .all(|c| c.is_ascii_digit() || c == ',' || c == '-'))
 }
 
 /// Parse ffuf output, extracting fuzzing results.
@@ -203,5 +229,25 @@ server-status           [Status: 403, Size: 277, Words: 20, Lines: 10, Duration:
     #[test]
     fn parse_ffuf_empty_returns_none() {
         assert!(parse_ffuf_output("", 40).is_none());
+    }
+
+    #[test]
+    fn default_match_codes_cover_non_2xx() {
+        // The whole point of pinning: 401/403 (protected) and 3xx (redirects)
+        // must be in the default, not just 2XX.
+        assert!(valid_match_codes(DEFAULT_MATCH_CODES));
+        for code in ["301", "403", "401", "500"] {
+            assert!(DEFAULT_MATCH_CODES.contains(code), "default missing {code}");
+        }
+    }
+
+    #[test]
+    fn valid_match_codes_accepts_and_rejects() {
+        assert!(valid_match_codes("200,301,403"));
+        assert!(valid_match_codes("200-299"));
+        assert!(valid_match_codes("all"));
+        assert!(!valid_match_codes("")); // empty
+        assert!(!valid_match_codes("200;rm -rf")); // metacharacters
+        assert!(!valid_match_codes("2xx")); // letters (only "all" allowed)
     }
 }

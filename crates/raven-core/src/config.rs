@@ -117,6 +117,9 @@ fn default_scan_retention_secs() -> u64 {
 fn default_max_concurrent_execs() -> usize {
     4
 }
+fn default_min_exec_gap_ms() -> u64 {
+    0
+}
 
 /// Execution environment: timeouts, concurrency, and filesystem paths.
 #[derive(Clone, Debug, Deserialize)]
@@ -141,6 +144,12 @@ pub struct ExecutionConfig {
     /// prevents an LLM from spawning unbounded subprocesses via parallel calls.
     #[serde(default = "default_max_concurrent_execs")]
     pub max_concurrent_execs: usize,
+    /// Minimum milliseconds between consecutive tool launches, process-wide. A
+    /// proactive cooldown: back-to-back aggressive tools against one target can
+    /// trip its WAF or rate-limiter (or get the tester banned). Default 0
+    /// (disabled — opt in). Complements the reactive WAF detection in the executor.
+    #[serde(default = "default_min_exec_gap_ms")]
+    pub min_exec_gap_ms: u64,
 }
 
 /// Optional proxy configuration injected into tool subprocesses.
@@ -304,6 +313,9 @@ impl ExecutionConfig {
         }
         if self.max_concurrent_execs == 0 {
             return Err("max_concurrent_execs must be > 0".into());
+        }
+        if self.min_exec_gap_ms > 60_000 {
+            return Err("min_exec_gap_ms must be <= 60000 (60s)".into());
         }
         Ok(())
     }
@@ -485,6 +497,7 @@ impl Default for RavenConfig {
                 timeouts: HashMap::new(),
                 scan_retention_secs: default_scan_retention_secs(),
                 max_concurrent_execs: default_max_concurrent_execs(),
+                min_exec_gap_ms: default_min_exec_gap_ms(),
             },
             network: NetworkConfig::default(),
             metasploit: MetasploitConfig::default(),
@@ -506,6 +519,7 @@ mod tests {
             timeouts: HashMap::from([("nmap".into(), 900), ("nuclei".into(), 1200)]),
             scan_retention_secs: default_scan_retention_secs(),
             max_concurrent_execs: default_max_concurrent_execs(),
+            min_exec_gap_ms: default_min_exec_gap_ms(),
         }
     }
 

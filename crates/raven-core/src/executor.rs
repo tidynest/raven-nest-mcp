@@ -16,7 +16,7 @@
 use crate::config::RavenConfig;
 use crate::error::PentestError;
 use crate::safety;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 use tokio::process::Command;
 use tokio::sync::Semaphore;
@@ -25,6 +25,34 @@ use tokio::sync::Semaphore;
 /// `max_concurrent_execs` on first use. Background scans use [`run_unmetered`]
 /// and are bounded separately by `max_concurrent_scans`.
 static EXEC_SEM: OnceLock<Semaphore> = OnceLock::new();
+
+/// Timestamp of the most recent tool launch, for the proactive inter-tool gap
+/// (`min_exec_gap_ms`). ponytail: one global gap — simple and enough for the
+/// usual single-target engagement. A per-host token bucket (letting independent
+/// targets run without waiting on each other) is the upgrade if multi-target
+/// throughput ever matters.
+static LAST_LAUNCH: Mutex<Option<Instant>> = Mutex::new(None);
+
+/// Sleep just long enough to keep consecutive tool launches at least `gap` apart.
+///
+/// The next allowed launch time is reserved under the lock (so concurrent
+/// callers queue in order rather than all waking at once), then the lock is
+/// released before sleeping — it is never held across the `.await`.
+async fn enforce_launch_gap(gap: Duration) {
+    if gap.is_zero() {
+        return;
+    }
+    let wait = {
+        let mut last = LAST_LAUNCH.lock().unwrap_or_else(PoisonError::into_inner);
+        let now = Instant::now();
+        let at = last.map_or(now, |prev| (prev + gap).max(now));
+        *last = Some(at);
+        at.saturating_duration_since(now)
+    };
+    if !wait.is_zero() {
+        tokio::time::sleep(wait).await;
+    }
+}
 
 /// Describes how trustworthy the tool output is.
 ///
@@ -197,6 +225,10 @@ async fn run_inner(
 ) -> Result<CommandResult, PentestError> {
     safety::check_allowlist(tool, &config.safety)?;
 
+    // Proactive cooldown: space launches so back-to-back tools don't hammer a
+    // target's WAF/rate-limiter. No-op when min_exec_gap_ms is 0 (default).
+    enforce_launch_gap(Duration::from_millis(config.execution.min_exec_gap_ms)).await;
+
     let start = Instant::now();
     let timeout =
         Duration::from_secs(timeout.unwrap_or_else(|| config.execution.timeout_for(tool)));
@@ -284,6 +316,28 @@ async fn run_inner(
 
 #[cfg(test)]
 mod tests {
+    use std::time::{Duration, Instant};
+
+    #[tokio::test]
+    async fn launch_gap_spaces_consecutive_calls() {
+        *super::LAST_LAUNCH.lock().unwrap() = None; // isolate from other runs
+        let gap = Duration::from_millis(60);
+        let t0 = Instant::now();
+        super::enforce_launch_gap(gap).await; // first: last=None → no wait
+        super::enforce_launch_gap(gap).await; // second: must wait ~gap
+        assert!(
+            t0.elapsed() >= gap,
+            "second launch should be delayed by the gap"
+        );
+    }
+
+    #[tokio::test]
+    async fn launch_gap_zero_is_noop() {
+        let t0 = Instant::now();
+        super::enforce_launch_gap(Duration::ZERO).await;
+        assert!(t0.elapsed() < Duration::from_millis(20)); // returns immediately
+    }
+
     #[test]
     fn proxy_env_vars_set_on_command() {
         use std::process::Command;

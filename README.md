@@ -120,6 +120,7 @@ Additional hardening:
 - **Finding ID validation** -- finding get/delete operations require valid UUID format, preventing path traversal
 - **Engagement scope** -- an optional authorization allowlist (`[scope]`): when enabled, every target must match an allowed CIDR/domain and must not match a denied one (deny wins); loopback is allowed unless disabled. Off by default
 - **Audit logging** -- every tool execution is appended to `{output_dir}/audit.log` with the tool, target, and redacted arguments
+- **Proactive cooldown** -- an optional `min_exec_gap_ms` spaces out consecutive tool launches so back-to-back aggressive tools don't trip a target's WAF or rate-limiter; complements the reactive WAF/rate-limit detection. Off by default
 
 Metasploit integration adds a 5-layer safety model: disabled by default, per-tool allowlisting, path-boundary module blocklist, exploit confirmation gate (double-call to execute), and session command filtering. Passwords are redacted from error messages, and TLS certificate bypass is restricted to localhost connections. See [docs/METASPLOIT.md](docs/METASPLOIT.md).
 
@@ -171,7 +172,7 @@ The `http_request` tool maintains a shared cookie jar that persists within a ses
 
 ## Testing
 
-310 unit and integration tests across 3 crates:
+314 unit and integration tests across 3 crates:
 
 ```bash
 cargo test --workspace
@@ -179,9 +180,9 @@ cargo test --workspace
 
 | Crate | Tests |
 |-------|-------|
-| raven-core | 86 |
+| raven-core | 88 |
 | raven-report | 54 |
-| raven-server | 160 |
+| raven-server | 162 |
 | Integration | 10 |
 
 A Python-based MCP integration test harness is also available:

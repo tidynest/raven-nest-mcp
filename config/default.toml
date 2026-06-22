@@ -62,6 +62,10 @@ max_concurrent_scans = 3
 # max_concurrent_scans; bounds parallel run_* calls so an agent can't spawn
 # unbounded subprocesses.
 # max_concurrent_execs = 4
+# Proactive cooldown: minimum milliseconds between consecutive tool launches
+# (process-wide). Stops back-to-back aggressive tools from tripping a target's
+# WAF/rate-limiter. Default 0 (off). Max 60000. Complements reactive WAF detection.
+# min_exec_gap_ms = 1000
 # Seconds to retain a finished scan before it (and its spilled output) is
 # evicted from the in-memory registry (default 3600 = 1h).
 # scan_retention_secs = 3600
