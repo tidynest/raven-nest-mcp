@@ -83,6 +83,15 @@ pub async fn run(
         }
     }
 
+    // Enforce the engagement scope. reqwest already validated URL syntax above,
+    // so we gate on the bare host only: this keeps query strings (with '&',
+    // which validate_syntax rejects) out of the check while still scoping the
+    // request. Without this, http_request would be the one tool able to reach
+    // out-of-scope hosts.
+    if let Some(host) = parsed.host_str() {
+        raven_core::safety::validate_target(host).map_err(crate::error::to_mcp)?;
+    }
+
     let timeout = Duration::from_secs(req.timeout_secs.unwrap_or(30).min(120));
 
     let redirect_policy = if req.follow_redirects.unwrap_or(true) {
@@ -457,5 +466,13 @@ mod tests {
         assert!(text.contains('\u{2014}')); // &#8212; = —
         assert!(text.contains('A')); // &#65; = A
         assert!(!text.contains("&#"));
+    }
+
+    #[test]
+    fn scope_check_uses_bare_host_only() {
+        // The scope gate runs on host_str(), so port, path, and query (with
+        // '&', which validate_syntax would reject) never reach it.
+        let url = reqwest::Url::parse("http://example.com:8080/p?a=1&b=2").unwrap();
+        assert_eq!(url.host_str(), Some("example.com"));
     }
 }
