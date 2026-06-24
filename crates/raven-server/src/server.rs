@@ -2,7 +2,8 @@
 //!
 //! [`RavenServer`] is the central struct that:
 //! - Holds shared state (`Arc<RavenConfig>`, `ScanManager`, `FindingStore`, cookie jar).
-//! - Registers all 41 MCP tools via the `#[tool_router]` macro.
+//! - Registers all 43 MCP tools via the `#[tool_router]` macro (Metasploit and
+//!   NetExec tools are always registered but gated at call time when disabled).
 //! - Implements `ServerHandler` to provide server info and capabilities.
 //!
 //! Tool methods are thin wrappers that extract parameters and delegate to the
