@@ -7,6 +7,8 @@ version = "0.2.0"
 edition = "2024"
 license = "Apache-2.0"
 rust-version = "1.93.0"
+# Internal application crates — never published to crates.io.
+publish = false
 
 [workspace.dependencies]
 # MCP SDK

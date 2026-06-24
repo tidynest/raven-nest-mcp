@@ -1,0 +1,7 @@
+# Pins the development/release toolchain. The minimum supported version (MSRV)
+# is declared separately as `rust-version` in [workspace.package].
+# ponytail: `channel = "stable"` floats with releases; pin an exact version
+# (e.g. "1.96.0") here if you ever need byte-reproducible release builds.
+[toolchain]
+channel = "stable"
+components = ["rustfmt", "clippy"]
