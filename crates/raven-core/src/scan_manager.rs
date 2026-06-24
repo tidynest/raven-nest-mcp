@@ -628,4 +628,78 @@ mod tests {
         assert!(args.contains(&"-A".to_string()));
         assert!(args.contains(&"10.0.0.1".to_string()));
     }
+
+    // --- real spawn/poll/cancel lifecycle ---
+    // Drives the full launch → execute → writeback path through `executor` using
+    // coreutils `echo`/`sleep` (always present on the Linux-only target) rather
+    // than a real scanner, so the tests stay fast, deterministic, and offline.
+
+    fn proc_config(output_dir: &std::path::Path, max_scans: usize) -> RavenConfig {
+        let mut cfg = RavenConfig::default();
+        cfg.safety.allowed_tools = vec!["echo".into(), "sleep".into()];
+        cfg.execution.output_dir = output_dir.to_string_lossy().into_owned();
+        cfg.execution.max_concurrent_scans = max_scans;
+        cfg
+    }
+
+    /// Poll until the scan reaches `want`, up to ~5s. Returns false on timeout.
+    async fn wait_status(mgr: &ScanManager, id: &str, want: ScanStatus) -> bool {
+        for _ in 0..100 {
+            if mgr.status(id).unwrap() == Some(want.clone()) {
+                return true;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        false
+    }
+
+    #[tokio::test]
+    async fn lifecycle_echo_completes_and_captures_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = ScanManager::new(Arc::new(proc_config(dir.path(), 3)));
+        let id = mgr.launch("echo", "raven-probe", None).unwrap();
+        assert!(
+            wait_status(&mgr, &id, ScanStatus::Completed).await,
+            "echo scan should reach Completed"
+        );
+        let out = mgr.output(&id).unwrap().expect("completed scan has output");
+        assert!(out.contains("raven-probe"), "stdout captured: {out:?}");
+    }
+
+    #[tokio::test]
+    async fn lifecycle_cancel_while_running_sets_cancelled() {
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = ScanManager::new(Arc::new(proc_config(dir.path(), 3)));
+        let id = mgr.launch("sleep", "5", None).unwrap();
+        assert_eq!(mgr.status(&id).unwrap(), Some(ScanStatus::Running));
+        mgr.cancel(&id).unwrap();
+        assert_eq!(mgr.status(&id).unwrap(), Some(ScanStatus::Cancelled));
+        assert!(
+            mgr.output(&id).unwrap().is_none(),
+            "a cancelled scan has no output"
+        );
+    }
+
+    #[tokio::test]
+    async fn lifecycle_cancel_after_complete_is_noop() {
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = ScanManager::new(Arc::new(proc_config(dir.path(), 3)));
+        let id = mgr.launch("echo", "done-probe", None).unwrap();
+        assert!(wait_status(&mgr, &id, ScanStatus::Completed).await);
+        mgr.cancel(&id).unwrap(); // status != Running → must not clobber the result
+        assert_eq!(mgr.status(&id).unwrap(), Some(ScanStatus::Completed));
+    }
+
+    #[tokio::test]
+    async fn lifecycle_concurrency_cap_rejects_excess() {
+        let dir = tempfile::tempdir().unwrap();
+        let mgr = ScanManager::new(Arc::new(proc_config(dir.path(), 1)));
+        let id = mgr.launch("sleep", "5", None).unwrap();
+        let second = mgr.launch("sleep", "5", None);
+        assert!(
+            matches!(&second, Err(PentestError::CommandFailed(m)) if m.contains("max concurrent")),
+            "second launch must hit the cap: {second:?}"
+        );
+        mgr.cancel(&id).unwrap(); // stop the held sleep
+    }
 }
