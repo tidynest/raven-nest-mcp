@@ -435,7 +435,7 @@ binary on `PATH` (or set `[safety.tool_paths].nxc`).
 
 ## Tools Reference
 
-The server exposes up to 41 tools. Tool count depends on configuration —
+The server exposes up to 43 tools. Tool count depends on configuration —
 Metasploit tools (6) register only when `metasploit.enabled = true`, and
 `run_netexec` only when `netexec.enabled = true`.
 

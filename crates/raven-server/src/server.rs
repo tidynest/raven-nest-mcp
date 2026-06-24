@@ -105,8 +105,8 @@ impl RavenServer {
             tracing::info!("restored session cookies from disk");
         }
 
-        // Tool count: 20 security + 6 MSF + ping + http + 5 scan mgmt + 6 findings + 2 engagement = 41
-        let tool_count = 41;
+        // Tool count: 22 security + 6 MSF + ping + http + 5 scan mgmt + 6 findings + 2 engagement = 43
+        let tool_count = 43;
         let budget = std::sync::Arc::new(SessionBudget::new(
             config.safety.context_budget,
             tool_count,
