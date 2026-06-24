@@ -1,0 +1,65 @@
+# Maintainer: Eric Jingryd <eric.jingryd@protonmail.com>
+#
+# Source build of the Raven Nest MCP server. The server itself only needs glibc,
+# gcc-libs, and openssl; every scanner it drives is an *optional* runtime
+# dependency (see optdepends) — install only the ones you use. Many of those
+# live in the BlackArch or AUR repositories rather than the official ones.
+pkgname=raven-nest-mcp
+pkgver=0.2.0
+pkgrel=1
+pkgdesc="MCP server exposing 22 security tools + Metasploit behind a safety-hardened interface"
+arch=('x86_64')
+url="https://github.com/tidynest/raven-nest-mcp"
+license=('Apache-2.0')
+depends=('gcc-libs' 'glibc' 'openssl')
+makedepends=('cargo')
+optdepends=(
+  'nmap: port/service scanning and NSE'
+  'masscan: high-rate port scanning'
+  'whatweb: web technology fingerprinting'
+  'httpx: HTTP probing and fingerprinting'
+  'subfinder: passive subdomain enumeration'
+  'dnsx: DNS toolkit'
+  'dnsrecon: DNS enumeration'
+  'katana: web crawling and endpoint discovery'
+  'enum4linux-ng: SMB/AD enumeration'
+  'netexec: credentialed AD/SMB enumeration (gated, off by default)'
+  'nuclei: template-based vulnerability scanning'
+  'nikto: web server scanning'
+  'wpscan: WordPress scanning'
+  'dalfox: XSS scanning'
+  'feroxbuster: content discovery'
+  'ffuf: web fuzzing'
+  'sqlmap: SQL injection testing'
+  'hydra: network login brute forcing'
+  'john: password hash cracking'
+  'gitleaks: secret scanning'
+  'trufflehog: secret scanning with optional verification'
+  'testssl.sh: TLS/SSL configuration testing'
+  'metasploit: exploitation framework, powers the msf_* tools (off by default)'
+)
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('b20e9de4b897c0f16381fcfb46fe683fdfa075a224be61724c3ec9b249ccdd3e')
+
+prepare() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  cargo fetch --locked --target "$(rustc -vV | sed -n 's/host: //p')"
+}
+
+build() {
+  cd "$pkgname-$pkgver"
+  export RUSTUP_TOOLCHAIN=stable
+  export CARGO_TARGET_DIR=target
+  cargo build --frozen --release --bin raven-server
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 "target/release/raven-server" "$pkgdir/usr/bin/raven-server"
+  # Reference config — copy to your own config dir or point RAVEN_CONFIG at it.
+  install -Dm644 "config/default.toml" "$pkgdir/usr/share/$pkgname/default.toml"
+  install -Dm644 "LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 "README.md" "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 "docs/USAGE.md" "$pkgdir/usr/share/doc/$pkgname/USAGE.md"
+}
