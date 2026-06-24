@@ -64,6 +64,18 @@ fn rmpv_to_json(v: rmpv::Value) -> Value {
     }
 }
 
+/// True if `module_name` is blocked by any pattern: an exact match, a
+/// `pattern/...` child module, or a trailing-slash prefix (`exploit/windows/`).
+/// The boundary is always a path separator, so `exploit/foo` never blocks
+/// `exploit/foobar`.
+fn is_blocked(module_name: &str, patterns: &[String]) -> bool {
+    patterns.iter().any(|p| {
+        module_name == p
+            || module_name.starts_with(&format!("{p}/"))
+            || (p.ends_with('/') && module_name.starts_with(p.as_str()))
+    })
+}
+
 /// Metasploit RPC client — held behind `Arc` in the server.
 pub struct MsfClient {
     config: MetasploitConfig,
@@ -267,16 +279,10 @@ impl MsfClient {
         module_name: &str,
         options: &serde_json::Map<String, Value>,
     ) -> Result<Value, PentestError> {
-        // Check blocked modules
-        for pattern in &self.config.blocked_modules {
-            if module_name == pattern
-                || module_name.starts_with(&format!("{pattern}/"))
-                || pattern.ends_with('/') && module_name.starts_with(pattern.as_str())
-            {
-                return Err(PentestError::MsfRpcError(format!(
-                    "module '{module_name}' is blocked by config"
-                )));
-            }
+        if is_blocked(module_name, &self.config.blocked_modules) {
+            return Err(PentestError::MsfRpcError(format!(
+                "module '{module_name}' is blocked by config"
+            )));
         }
 
         let opts = Value::Object(options.clone());
@@ -471,34 +477,92 @@ mod tests {
 
     #[test]
     fn blocked_module_exact_match() {
-        let config = MetasploitConfig {
-            blocked_modules: vec!["exploit/windows/smb/ms17_010_eternalblue".into()],
-            ..MetasploitConfig::default()
-        };
-        let _client = MsfClient::new(&config);
-        // We can't call execute_module without a running msfrpcd,
-        // but we can verify the matching logic directly
-        let pattern = &config.blocked_modules[0];
-        let module = "exploit/windows/smb/ms17_010_eternalblue";
-        assert!(module == pattern || module.starts_with(&format!("{pattern}/")));
+        assert!(is_blocked(
+            "exploit/windows/smb/ms17_010_eternalblue",
+            &["exploit/windows/smb/ms17_010_eternalblue".to_string()],
+        ));
+    }
+
+    #[test]
+    fn blocked_module_child_match() {
+        // An exact-module pattern also blocks its child modules.
+        assert!(is_blocked(
+            "exploit/windows/smb/ms17_010_eternalblue",
+            &["exploit/windows/smb".to_string()],
+        ));
     }
 
     #[test]
     fn blocked_module_prefix_match() {
-        let pattern = "exploit/windows/";
-        let module = "exploit/windows/smb/ms17_010_eternalblue";
-        assert!(pattern.ends_with('/') && module.starts_with(pattern));
+        // A trailing-slash pattern blocks everything beneath it.
+        assert!(is_blocked(
+            "exploit/windows/smb/ms17_010_eternalblue",
+            &["exploit/windows/".to_string()],
+        ));
     }
 
     #[test]
     fn blocked_module_no_false_substring_match() {
-        let pattern = "windows";
-        let module = "exploit/linux/samba/windows_compat_check";
-        // Old behavior: module.contains(pattern) would match (WRONG)
-        // New behavior: should NOT match
-        let matches = module == pattern
-            || module.starts_with(&format!("{pattern}/"))
-            || (pattern.ends_with('/') && module.starts_with(pattern));
-        assert!(!matches);
+        // A bare word must not match as a substring (the old contains() bug).
+        assert!(!is_blocked(
+            "exploit/linux/samba/windows_compat_check",
+            &["windows".to_string()],
+        ));
+    }
+
+    #[test]
+    fn blocked_module_no_false_prefix_without_slash() {
+        // "exploit/foo" blocks itself and its children, but NOT "exploit/foobar".
+        let patterns = ["exploit/foo".to_string()];
+        assert!(is_blocked("exploit/foo", &patterns));
+        assert!(is_blocked("exploit/foo/bar", &patterns));
+        assert!(!is_blocked("exploit/foobar", &patterns));
+    }
+
+    // --- rmpv_to_json (msfrpcd MessagePack → JSON decode) ---
+
+    #[test]
+    fn rmpv_binary_map_keys_become_string_keys() {
+        // msfrpcd encodes map keys as MessagePack *binary*, not string — the whole
+        // reason rmpv_to_json exists. A binary key must decode to a JSON string key.
+        let v = rmpv::Value::Map(vec![(
+            rmpv::Value::Binary(b"token".to_vec()),
+            rmpv::Value::from("abc123"),
+        )]);
+        let json = rmpv_to_json(v);
+        assert_eq!(json.get("token").and_then(|x| x.as_str()), Some("abc123"));
+    }
+
+    #[test]
+    fn rmpv_scalars_convert() {
+        assert!(rmpv_to_json(rmpv::Value::Nil).is_null());
+        assert_eq!(
+            rmpv_to_json(rmpv::Value::from(true)),
+            serde_json::json!(true)
+        );
+        assert_eq!(
+            rmpv_to_json(rmpv::Value::from(42i64)),
+            serde_json::json!(42)
+        );
+        assert_eq!(
+            rmpv_to_json(rmpv::Value::from("hi")),
+            serde_json::json!("hi")
+        );
+        // A binary *scalar* is interpreted as a lossy UTF-8 string.
+        assert_eq!(
+            rmpv_to_json(rmpv::Value::Binary(b"raw".to_vec())),
+            serde_json::json!("raw")
+        );
+    }
+
+    #[test]
+    fn rmpv_nested_array_and_map() {
+        let v = rmpv::Value::Array(vec![
+            rmpv::Value::from(1i64),
+            rmpv::Value::Map(vec![(rmpv::Value::from("k"), rmpv::Value::from(false))]),
+        ]);
+        let json = rmpv_to_json(v);
+        assert_eq!(json[0], serde_json::json!(1));
+        assert_eq!(json[1]["k"], serde_json::json!(false));
     }
 }

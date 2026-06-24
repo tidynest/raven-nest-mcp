@@ -595,4 +595,88 @@ mod tests {
         assert!(result.contains("--- truncated"));
         // No panic = success for boundary safety
     }
+
+    // --- validate_target: property / fuzz (the injection invariant) ---
+
+    /// Core security invariant: any *non-URL* target `validate_target` accepts must
+    /// contain no shell metacharacter, no whitespace, and must not begin with '-'
+    /// (CLI-flag injection). Generated combinatorially over a token pool mixing safe
+    /// and dangerous fragments — deterministic and reproducible, no proptest dep.
+    #[test]
+    fn property_accepted_non_url_targets_are_injection_safe() {
+        const BANNED: &[char] = &[
+            ';', '|', '&', '$', '`', '(', ')', '{', '}', '<', '>', '!', '\n',
+        ];
+        // No "http(s)://" token, so every candidate exercises the non-URL path
+        // (where the full metacharacter ban applies).
+        const POOL: &[&str] = &[
+            "a", "9", "z", "10", "255", ".", "-", "x9", "host", ";", "|", "&", "$", "`", "(", ")",
+            "{", "}", "<", ">", "!", "\n", " ", "\t", "/", "=", "@",
+        ];
+        let mut accepted = 0u32;
+        for &x in POOL {
+            for &y in POOL {
+                for &z in POOL {
+                    let s = format!("{x}{y}{z}");
+                    if validate_target(&s).is_ok() {
+                        accepted += 1;
+                        assert!(
+                            !s.chars().any(|c| BANNED.contains(&c)),
+                            "accepted target with shell metacharacter: {s:?}"
+                        );
+                        assert!(
+                            !s.chars().any(char::is_whitespace),
+                            "accepted non-URL target with whitespace: {s:?}"
+                        );
+                        assert!(
+                            !s.starts_with('-'),
+                            "accepted target starting with '-' (flag injection): {s:?}"
+                        );
+                    }
+                }
+            }
+        }
+        // Guard against a vacuously-green test: the pool must reach the accept path.
+        assert!(accepted > 0, "generator never produced an accepted target");
+    }
+
+    /// Leading-dash targets must always be rejected — else a target like
+    /// `-oN/tmp/evil` is parsed by the tool as a flag, not a host. (This negative
+    /// case previously had no explicit coverage.)
+    #[test]
+    fn target_rejects_leading_dash_flag_injection() {
+        for t in [
+            "-oN/tmp/evil",
+            "--script=http-evil",
+            "-Pn",
+            "-h",
+            "-",
+            "--",
+            "-host.example.com",
+            "-1.2.3.4",
+        ] {
+            assert!(
+                validate_target(t).is_err(),
+                "must reject flag-like target: {t}"
+            );
+        }
+    }
+
+    /// Whitespace, control bytes, and non-ASCII never pass the (non-URL) gate.
+    #[test]
+    fn target_rejects_whitespace_control_and_non_ascii() {
+        for t in [
+            "ex ample.com",
+            "tab\there",
+            "null\0byte",
+            "bell\u{7}",
+            "café.com",
+            "\u{202e}rtl",
+            "host\r\n",
+        ] {
+            assert!(validate_target(t).is_err(), "must reject: {t:?}");
+        }
+        // Over the 253-char DNS length limit.
+        assert!(validate_target(&"a".repeat(300)).is_err());
+    }
 }
