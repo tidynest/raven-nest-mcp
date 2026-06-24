@@ -435,9 +435,10 @@ binary on `PATH` (or set `[safety.tool_paths].nxc`).
 
 ## Tools Reference
 
-The server exposes up to 43 tools. Tool count depends on configuration —
-Metasploit tools (6) register only when `metasploit.enabled = true`, and
-`run_netexec` only when `netexec.enabled = true`.
+The server exposes all 43 tools regardless of configuration. The 6 Metasploit
+tools and `run_netexec` are always listed, but they are gated at call time:
+each returns a clear "disabled" error unless enabled (`[metasploit] enabled = true`
+or `[netexec] enabled = true`), rather than being hidden from the tool list.
 
 ### Tool Timing Overview
 
