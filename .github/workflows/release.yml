@@ -1,0 +1,55 @@
+name: Release
+
+# Builds and attaches a prebuilt binary to the GitHub Release when a vX.Y.Z tag
+# is pushed. The tag is expected to come from an already-gated commit (the local
+# pre-push gate + CI run fmt/clippy/test on the branch first), so this workflow
+# only compiles, packages, and uploads — it does not re-run the test suite.
+#
+# ponytail: x86_64-gnu only. A fully-static musl build would need reqwest moved
+# off native-tls (openssl) onto rustls first — add that target once the TLS
+# feature is switched, not before.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the release and upload assets
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Build and publish release binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release --locked --bin raven-server
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          TARGET="x86_64-unknown-linux-gnu"
+          DIST="raven-server-${GITHUB_REF_NAME}-${TARGET}"
+          strip target/release/raven-server
+          mkdir -p "$DIST"
+          cp target/release/raven-server "$DIST"/
+          cp README.md LICENSE CHANGELOG.md config/default.toml "$DIST"/
+          tar -czf "${DIST}.tar.gz" "$DIST"
+          sha256sum "${DIST}.tar.gz" > "${DIST}.tar.gz.sha256"
+
+      - name: Publish to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          gh release view "$TAG" >/dev/null 2>&1 \
+            || gh release create "$TAG" --title "$TAG" --generate-notes
+          gh release upload "$TAG" \
+            raven-server-*.tar.gz raven-server-*.tar.gz.sha256 --clobber
