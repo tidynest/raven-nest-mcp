@@ -5,6 +5,15 @@ on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (pre-1.0:
 minor versions may carry feature additions and refinements).
 
+## [0.2.2] - 2026-06-24
+
+Packaging release — distribution via container image and the MCP registry.
+
+### Added
+- GHCR container image (`ghcr.io/tidynest/raven-nest-mcp`), built on each release
+  from a multi-stage Kali-based Dockerfile that bundles all 22 wrapped tools.
+- `server.json` and CI publishing to the official MCP registry on release.
+
 ## [0.2.1] - 2026-06-24
 
 Maintenance and packaging release — no API or tool changes.
