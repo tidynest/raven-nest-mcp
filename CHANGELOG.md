@@ -5,6 +5,21 @@ on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (pre-1.0:
 minor versions may carry feature additions and refinements).
 
+## [0.2.3] - 2026-06-28
+
+Documentation and packaging refinements.
+
+### Added
+- Documentation and the default config are now shipped inside the container image
+  under `/usr/share/doc/raven-nest-mcp/`.
+- OCI image labels (title, description, documentation, licenses) are attached to
+  the published image and shown on the package page.
+- README "How It Fits Together" section and a cross-link to the companion
+  `raven-nest-client` TypeScript client.
+
+### Changed
+- CI: `actions/checkout` bumped to v5 (Node 24), clearing the Node 20 deprecation.
+
 ## [0.2.2] - 2026-06-24
 
 Packaging release — distribution via container image and the MCP registry.
