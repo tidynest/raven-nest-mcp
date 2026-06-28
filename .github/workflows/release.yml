@@ -76,11 +76,15 @@ jobs:
           tags: |
             type=semver,pattern={{version}}
             type=sha
+          labels: |
+            org.opencontainers.image.documentation=https://github.com/tidynest/raven-nest-mcp/blob/main/docs/USAGE.md
+            org.opencontainers.image.licenses=Apache-2.0
       - uses: docker/build-push-action@v6
         with:
           context: .
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }} # attach OCI labels (title/description/version/revision) to the package
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

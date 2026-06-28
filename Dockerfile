@@ -33,7 +33,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 COPY --from=gobuild /go/bin/katana /go/bin/dalfox /usr/local/bin/
 COPY --from=build /src/target/release/raven-server /usr/local/bin/raven-server
 
+# Ship the docs + default config inside the image so they travel with the package
+# and are readable without the repo, e.g.:
+#   docker run --rm --entrypoint cat ghcr.io/tidynest/raven-nest-mcp:latest \
+#     /usr/share/doc/raven-nest-mcp/USAGE.md
+COPY README.md LICENSE CHANGELOG.md SECURITY.md \
+     docs/USAGE.md docs/METASPLOIT.md docs/LOCAL_AI_INTEGRATION.md docs/DATA_FLOW.md \
+     config/default.toml \
+     /usr/share/doc/raven-nest-mcp/
+
+# Static OCI labels so any build (incl. local `docker build`) is well-described on
+# the package page. CI additionally injects version/revision/created via
+# docker/metadata-action (see release.yml). The mcp-name label is required by the
+# MCP registry's oci ownership check — keep it == server.json `name`.
 LABEL org.opencontainers.image.source="https://github.com/tidynest/raven-nest-mcp" \
+      org.opencontainers.image.title="Raven Nest MCP" \
+      org.opencontainers.image.description="AI-driven penetration testing — 22 security tools + Metasploit behind 43 safety-hardened MCP endpoints." \
+      org.opencontainers.image.documentation="https://github.com/tidynest/raven-nest-mcp/blob/main/docs/USAGE.md" \
+      org.opencontainers.image.licenses="Apache-2.0" \
       io.modelcontextprotocol.server.name="io.github.tidynest/raven-nest-mcp"
 
 ENTRYPOINT ["raven-server"]
