@@ -36,6 +36,28 @@ Raven Nest wraps 22 security tools plus Metasploit Framework behind an MCP inter
 
 ## Quick Start
 
+### Run with Docker (recommended)
+
+The published image bundles `raven-server` **and all 22 wrapped tools** on a Kali
+base, so you don't have to install them yourself. Point your MCP client at it
+(stdio):
+
+```json
+{
+  "mcpServers": {
+    "raven-nest": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "ghcr.io/tidynest/raven-nest-mcp:latest"]
+    }
+  }
+}
+```
+
+`masscan` and `nmap -O` need raw sockets — append `--cap-add=NET_RAW` and
+`--cap-add=NET_ADMIN` to `args` if you use them. The server is also listed on the
+[MCP Registry](https://registry.modelcontextprotocol.io) as
+`io.github.tidynest/raven-nest-mcp`.
+
 ### Prerequisites
 
 - Rust 1.93+ (2024 edition)
