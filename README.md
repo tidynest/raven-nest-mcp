@@ -259,7 +259,7 @@ tests/
 - [docs/LOCAL_AI_INTEGRATION.md](docs/LOCAL_AI_INTEGRATION.md) -- using Raven Nest with local models (Ollama, LM Studio)
 - [docs/METASPLOIT.md](docs/METASPLOIT.md) -- Metasploit Framework integration setup and safety model
 - [docs/DATA_FLOW.md](docs/DATA_FLOW.md) -- data flow and sources of truth: which module owns each piece of state
-- [raven-nest-client](https://github.com/tidynest/raven-nest-client) -- companion TypeScript REPL client (versioned alongside the server)
+- [raven-nest-client](https://github.com/tidynest/raven-nest-client) -- companion TypeScript REPL client (versioned in lockstep with the server)
 - [CHANGELOG.md](CHANGELOG.md) -- release history (current: v0.2.2)
 
 ## License
