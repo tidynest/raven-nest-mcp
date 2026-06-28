@@ -34,6 +34,20 @@ Raven Nest wraps 22 security tools plus Metasploit Framework behind an MCP inter
 | Findings | save\_finding, get\_finding, list\_findings, list\_findings\_by\_scan, delete\_finding, generate\_report |
 | Engagement | set\_engagement, list\_engagements |
 
+## How It Fits Together
+
+Raven Nest is an MCP **server** — it doesn't do anything on its own. An MCP
+**host** launches it over stdio and drives the tools. Pick whichever host suits you:
+
+- **Any MCP host (recommended)** — point Claude Desktop, Cursor, or any MCP client
+  at the Docker image below; the host spawns the server for you.
+- **Companion REPL** — [`raven-nest-client`](https://github.com/tidynest/raven-nest-client)
+  is a TypeScript terminal client (tab-completion, scan/finding/report commands,
+  engagement scoping) for driving Raven Nest by hand. It can launch either a local
+  `raven-server` build or the Docker image.
+
+The server is the same stdio binary in both cases.
+
 ## Quick Start
 
 ### Run with Docker (recommended)
@@ -245,7 +259,8 @@ tests/
 - [docs/LOCAL_AI_INTEGRATION.md](docs/LOCAL_AI_INTEGRATION.md) -- using Raven Nest with local models (Ollama, LM Studio)
 - [docs/METASPLOIT.md](docs/METASPLOIT.md) -- Metasploit Framework integration setup and safety model
 - [docs/DATA_FLOW.md](docs/DATA_FLOW.md) -- data flow and sources of truth: which module owns each piece of state
-- [CHANGELOG.md](CHANGELOG.md) -- release history (current: v0.2.0)
+- [raven-nest-client](https://github.com/tidynest/raven-nest-client) -- companion TypeScript REPL client (versioned alongside the server)
+- [CHANGELOG.md](CHANGELOG.md) -- release history (current: v0.2.2)
 
 ## License
 
