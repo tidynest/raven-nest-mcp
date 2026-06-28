@@ -2,6 +2,12 @@
 
 ## Prerequisites
 
+### Run with Docker (skips host-tool install)
+
+The published image bundles `raven-server` and all 22 tools — see the
+[README Quick Start](../README.md#run-with-docker-recommended). The host-tool
+setup below is only needed for a from-source install.
+
 ### Build
 
 ```bash
