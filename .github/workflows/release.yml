@@ -77,8 +77,11 @@ jobs:
             type=semver,pattern={{version}}
             type=sha
           labels: |
+            org.opencontainers.image.title=Raven Nest MCP
             org.opencontainers.image.documentation=https://github.com/tidynest/raven-nest-mcp/blob/main/docs/USAGE.md
             org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.vendor=tidynest
+            org.opencontainers.image.authors=tidynest
       - uses: docker/build-push-action@v6
         with:
           context: .
