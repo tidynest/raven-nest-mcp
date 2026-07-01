@@ -13,7 +13,9 @@ use tracing_subscriber::{self, EnvFilter};
 async fn main() -> Result<()> {
     // Logs go to stderr so they don't interfere with the stdio MCP transport
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::from_default_env().add_directive(tracing::Level::DEBUG.into()))
+        .with_env_filter(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
+        )
         .with_writer(std::io::stderr)
         .with_ansi(false)
         .init();
