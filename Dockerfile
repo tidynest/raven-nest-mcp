@@ -54,7 +54,7 @@ COPY README.md LICENSE CHANGELOG.md SECURITY.md \
 # MCP registry's oci ownership check - keep it == server.json `name`.
 LABEL org.opencontainers.image.source="https://github.com/tidynest/raven-nest-mcp" \
       org.opencontainers.image.title="Raven Nest MCP" \
-      org.opencontainers.image.description="AI-driven penetration testing - 22 security tools + Metasploit behind 43 safety-hardened MCP endpoints." \
+      org.opencontainers.image.description="AI-driven penetration testing - 22 bundled security tools behind 43 safety-hardened MCP endpoints (Metasploit tools require a separate msfrpcd)." \
       org.opencontainers.image.documentation="https://github.com/tidynest/raven-nest-mcp/blob/main/docs/USAGE.md" \
       org.opencontainers.image.licenses="Apache-2.0" \
       io.modelcontextprotocol.server.name="io.github.tidynest/raven-nest-mcp"
