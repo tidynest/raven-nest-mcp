@@ -2,7 +2,7 @@
 //!
 //! These handlers bridge the MCP interface to [`FindingStore`] for persistence
 //! and [`ReportFormat`](raven_report::report::ReportFormat) for report output
-//! (markdown, JSON, SARIF, or HTML). The store is protected by `RwLock` — reads
+//! (markdown, JSON, SARIF, or HTML). The store is protected by `RwLock` - reads
 //! (list, get) take a shared lock, writes (save, delete) take an exclusive lock.
 //!
 //! Reports are saved to disk in the active engagement's directory as
@@ -84,7 +84,7 @@ fn parse_severity(s: &str) -> Result<Severity, rmcp::ErrorData> {
         "low" => Ok(Severity::Low),
         "info" => Ok(Severity::Info),
         other => Err(rmcp::ErrorData::invalid_params(
-            format!("invalid severity '{other}' — must be: critical, high, medium, low, info"),
+            format!("invalid severity '{other}' - must be: critical, high, medium, low, info"),
             None,
         )),
     }
@@ -120,7 +120,7 @@ pub fn save_finding(
         // with launched scan IDs. source stays Manual (the Finding::new default).
         uuid::Uuid::parse_str(&scan_id).map_err(|_| {
             rmcp::ErrorData::invalid_params(
-                format!("invalid scan_id '{scan_id}' — must be a UUID"),
+                format!("invalid scan_id '{scan_id}' - must be a UUID"),
                 None,
             )
         })?;
@@ -198,7 +198,7 @@ pub fn list_findings_by_scan(
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     uuid::Uuid::parse_str(&req.scan_id).map_err(|_| {
         rmcp::ErrorData::invalid_params(
-            format!("invalid scan_id '{}' — must be a UUID", req.scan_id),
+            format!("invalid scan_id '{}' - must be a UUID", req.scan_id),
             None,
         )
     })?;
@@ -262,7 +262,7 @@ pub fn generate_report(
         None => ReportFormat::default(),
         Some(s) => ReportFormat::parse(s).ok_or_else(|| {
             rmcp::ErrorData::invalid_params(
-                format!("invalid format '{s}' — must be: markdown, json, sarif, html"),
+                format!("invalid format '{s}' - must be: markdown, json, sarif, html"),
                 None,
             )
         })?,

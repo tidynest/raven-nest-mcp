@@ -1,4 +1,4 @@
-//! Tool handler modules — one per external pentesting tool.
+//! Tool handler modules - one per external pentesting tool.
 //!
 //! Each module exports a `run()` async function that:
 //! 1. Validates input via [`safety::validate_target`](raven_core::safety::validate_target).

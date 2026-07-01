@@ -9,9 +9,9 @@ use thiserror::Error;
 /// Top-level error for all pentesting operations.
 ///
 /// Each variant maps to a distinct failure mode:
-/// - Safety violations (`ToolNotAllowed`, `InvalidTarget`) — caller error.
-/// - Execution failures (`CommandFailed`, `CommandTimeout`) — tool-side error.
-/// - Startup issues (`ConfigError`, `Io`) — environment error.
+/// - Safety violations (`ToolNotAllowed`, `InvalidTarget`) - caller error.
+/// - Execution failures (`CommandFailed`, `CommandTimeout`) - tool-side error.
+/// - Startup issues (`ConfigError`, `Io`) - environment error.
 #[derive(Debug, Error)]
 pub enum PentestError {
     /// The requested tool is not in [`SafetyConfig::allowed_tools`](crate::config::SafetyConfig::allowed_tools).

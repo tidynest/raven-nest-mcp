@@ -1,4 +1,4 @@
-//! ICMP ping handler — verifies target connectivity and measures latency.
+//! ICMP ping handler - verifies target connectivity and measures latency.
 //!
 //! This is typically the first tool invoked in a pentest session. Unlike other
 //! tools, ping bypasses [`executor::run`](raven_core::executor::run) and

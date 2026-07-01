@@ -3,11 +3,11 @@
 //! This module is the single point through which all tool invocations pass.
 //! It enforces the safety pipeline:
 //!
-//! 1. **Allowlist check** — via [`safety::check_allowlist`](crate::safety::check_allowlist).
-//! 2. **Timeout containment** — per-tool or global, enforced with `tokio::time::timeout`.
-//! 3. **Proxy injection** — sets `HTTP_PROXY`/`HTTPS_PROXY` env vars from [`NetworkConfig`](crate::config::NetworkConfig).
-//! 4. **Output truncation** — via [`safety::truncate_output`](crate::safety::truncate_output).
-//! 5. **Quality assessment** — detects empty results, rate-limiting, and missing
+//! 1. **Allowlist check** - via [`safety::check_allowlist`](crate::safety::check_allowlist).
+//! 2. **Timeout containment** - per-tool or global, enforced with `tokio::time::timeout`.
+//! 3. **Proxy injection** - sets `HTTP_PROXY`/`HTTPS_PROXY` env vars from [`NetworkConfig`](crate::config::NetworkConfig).
+//! 4. **Output truncation** - via [`safety::truncate_output`](crate::safety::truncate_output).
+//! 5. **Quality assessment** - detects empty results, rate-limiting, and missing
 //!    completion indicators so the MCP client can warn the user.
 //!
 //! Tool handlers in `raven-server::tools` call [`run`] and receive a
@@ -28,7 +28,7 @@ use tokio::sync::Semaphore;
 static EXEC_SEM: OnceLock<Semaphore> = OnceLock::new();
 
 /// Timestamp of the most recent tool launch, for the proactive inter-tool gap
-/// (`min_exec_gap_ms`). ponytail: one global gap — simple and enough for the
+/// (`min_exec_gap_ms`). ponytail: one global gap - simple and enough for the
 /// usual single-target engagement. A per-host token bucket (letting independent
 /// targets run without waiting on each other) is the upgrade if multi-target
 /// throughput ever matters.
@@ -38,7 +38,7 @@ static LAST_LAUNCH: Mutex<Option<Instant>> = Mutex::new(None);
 ///
 /// The next allowed launch time is reserved under the lock (so concurrent
 /// callers queue in order rather than all waking at once), then the lock is
-/// released before sleeping — it is never held across the `.await`.
+/// released before sleeping - it is never held across the `.await`.
 async fn enforce_launch_gap(gap: Duration) {
     if gap.is_zero() {
         return;
@@ -63,7 +63,7 @@ async fn enforce_launch_gap(gap: Duration) {
 pub enum OutputQuality {
     /// Tool ran to completion and output looks healthy.
     Complete,
-    /// Output below [`MIN_OUTPUT_LEN`] — likely a silent failure.
+    /// Output below [`MIN_OUTPUT_LEN`] - likely a silent failure.
     Empty,
     /// Output present but missing expected completion markers for the tool.
     Partial,
@@ -117,7 +117,7 @@ fn assess_quality(tool: &str, stdout: &str, stderr: &str) -> (OutputQuality, Opt
         return (
             OutputQuality::Empty,
             Some(format!(
-                "{tool} returned minimal output ({} chars) — scan may have failed silently",
+                "{tool} returned minimal output ({} chars) - scan may have failed silently",
                 stdout.len()
             )),
         );
@@ -126,7 +126,7 @@ fn assess_quality(tool: &str, stdout: &str, stderr: &str) -> (OutputQuality, Opt
     if detect_rate_limit(stdout, stderr) {
         return (
             OutputQuality::RateLimited,
-            Some("target may be rate-limiting requests — consider increasing scan delays or reducing aggressiveness".into()),
+            Some("target may be rate-limiting requests - consider increasing scan delays or reducing aggressiveness".into()),
         );
     }
 
@@ -167,7 +167,7 @@ fn assess_quality(tool: &str, stdout: &str, stderr: &str) -> (OutputQuality, Opt
         return (
             OutputQuality::Partial,
             Some(format!(
-                "{tool} output missing expected completion indicators — results may be incomplete"
+                "{tool} output missing expected completion indicators - results may be incomplete"
             )),
         );
     }
@@ -210,7 +210,7 @@ pub async fn run_unmetered(
     run_inner(config, tool, args, timeout).await
 }
 
-/// The actual execution pipeline — the **only** function that spawns subprocesses:
+/// The actual execution pipeline - the **only** function that spawns subprocesses:
 /// 1. Allowlist gate
 /// 2. Timeout resolution (explicit → per-tool config → global default)
 /// 3. Binary path resolution (custom path → `$PATH`)

@@ -3,10 +3,10 @@ name: Release
 # Builds and attaches a prebuilt binary to the GitHub Release when a vX.Y.Z tag
 # is pushed. The tag is expected to come from an already-gated commit (the local
 # pre-push gate + CI run fmt/clippy/test on the branch first), so this workflow
-# only compiles, packages, and uploads — it does not re-run the test suite.
+# only compiles, packages, and uploads - it does not re-run the test suite.
 #
 # ponytail: x86_64-gnu only. A fully-static musl build would need reqwest moved
-# off native-tls (openssl) onto rustls first — add that target once the TLS
+# off native-tls (openssl) onto rustls first - add that target once the TLS
 # feature is switched, not before.
 
 on:

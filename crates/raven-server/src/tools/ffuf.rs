@@ -18,7 +18,7 @@ const DEFAULT_WORDLIST: &str = "/usr/share/seclists/Discovery/Web-Content/raft-m
 
 /// Default HTTP status codes to match. Pinned so results don't depend on ffuf's
 /// version-specific built-in default (newer builds narrowed to 2XX, silently
-/// hiding redirects and 401/403 — exactly the protected/interesting resources a
+/// hiding redirects and 401/403 - exactly the protected/interesting resources a
 /// pentest wants). Callers can override, including `"all"`.
 const DEFAULT_MATCH_CODES: &str = "200,204,301,302,307,401,403,405,500";
 
@@ -63,7 +63,7 @@ pub async fn run(
         super::validate_file_path(wordlist, &config.execution.output_dir)?;
     }
 
-    // The FUZZ keyword is required — it's the substitution point for wordlist entries
+    // The FUZZ keyword is required - it's the substitution point for wordlist entries
     if !req.url.contains("FUZZ") {
         return Err(rmcp::ErrorData::invalid_params(
             "URL must contain the FUZZ keyword (e.g. http://example.com/FUZZ)",

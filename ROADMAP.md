@@ -7,7 +7,7 @@ Ordered by impact. Unchecked = not started.
 
 ### High Priority
 
-- [x] **Auto-finding extraction from scan output** — *shipped (nuclei only; opt-in via `[safety] auto_save_findings`).*
+- [x] **Auto-finding extraction from scan output** - *shipped (nuclei only; opt-in via `[safety] auto_save_findings`).*
   Extend existing tool parsers to optionally emit structured findings alongside text. Nuclei already tags severity (`[info]`/`[critical]`), nikto flags warnings, nmap identifies vulnerable services. Connect parsers to the finding store with a confidence threshold to filter noise.
   *Affected crates:* `raven-core` (parsers), `raven-report` (store)
 
@@ -19,14 +19,14 @@ Ordered by impact. Unchecked = not started.
   Optional `scan_id: Option<Uuid>` on `SaveFindingRequest`. Link findings to their source scan. Enables "show all findings from scan X" and better report traceability.
   *Affected crates:* `raven-report` (finding model, store)
 
-- [x] **Engagement / project management** — *shipped in lean form: filesystem-scoped engagements via `set_engagement` (creates on first use) + `list_engagements`; each scopes its own findings + reports subdir. No separate timeline/client-info metadata.*
+- [x] **Engagement / project management** - *shipped in lean form: filesystem-scoped engagements via `set_engagement` (creates on first use) + `list_engagements`; each scopes its own findings + reports subdir. No separate timeline/client-info metadata.*
   Named engagements with scope, timeline, client info, notes. Each engagement scopes its own output directory, findings, and reports. New tools: `create_engagement`, `switch_engagement`, `list_engagements`.
   *Affected crates:* `raven-core` (new manager), `raven-report` (scoped store)
 
 ### Medium Priority
 
 - [x] **Additional report formats (SARIF, JSON, HTML)**
-  SARIF for CI/CD and vulnerability management platforms. JSON for programmatic use. HTML for standalone distribution. Finding data model is already structured — mostly serialisation.
+  SARIF for CI/CD and vulnerability management platforms. JSON for programmatic use. HTML for standalone distribution. Finding data model is already structured - mostly serialisation.
   *Affected crates:* `raven-report`
 
 - [x] **Finding deduplication**
@@ -75,7 +75,7 @@ Ordered by impact. Unchecked = not started.
   Push findings to Defect Dojo, Jira, GitHub/GitLab Issues via their APIs.
   *Affected crates:* new crate or `raven-report`
 
-- [ ] **Rate limiting per target** — *partial: a global proactive cooldown (`[execution] min_exec_gap_ms`) now spaces consecutive tool launches; a true per-host token bucket (independent targets in parallel) is still open.*
+- [ ] **Rate limiting per target** - *partial: a global proactive cooldown (`[execution] min_exec_gap_ms`) now spaces consecutive tool launches; a true per-host token bucket (independent targets in parallel) is still open.*
   Cap requests/second to individual targets for HTTP-based tools. masscan also has its own packet-rate cap.
   *Affected crates:* `raven-core`
 
@@ -109,7 +109,7 @@ Ideas that may become relevant as the project matures.
   Multiple operators sharing a findings store. Move from file-per-finding to a shared database (SQLite or Postgres). Conflict resolution for concurrent edits.
   *Affected crates:* `raven-report` (storage backend)
 
-- [x] **Engagement timeline / audit log** — *partially shipped: append-only `{output_dir}/audit.log` records every tool invocation with redacted args + timestamp. Per-finding/report actions not yet logged.*
+- [x] **Engagement timeline / audit log** - *partially shipped: append-only `{output_dir}/audit.log` records every tool invocation with redacted args + timestamp. Per-finding/report actions not yet logged.*
   Record every action: scans launched, findings saved, reports generated, with timestamps. Exportable for evidence of methodology in compliance audits.
   *Affected crates:* `raven-core` (new audit module)
 

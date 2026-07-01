@@ -1,14 +1,14 @@
 //! Secret scanning via gitleaks.
 //!
 //! Scans a directory's working tree (`gitleaks dir`) or a repo's full commit
-//! history (`gitleaks git`) for committed secrets — API keys, tokens, private
+//! history (`gitleaks git`) for committed secrets - API keys, tokens, private
 //! keys. The scan path is confined to the configured output directory (plus
 //! `/usr/share`, `/usr/lib`) by [`validate_file_path`](super::validate_file_path),
 //! so clone target repos into the engagement workspace before scanning.
 //!
 //! Secret values are redacted by default and never printed by the parser
 //! (location + rule id only); set `show_secrets` to reveal them in the raw
-//! report. Slow tool — uses a [`ProgressTicker`](crate::progress::ProgressTicker).
+//! report. Slow tool - uses a [`ProgressTicker`](crate::progress::ProgressTicker).
 //!
 //! ponytail: path confined to output_dir; if operators need arbitrary scan
 //! roots, add a config path-allowlist. Report is read from `/dev/stdout`
@@ -124,7 +124,7 @@ fn parse_gitleaks(json: &str) -> Option<String> {
                 &f.commit[..f.commit.len().min(8)]
             )
         };
-        out.push_str(&format!("- [{}] {} — {}\n", f.rule_id, loc, f.description));
+        out.push_str(&format!("- [{}] {} - {}\n", f.rule_id, loc, f.description));
     }
     Some(out)
 }

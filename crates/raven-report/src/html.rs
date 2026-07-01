@@ -1,13 +1,13 @@
 //! Self-contained HTML report generator for pentest findings.
 //!
-//! Produces a single file with an inlined `<style>` block — no external assets,
+//! Produces a single file with an inlined `<style>` block - no external assets,
 //! safe to email or open offline. The palette is a deliberately non-GitHub dark
 //! theme (deep slate background, colour-coded severity badges).
 //!
 //! # Security
 //!
 //! Every user-supplied field is passed through [`html_escape`] before it reaches
-//! the document — including evidence, even though it sits inside `<pre><code>`,
+//! the document - including evidence, even though it sits inside `<pre><code>`,
 //! because a `</code></pre><script>` payload would otherwise break out of the
 //! code block and inject script.
 //!
@@ -275,7 +275,7 @@ mod tests {
 
         // Escaped form present
         assert!(out.contains("&lt;script&gt;"));
-        // Raw payloads absent — neither title nor evidence breaks out
+        // Raw payloads absent - neither title nor evidence breaks out
         assert!(!out.contains("<script>alert(1)</script>"));
         assert!(!out.contains("<script>alert(2)</script>"));
         assert!(!out.contains("</code></pre><script>"));

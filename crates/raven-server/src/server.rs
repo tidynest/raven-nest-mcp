@@ -1,4 +1,4 @@
-//! MCP server implementation — tool registration and request routing.
+//! MCP server implementation - tool registration and request routing.
 //!
 //! [`RavenServer`] is the central struct that:
 //! - Holds shared state (`Arc<RavenConfig>`, `ScanManager`, `FindingStore`, cookie jar).
@@ -56,7 +56,7 @@ use rmcp::{
 
 /// Central MCP server that owns all shared state and routes tool calls.
 ///
-/// Cloned per-connection by rmcp — all inner state is behind `Arc`/`RwLock`.
+/// Cloned per-connection by rmcp - all inner state is behind `Arc`/`RwLock`.
 #[derive(Clone)]
 pub struct RavenServer {
     config: std::sync::Arc<raven_core::config::RavenConfig>,
@@ -64,11 +64,11 @@ pub struct RavenServer {
     tool_router: ToolRouter<Self>,
     pub scan_manager: raven_core::scan_manager::ScanManager,
     finding_store: std::sync::Arc<std::sync::RwLock<raven_report::store::FindingStore>>,
-    /// Shared cookie jar for `http_request` — persists cookies across requests within a session.
+    /// Shared cookie jar for `http_request` - persists cookies across requests within a session.
     cookie_jar: std::sync::Arc<reqwest::cookie::Jar>,
-    /// Session-aware output budget tracker — dynamically adjusts per-tool caps.
+    /// Session-aware output budget tracker - dynamically adjusts per-tool caps.
     budget: std::sync::Arc<SessionBudget>,
-    /// Metasploit RPC client — `None` when MSF is disabled in config.
+    /// Metasploit RPC client - `None` when MSF is disabled in config.
     msf_client: Option<std::sync::Arc<raven_core::msf_client::MsfClient>>,
 }
 
@@ -79,8 +79,8 @@ impl RavenServer {
     /// Creates the output directory, findings store, scan manager, and budget tracker.
     pub fn new(config: raven_core::config::RavenConfig) -> Self {
         let config = std::sync::Arc::new(config);
-        // Install the engagement scope process-wide so safety::validate_target —
-        // the chokepoint every tool and the scan launcher share — enforces it.
+        // Install the engagement scope process-wide so safety::validate_target -
+        // the chokepoint every tool and the scan launcher share - enforces it.
         raven_core::safety::init_scope(config.scope.clone());
         let scan_manager =
             raven_core::scan_manager::ScanManager::new(std::sync::Arc::clone(&config));
@@ -161,8 +161,8 @@ impl RavenServer {
         let cap = self.budget.allocate();
 
         // Strip ANSI escape codes and truncate text content.
-        // Centralised here so every tool response — parser output, error paths,
-        // raw fallback, background scan results — is clean.
+        // Centralised here so every tool response - parser output, error paths,
+        // raw fallback, background scan results - is clean.
         let mut total_chars = 0usize;
         for content in &mut call_result.content {
             if let RawContent::Text(ref mut tc) = content.raw {
@@ -984,4 +984,4 @@ Raven Nest - pentesting toolkit.
 Watch the [budget: ...] line in responses. When mode switches to compact/minimal, prioritize saving findings over running more scans.
 
 ## Authenticated Scanning
-http_request cookie jar persists within a session. Subprocess tools (sqlmap, nikto, etc.) do NOT share it — pass cookies via each tool's `cookie` parameter.";
+http_request cookie jar persists within a session. Subprocess tools (sqlmap, nikto, etc.) do NOT share it - pass cookies via each tool's `cookie` parameter.";

@@ -27,14 +27,14 @@ expected_tool_calls = 10
 
 # Auto-save findings extracted from scan output (nmap, nuclei, nikto, dalfox,
 # sqlmap, testssl, gitleaks, trufflehog).
-# OFF by default — opt in. Qualifying findings are deduplicated and stored
+# OFF by default - opt in. Qualifying findings are deduplicated and stored
 # with source = AutoExtracted. min_severity is one of info|low|medium|high|critical.
 # auto_save_findings = false
 # auto_save_min_severity = "medium"
 # auto_save_max_per_scan = 25
 
 # Tools invoked via sudo for privilege escalation.
-# Requires passwordless sudo — see /etc/sudoers.d/raven-nest
+# Requires passwordless sudo - see /etc/sudoers.d/raven-nest
 sudo_tools = ["masscan", "nmap"]
 
 # Custom binary paths for tools not resolvable via $PATH.
@@ -42,7 +42,7 @@ sudo_tools = ["masscan", "nmap"]
 [safety.tool_paths]
 # wpscan = "/path/to/wpscan"
 
-# Engagement scope — an authorization allowlist. DISABLED by default, so any
+# Engagement scope - an authorization allowlist. DISABLED by default, so any
 # syntactically valid target may be scanned. When enabled=true, every target must
 # match an allowed_* entry AND must not match a denied_* entry (deny wins).
 # Loopback (localhost / 127.0.0.0/8 / ::1) is allowed regardless unless
@@ -83,7 +83,7 @@ output_dir = "/tmp/raven-nest"
 # https_proxy = "http://127.0.0.1:8080"
 # no_proxy = ["127.0.0.1", "localhost"]
 
-# Metasploit Framework RPC integration — disabled by default.
+# Metasploit Framework RPC integration - disabled by default.
 # Operator must start msfrpcd separately:
 #   msfrpcd -P <password> -a 127.0.0.1 -p 55553 -n -f
 # [metasploit]
@@ -98,11 +98,11 @@ output_dir = "/tmp/raven-nest"
 # require_confirmation = true
 # blocked_modules = []
 
-# NetExec — credentialed network execution (SMB/WinRM/SSH/...). DISABLED by
+# NetExec - credentialed network execution (SMB/WinRM/SSH/...). DISABLED by
 # default and intrusive: the run_netexec tool refuses unless enabled = true.
 # Even when enabled it permits only read-only enumeration actions (auth, shares,
 # users, groups, loggedon, sessions, disks, pass-pol) against a SINGLE host with
-# a SINGLE scalar credential — no command/module execution, no lists/spray.
+# a SINGLE scalar credential - no command/module execution, no lists/spray.
 # Requires the `nxc` binary on PATH (or set [safety.tool_paths].nxc).
 # [netexec]
 # enabled = true

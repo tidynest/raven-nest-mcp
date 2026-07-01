@@ -1,11 +1,11 @@
-//! Engagement scoping — switch the active findings store between per-engagement
+//! Engagement scoping - switch the active findings store between per-engagement
 //! subdirectories so findings and reports for different clients/targets stay
 //! separated.
 //!
 //! An engagement is just a namespace: `{output_dir}/engagements/{name}/`. Its
 //! `findings/` subdirectory backs a [`FindingStore`]; switching swaps the
 //! server's active store to point there, and report generation follows via
-//! [`FindingStore::base_dir`]. The filesystem is the source of truth — there is
+//! [`FindingStore::base_dir`]. The filesystem is the source of truth - there is
 //! no in-memory engagement registry, and the "active" engagement is derived from
 //! the store's current path rather than tracked separately.
 

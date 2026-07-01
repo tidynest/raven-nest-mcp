@@ -42,7 +42,7 @@ fn rmpv_to_json(v: rmpv::Value) -> Value {
             .unwrap_or(Value::Null),
         rmpv::Value::String(s) => Value::String(s.into_str().unwrap_or_default()),
         rmpv::Value::Binary(b) => {
-            // Binary data — try to interpret as UTF-8 string
+            // Binary data - try to interpret as UTF-8 string
             Value::String(String::from_utf8_lossy(&b).into_owned())
         }
         rmpv::Value::Array(arr) => Value::Array(arr.into_iter().map(rmpv_to_json).collect()),
@@ -76,7 +76,7 @@ fn is_blocked(module_name: &str, patterns: &[String]) -> bool {
     })
 }
 
-/// Metasploit RPC client — held behind `Arc` in the server.
+/// Metasploit RPC client - held behind `Arc` in the server.
 pub struct MsfClient {
     config: MetasploitConfig,
     http: reqwest::Client,
@@ -132,7 +132,7 @@ impl MsfClient {
             .await
             .map_err(|e| {
                 PentestError::MsfNotRunning(format!(
-                    "{e} — start msfrpcd with: msfrpcd -P <redacted> -a {} -p {} -n -f",
+                    "{e} - start msfrpcd with: msfrpcd -P <redacted> -a {} -p {} -n -f",
                     self.config.host, self.config.port
                 ))
             })?;
@@ -221,7 +221,7 @@ impl MsfClient {
             .auth_call("module.search", &[Value::String(query.into())])
             .await?;
 
-        // The result is an array of module hashes — truncate to limit
+        // The result is an array of module hashes - truncate to limit
         if let Value::Array(mut modules) = result {
             modules.truncate(limit);
             Ok(Value::Array(modules))
@@ -468,7 +468,7 @@ mod tests {
         // would require an actual connection attempt, so we verify
         // the redaction pattern is correct by checking the format string
         let error_msg = format!(
-            "connection refused — start msfrpcd with: msfrpcd -P <redacted> -a {} -p {} -n -f",
+            "connection refused - start msfrpcd with: msfrpcd -P <redacted> -a {} -p {} -n -f",
             config.host, config.port
         );
         assert!(!error_msg.contains("super_secret_123"));
@@ -523,7 +523,7 @@ mod tests {
 
     #[test]
     fn rmpv_binary_map_keys_become_string_keys() {
-        // msfrpcd encodes map keys as MessagePack *binary*, not string — the whole
+        // msfrpcd encodes map keys as MessagePack *binary*, not string - the whole
         // reason rmpv_to_json exists. A binary key must decode to a JSON string key.
         let v = rmpv::Value::Map(vec![(
             rmpv::Value::Binary(b"token".to_vec()),

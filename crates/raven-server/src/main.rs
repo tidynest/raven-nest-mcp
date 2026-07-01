@@ -1,6 +1,6 @@
 //! Entry point for the Raven Nest MCP server.
 //!
-//! Initialises the tracing subscriber (logs to stderr, no ANSI — safe for
+//! Initialises the tracing subscriber (logs to stderr, no ANSI - safe for
 //! stdio-based MCP transport), loads config via the fallback chain in
 //! [`RavenConfig::load_with_fallback`](raven_core::config::RavenConfig::load_with_fallback),
 //! and starts the MCP server over stdio.

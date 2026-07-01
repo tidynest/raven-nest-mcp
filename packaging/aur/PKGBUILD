@@ -2,7 +2,7 @@
 #
 # Source build of the Raven Nest MCP server. The server itself only needs glibc,
 # gcc-libs, and openssl; every scanner it drives is an *optional* runtime
-# dependency (see optdepends) — install only the ones you use. Many of those
+# dependency (see optdepends) - install only the ones you use. Many of those
 # live in the BlackArch or AUR repositories rather than the official ones.
 pkgname=raven-nest-mcp
 pkgver=0.2.0
@@ -57,7 +57,7 @@ build() {
 package() {
   cd "$pkgname-$pkgver"
   install -Dm755 "target/release/raven-server" "$pkgdir/usr/bin/raven-server"
-  # Reference config — copy to your own config dir or point RAVEN_CONFIG at it.
+  # Reference config - copy to your own config dir or point RAVEN_CONFIG at it.
   install -Dm644 "config/default.toml" "$pkgdir/usr/share/$pkgname/default.toml"
   install -Dm644 "LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 "README.md" "$pkgdir/usr/share/doc/$pkgname/README.md"
