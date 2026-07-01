@@ -12,7 +12,7 @@ A pentesting toolkit that runs as an [MCP](https://modelcontextprotocol.io/) ser
 
 ## Demo
 
-Real MCP traffic to the tools — no LLM in the loop, fully deterministic. Targets are the authorized public test hosts `example.com` / `scanme.nmap.org`.
+Real MCP traffic to the tools - no LLM in the loop, fully deterministic. Targets are the authorized public test hosts `example.com` / `scanme.nmap.org`.
 
 **Scan → structured finding → report**
 
