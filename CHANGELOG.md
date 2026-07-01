@@ -5,6 +5,18 @@ on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (pre-1.0:
 minor versions may carry feature additions and refinements).
 
+## [0.2.5] - 2026-07-01
+
+Completes the `run_httpx` container fix from 0.2.4.
+
+### Fixed
+- `run_httpx` hung indefinitely instead of returning. ProjectDiscovery httpx
+  probes stdin even when a target is passed with `-u`, and the executor let child
+  tools inherit raven-server's own stdin — the stdio MCP pipe, which never reaches
+  EOF during a session. Child processes are now spawned with a null stdin, so
+  stdin-probing tools see an immediate EOF and proceed. (0.2.4 corrected the httpx
+  binary on PATH but this deeper block only surfaced under live MCP traffic.)
+
 ## [0.2.4] - 2026-07-01
 
 Container image and logging fixes.
