@@ -10,6 +10,22 @@ A pentesting toolkit that runs as an [MCP](https://modelcontextprotocol.io/) ser
 
 > **Authorized use only.** Raven Nest is an offensive-security tool intended solely for testing systems you own or have explicit written permission to assess. Unauthorized scanning, enumeration, or exploitation may be illegal. You are solely responsible for obtaining authorization and complying with all applicable laws. The software is provided "as is", without warranty of any kind — see [LICENSE](LICENSE).
 
+## Demo
+
+Real MCP traffic to the tools — no LLM in the loop, fully deterministic. Targets are the authorized public test hosts `example.com` / `scanme.nmap.org`.
+
+**Scan → structured finding → report**
+
+![Scan to structured finding to report](docs/assets/report.gif)
+
+**Recon flow — connectivity, ports, web stack**
+
+![Recon flow: ping, nmap, whatweb](docs/assets/recon.gif)
+
+**Metasploit module discovery** — *requires an MSF-enabled build; the default container image excludes Metasploit*
+
+![Metasploit search and module info](docs/assets/metasploit.gif)
+
 ## What It Does
 
 Raven Nest wraps 22 security tools plus Metasploit Framework behind an MCP interface with input validation, output quality assessment, session-aware context budgeting, and configurable safety limits. It handles tool execution, background scan management, vulnerability finding persistence, and multi-format report generation (Markdown, JSON, SARIF, HTML). 43 MCP endpoints total.
