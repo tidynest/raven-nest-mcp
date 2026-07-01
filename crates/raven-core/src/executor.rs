@@ -16,6 +16,7 @@
 use crate::config::RavenConfig;
 use crate::error::PentestError;
 use crate::safety;
+use std::process::Stdio;
 use std::sync::{Mutex, OnceLock, PoisonError};
 use std::time::{Duration, Instant};
 use tokio::process::Command;
@@ -244,7 +245,11 @@ async fn run_inner(
     } else {
         Command::new(binary)
     };
-    cmd.args(args).kill_on_drop(true);
+    // Null the child's stdin: raven-server's own stdin is the stdio MCP pipe,
+    // which never reaches EOF during a session. Tools that probe stdin when it's
+    // a pipe (e.g. ProjectDiscovery httpx, even with -u) would otherwise block
+    // forever waiting on it. No wrapped tool is fed data via stdin.
+    cmd.args(args).stdin(Stdio::null()).kill_on_drop(true);
 
     // Inject proxy env vars (both cases for tool compatibility)
     if let Some(ref proxy) = config.network.http_proxy {
