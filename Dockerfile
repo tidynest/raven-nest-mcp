@@ -20,14 +20,20 @@ RUN go install github.com/projectdiscovery/katana/cmd/katana@latest \
 
 FROM kalilinux/kali-rolling AS runtime
 ENV DEBIAN_FRONTEND=noninteractive
-# 20 apt tools + libssl3 (raven-server links OpenSSL via native-tls) + CA roots.
-# katana/dalfox come from the Go stage. MSF excluded — roughly doubles image size
-# (see distribution plan); ship a ':full' tag or document the apt line if wanted.
+# 20 apt tools + iputils-ping (ping_target) + libssl3 (raven-server links OpenSSL
+# via native-tls) + CA roots. katana/dalfox come from the Go stage. MSF excluded —
+# roughly doubles image size (see distribution plan); ship a ':full' tag if wanted.
+#
+# Kali packages ProjectDiscovery httpx as `httpx-toolkit` because python3-httpx
+# (an apt dependency of other tools here) owns `/usr/bin/httpx`. The server calls
+# `httpx`, so symlink the PD binary into /usr/local/bin, which precedes /usr/bin
+# on PATH — keeps the server's command name portable across non-Kali installs.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       nmap masscan nuclei nikto sqlmap hydra john ffuf feroxbuster wpscan \
       whatweb subfinder httpx-toolkit dnsx dnsrecon \
       enum4linux-ng netexec gitleaks trufflehog testssl.sh \
-      libssl3 ca-certificates \
+      iputils-ping libssl3 ca-certificates \
+    && ln -sf /usr/bin/httpx-toolkit /usr/local/bin/httpx \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=gobuild /go/bin/katana /go/bin/dalfox /usr/local/bin/
