@@ -5,6 +5,27 @@ on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (pre-1.0:
 minor versions may carry feature additions and refinements).
 
+## [0.2.6] - 2026-07-02
+
+Metasploit auxiliary output fix and documentation.
+
+### Fixed
+- `msf_auxiliary` now captures module console output. It ran modules via
+  `module.execute` and returned only the results hash, which scanner modules
+  leave empty, so `http_version`, `ssh_version`, and similar reported `null`
+  despite running successfully. Auxiliary modules now run through a console
+  (create/write/read/destroy) so their `print_good`/`print_status` output is
+  captured. Option values and the module path are validated to reject control
+  characters that could inject extra console commands.
+
+### Changed
+- OCI image description clarified: the container bundles 22 tools but not the
+  Metasploit Framework, whose tools require a separate `msfrpcd`.
+
+### Documentation
+- README demo GIFs (recon, scan-to-report, and a live Metasploit scan).
+- Text normalized to plain ASCII punctuation across docs, config, and source.
+
 ## [0.2.5] - 2026-07-01
 
 Completes the `run_httpx` container fix from 0.2.4.
