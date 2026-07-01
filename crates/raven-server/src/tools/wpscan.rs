@@ -4,8 +4,8 @@
 //! Output is requested in JSON format (`--format json`) for structured processing.
 //!
 //! Supports two enumeration presets:
-//! - `quick` (default) — vulnerable plugins, themes, and users (`vp,vt,u`).
-//! - `thorough` — all plugins, themes, users, config backups, DB exports (`vp,vt,u,ap,at,cb,dbe`).
+//! - `quick` (default) - vulnerable plugins, themes, and users (`vp,vt,u`).
+//! - `thorough` - all plugins, themes, users, config backups, DB exports (`vp,vt,u,ap,at,cb,dbe`).
 
 use raven_core::{config::RavenConfig, executor, safety};
 use rmcp::{
@@ -105,7 +105,7 @@ pub fn parse_wpscan_json(raw: &str, max_results: usize) -> Option<String> {
         out.push_str(&format!("WordPress {number} ({status})"));
         if vuln_count > 0 {
             out.push_str(&format!(
-                " — {vuln_count} vulnerabilit{}",
+                " - {vuln_count} vulnerabilit{}",
                 if vuln_count == 1 { "y" } else { "ies" }
             ));
         }
@@ -139,7 +139,7 @@ pub fn parse_wpscan_json(raw: &str, max_results: usize) -> Option<String> {
                 .and_then(|a| a.as_array())
                 .map_or(0, |a| a.len());
             out.push_str(&format!(
-                "  {name} {version} — {vuln_count} vulnerabilit{}\n",
+                "  {name} {version} - {vuln_count} vulnerabilit{}\n",
                 if vuln_count == 1 { "y" } else { "ies" }
             ));
         }
@@ -162,7 +162,7 @@ pub fn parse_wpscan_json(raw: &str, max_results: usize) -> Option<String> {
             .map_or(0, |a| a.len());
         out.push_str("Themes:\n");
         out.push_str(&format!(
-            "  {slug} {version} — {vuln_count} vulnerabilit{}\n",
+            "  {slug} {version} - {vuln_count} vulnerabilit{}\n",
             if vuln_count == 1 { "y" } else { "ies" }
         ));
     }
@@ -186,7 +186,7 @@ pub fn parse_wpscan_json(raw: &str, max_results: usize) -> Option<String> {
                 .and_then(|a| a.as_array())
                 .map_or(0, |a| a.len());
             out.push_str(&format!(
-                "  {name} {version} — {vuln_count} vulnerabilit{}\n",
+                "  {name} {version} - {vuln_count} vulnerabilit{}\n",
                 if vuln_count == 1 { "y" } else { "ies" }
             ));
         }

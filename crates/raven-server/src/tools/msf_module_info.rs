@@ -1,4 +1,4 @@
-//! Metasploit module information — details, options, and compatible payloads.
+//! Metasploit module information - details, options, and compatible payloads.
 
 use raven_core::msf_client::MsfClient;
 use rmcp::{

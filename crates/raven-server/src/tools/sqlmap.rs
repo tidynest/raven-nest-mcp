@@ -5,7 +5,7 @@
 //! to prevent the LLM from escalating to destructive payloads.
 //!
 //! Supports POST data, cookies for authenticated testing, and technique selection
-//! (`BEUSTQ` — Boolean, Error, Union, Stacked, Time-based, Query-based).
+//! (`BEUSTQ` - Boolean, Error, Union, Stacked, Time-based, Query-based).
 
 use raven_core::{config::RavenConfig, executor, safety};
 use rmcp::{
@@ -45,7 +45,7 @@ pub async fn run(
     let _ticker =
         peer.map(|p| crate::progress::ProgressTicker::start(p, "sqlmap".into(), req.url.clone()));
 
-    // Enforce config safety limits — prevents LLM from requesting dangerous levels
+    // Enforce config safety limits - prevents LLM from requesting dangerous levels
     let level = req
         .level
         .unwrap_or(1)
@@ -106,7 +106,7 @@ use super::strip_ansi;
 
 /// Extract the log-level tag from a sqlmap line, ignoring the timestamp prefix.
 ///
-/// Sqlmap lines look like `[HH:MM:SS] [CRITICAL] message` — this returns
+/// Sqlmap lines look like `[HH:MM:SS] [CRITICAL] message` - this returns
 /// the content after the timestamp so callers can match on `[CRITICAL]` etc.
 /// Only strips brackets containing digits and colons (timestamps), not `[CRITICAL]`.
 fn sqlmap_log_content(line: &str) -> &str {

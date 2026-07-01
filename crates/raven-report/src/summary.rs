@@ -2,7 +2,7 @@
 //!
 //! These compute the severity breakdown, overall risk level, and the
 //! deduplicated tool list. Lifted out of [`markdown`](crate::markdown) so the
-//! JSON, SARIF, and HTML generators share one source of truth — keeping the
+//! JSON, SARIF, and HTML generators share one source of truth - keeping the
 //! summary numbers consistent across every output format.
 
 use crate::finding::{Finding, Severity};

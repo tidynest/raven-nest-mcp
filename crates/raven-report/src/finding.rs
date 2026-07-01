@@ -38,8 +38,8 @@ impl std::fmt::Display for Severity {
 ///
 /// `Manual` findings come from an operator (or LLM) calling `save_finding`;
 /// `AutoExtracted` findings are reserved for future server-side extraction from
-/// scan output. Defaults to `Manual` so legacy `{id}.json` files — which predate
-/// this field — deserialize as operator-saved.
+/// scan output. Defaults to `Manual` so legacy `{id}.json` files - which predate
+/// this field - deserialize as operator-saved.
 #[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum FindingSource {
     #[default]
@@ -69,7 +69,7 @@ pub struct Finding {
     pub evidence: Option<String>,
     /// Suggested fix or mitigation.
     pub remediation: Option<String>,
-    /// CVSS 3.x base score (0.0–10.0).
+    /// CVSS 3.x base score (0.0-10.0).
     pub cvss: Option<f32>,
     /// CVE identifier (e.g. "CVE-2024-1234").
     pub cve: Option<String>,
@@ -113,7 +113,7 @@ impl Finding {
     }
 }
 
-/// Lightweight metadata projection — keeps only index-worthy fields in memory.
+/// Lightweight metadata projection - keeps only index-worthy fields in memory.
 ///
 /// Full finding data (description, evidence, remediation) lives on disk and is
 /// loaded on demand by [`FindingStore::get`](crate::store::FindingStore::get).

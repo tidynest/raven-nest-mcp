@@ -1,11 +1,11 @@
-//! Input validation and output sanitisation — the security backbone of Raven Nest.
+//! Input validation and output sanitisation - the security backbone of Raven Nest.
 //!
 //! Every tool invocation passes through at least two of these gates:
 //!
-//! 1. [`check_allowlist`] — rejects tools not in `SafetyConfig::allowed_tools`.
-//! 2. [`validate_target`] — rejects shell metacharacters, validates IPs, CIDRs,
+//! 1. [`check_allowlist`] - rejects tools not in `SafetyConfig::allowed_tools`.
+//! 2. [`validate_target`] - rejects shell metacharacters, validates IPs, CIDRs,
 //!    URLs, and hostnames to prevent command injection.
-//! 3. [`truncate_output`] — caps output at `max_output_chars`, preserving both
+//! 3. [`truncate_output`] - caps output at `max_output_chars`, preserving both
 //!    the head (metadata) and tail (summary) of long results.
 //!
 //! These functions are called by [`executor::run`](crate::executor::run) and
@@ -32,10 +32,10 @@ pub fn check_allowlist(tool: &str, config: &SafetyConfig) -> Result<(), PentestE
 /// Create a directory (and parents) with owner-only permissions (0700).
 ///
 /// Output directories often live under world-writable locations like `/tmp`, so
-/// they must not be group/other-readable — findings and scan spill files within
+/// they must not be group/other-readable - findings and scan spill files within
 /// would otherwise be exposed to other local users. The mode is applied at
 /// creation time only.
-// ponytail: create-time 0700 only; a pre-existing/symlinked dir is not re-chmod'd —
+// ponytail: create-time 0700 only; a pre-existing/symlinked dir is not re-chmod'd -
 // upgrade to an explicit lstat + set_permissions if /tmp symlink TOCTOU matters.
 pub fn ensure_dir_secure(path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
     use std::os::unix::fs::DirBuilderExt;
@@ -61,7 +61,7 @@ pub fn init_scope(scope: ScopeConfig) {
 /// Accepts: IPv4/v6 addresses, CIDR ranges, `host:port`, HTTP(S) URLs (including
 /// query strings with `&`), bare hostnames.
 /// Rejects: empty strings, shell metacharacters (`;|&$\`(){}<!>\n`), unsupported
-/// schemes, and — when [`init_scope`] enabled a scope — out-of-scope targets.
+/// schemes, and - when [`init_scope`] enabled a scope - out-of-scope targets.
 ///
 /// This is the single target-aware chokepoint every tool handler and the
 /// background scan launcher pass through, so the scope gate here covers all paths.
@@ -76,13 +76,13 @@ pub fn validate_target(target: &str) -> Result<(), PentestError> {
 /// Syntax-only validation (IP/hostname/CIDR/URL, no shell metacharacters).
 ///
 /// URLs are parsed first so that query-string characters like `&` are not
-/// rejected — `Command::arg()` passes them as a single argument with no shell.
+/// rejected - `Command::arg()` passes them as a single argument with no shell.
 fn validate_syntax(target: &str) -> Result<(), PentestError> {
     if target.is_empty() {
         return Err(PentestError::InvalidTarget("empty target".into()));
     }
 
-    // URL validation first — query strings may contain characters (like &)
+    // URL validation first - query strings may contain characters (like &)
     // that are banned in non-URL targets but safe inside a parsed URL.
     if (target.starts_with("http://") || target.starts_with("https://"))
         && let Ok(parsed) = url::Url::parse(target)
@@ -131,7 +131,7 @@ fn validate_syntax(target: &str) -> Result<(), PentestError> {
         }
     }
 
-    // host:port (e.g. "example.com:443") — split on last colon to handle IPv6 correctly
+    // host:port (e.g. "example.com:443") - split on last colon to handle IPv6 correctly
     if let Some((host, port_str)) = target.rsplit_once(':')
         && !host.is_empty()
         && port_str.parse::<u16>().is_ok()
@@ -168,7 +168,7 @@ fn validate_hostname(host: &str) -> Result<(), PentestError> {
 ///
 /// Deny rules win over allow rules. Loopback targets bypass the lists when
 /// `allow_localhost` is set. Returns [`PentestError::OutOfScope`] with an
-/// explicit non-retryable message — local models otherwise loop, reformatting
+/// explicit non-retryable message - local models otherwise loop, reformatting
 /// an out-of-scope target.
 pub fn check_scope(target: &str, scope: &ScopeConfig) -> Result<(), PentestError> {
     if !scope.enabled {
@@ -221,7 +221,7 @@ pub fn check_scope(target: &str, scope: &ScopeConfig) -> Result<(), PentestError
 fn out_of_scope(target: &str, why: &str) -> PentestError {
     PentestError::OutOfScope(format!(
         "{target} is outside the authorized engagement scope ({why}); this is an \
-         authorization boundary — do not retry with a reformatted target"
+         authorization boundary - do not retry with a reformatted target"
     ))
 }
 
@@ -249,7 +249,7 @@ fn scope_host(target: &str) -> String {
     target.to_string()
 }
 
-/// Parse a bare IP (as a host route — /32 or /128) or a CIDR into an [`IpNet`].
+/// Parse a bare IP (as a host route - /32 or /128) or a CIDR into an [`IpNet`].
 fn parse_net(s: &str) -> Option<IpNet> {
     if let Ok(net) = s.parse::<IpNet>() {
         return Some(net);
@@ -563,7 +563,7 @@ mod tests {
 
     #[test]
     fn truncate_handles_multibyte_utf8() {
-        // Each emoji is 4 bytes — this would panic with byte-based slicing
+        // Each emoji is 4 bytes - this would panic with byte-based slicing
         let input: String = "🔥".repeat(50);
         let result = truncate_output(&input, 20);
         // Should not panic, and should contain valid UTF-8
@@ -580,9 +580,9 @@ mod tests {
     #[test]
     fn truncate_exact_boundary() {
         let input = "a".repeat(100);
-        // Exactly at limit — should return unchanged
+        // Exactly at limit - should return unchanged
         assert_eq!(truncate_output(&input, 100), input);
-        // One over — should truncate
+        // One over - should truncate
         let result = truncate_output(&input, 99);
         assert!(result.contains("--- truncated 1 chars ---"));
     }
@@ -601,7 +601,7 @@ mod tests {
     /// Core security invariant: any *non-URL* target `validate_target` accepts must
     /// contain no shell metacharacter, no whitespace, and must not begin with '-'
     /// (CLI-flag injection). Generated combinatorially over a token pool mixing safe
-    /// and dangerous fragments — deterministic and reproducible, no proptest dep.
+    /// and dangerous fragments - deterministic and reproducible, no proptest dep.
     #[test]
     fn property_accepted_non_url_targets_are_injection_safe() {
         const BANNED: &[char] = &[
@@ -640,7 +640,7 @@ mod tests {
         assert!(accepted > 0, "generator never produced an accepted target");
     }
 
-    /// Leading-dash targets must always be rejected — else a target like
+    /// Leading-dash targets must always be rejected - else a target like
     /// `-oN/tmp/evil` is parsed by the tool as a flag, not a host. (This negative
     /// case previously had no explicit coverage.)
     #[test]

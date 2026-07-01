@@ -4,10 +4,10 @@
 //! the tool call. Scans are tracked by UUID and can be polled, paginated, or cancelled.
 //!
 //! Key design decisions:
-//! - **Concurrency cap** — `max_concurrent_scans` prevents resource exhaustion.
-//! - **Spill-to-disk** — outputs exceeding [`SPILL_THRESHOLD`] (1 MB) are written
+//! - **Concurrency cap** - `max_concurrent_scans` prevents resource exhaustion.
+//! - **Spill-to-disk** - outputs exceeding [`SPILL_THRESHOLD`] (1 MB) are written
 //!   to `{output_dir}/scans/{id}.txt` instead of held in memory.
-//! - **Auto-inline** — `raven-server::tools::scans::status` embeds small outputs
+//! - **Auto-inline** - `raven-server::tools::scans::status` embeds small outputs
 //!   directly in the status response, saving an extra `get_scan_results` call.
 //!
 //! This module delegates actual execution to [`executor::run`](crate::executor::run)
@@ -36,7 +36,7 @@ pub enum ScanStatus {
 /// Outputs larger than this are spilled to disk to prevent unbounded memory growth.
 const SPILL_THRESHOLD: usize = 1_048_576; // 1 MB
 
-/// Where the scan output lives — either in-process memory or a file on disk.
+/// Where the scan output lives - either in-process memory or a file on disk.
 enum ScanOutput {
     Memory(String),
     Disk(std::path::PathBuf),
@@ -106,7 +106,7 @@ impl ScanManager {
 
     /// Evict terminal (completed/failed/cancelled) scans older than the retention
     /// TTL, deleting any spilled output file. Runs lazily under the caller's lock
-    /// on launch/status/list — no background timer. Running scans are never evicted.
+    /// on launch/status/list - no background timer. Running scans are never evicted.
     fn prune_expired(&self, scans: &mut HashMap<String, ScanEntry>) {
         let retention = self.config.execution.scan_retention_secs;
         let expired: Vec<String> = scans
@@ -206,7 +206,7 @@ impl ScanManager {
             ],
             "dnsrecon" => vec!["-d".into(), target.into()],
             // Tools that require specific files (hydra needs wordlists, john needs
-            // hash file, ffuf needs FUZZ URL) — no safe default possible.
+            // hash file, ffuf needs FUZZ URL) - no safe default possible.
             // The executor will report a usage error, which is safe.
             _ => vec![target.into()],
         }
@@ -215,7 +215,7 @@ impl ScanManager {
     /// Launch a new background scan, returning its UUID.
     ///
     /// Validates the tool against the allowlist and the target against injection rules
-    /// before spawning. Enforces the concurrency cap — returns an error if already at
+    /// before spawning. Enforces the concurrency cap - returns an error if already at
     /// `max_concurrent_scans`.
     pub fn launch(
         &self,
@@ -258,7 +258,7 @@ impl ScanManager {
             let mut scans = match scans_for_task.lock() {
                 Ok(guard) => guard,
                 Err(_) => {
-                    tracing::error!("scan state lock poisoned — scan {scan_id} result lost");
+                    tracing::error!("scan state lock poisoned - scan {scan_id} result lost");
                     return;
                 }
             };

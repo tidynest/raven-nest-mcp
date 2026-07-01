@@ -47,7 +47,7 @@ pub async fn run(
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
-    // Validate wordlist paths — prevent reading arbitrary files
+    // Validate wordlist paths - prevent reading arbitrary files
     super::validate_file_path(&req.userlist, &config.execution.output_dir)?;
     super::validate_file_path(&req.passlist, &config.execution.output_dir)?;
 

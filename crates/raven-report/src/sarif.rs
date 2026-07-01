@@ -22,7 +22,7 @@ const DRIVER_VERSION: &str = "0.1.0";
 ///
 /// Builds one `rule` per unique rule id and one `result` per finding. Each
 /// result references its rule by index. SARIF `level` is derived from the
-/// finding severity (CVSS does NOT influence level — it is surfaced as the
+/// finding severity (CVSS does NOT influence level - it is surfaced as the
 /// `security-severity` rule property instead).
 pub fn generate_report(findings: &[&Finding], _title: &str) -> String {
     // Build deduplicated rules, remembering each rule id's index.
@@ -69,7 +69,7 @@ fn rule_id(f: &Finding) -> String {
     }
 }
 
-/// Lowercase, dash-separated slug — non-alphanumerics collapse to single dashes.
+/// Lowercase, dash-separated slug - non-alphanumerics collapse to single dashes.
 fn slugify(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let mut prev_dash = false;

@@ -43,7 +43,7 @@ pub async fn run(
     let is_root = unsafe { libc::geteuid() } == 0;
     if !is_root && !config.safety.needs_sudo("masscan") {
         return Err(rmcp::ErrorData::invalid_params(
-            "masscan requires root privileges — either run the server as root or add \"masscan\" to sudo_tools in config",
+            "masscan requires root privileges - either run the server as root or add \"masscan\" to sudo_tools in config",
             None,
         ));
     }

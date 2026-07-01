@@ -78,7 +78,7 @@ pub async fn run(
 mod tests {
     #[test]
     fn request_struct_compiles() {
-        // Struct field check — ensures deny_unknown_fields and deserialize work
+        // Struct field check - ensures deny_unknown_fields and deserialize work
         let json = r#"{"module": "post/multi/gather/env", "session_id": 1}"#;
         let req: Result<super::MsfPostRequest, _> = serde_json::from_str(json);
         assert!(req.is_ok());
