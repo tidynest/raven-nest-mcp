@@ -4,9 +4,9 @@
 //! (via `Arc`) across all tool handlers in `raven-server`. It groups settings
 //! into three sections:
 //!
-//! - [`SafetyConfig`] — tool allowlisting, output caps, and per-tool aggressiveness limits.
-//! - [`ExecutionConfig`] — timeouts, concurrency, and output directory.
-//! - [`NetworkConfig`] — optional HTTP/HTTPS proxy settings injected into
+//! - [`SafetyConfig`] - tool allowlisting, output caps, and per-tool aggressiveness limits.
+//! - [`ExecutionConfig`] - timeouts, concurrency, and output directory.
+//! - [`NetworkConfig`] - optional HTTP/HTTPS proxy settings injected into
 //!   tool subprocesses by [`executor::run`](crate::executor::run).
 //!
 //! Configuration resolves through a fallback chain:
@@ -48,16 +48,16 @@ pub struct SafetyConfig {
     /// Falls back to `$PATH` lookup if not specified.
     #[serde(default)]
     pub tool_paths: HashMap<String, String>,
-    /// Max sqlmap `--level` (1-5). Default 2 — prevents LLM escalation beyond safe testing.
+    /// Max sqlmap `--level` (1-5). Default 2 - prevents LLM escalation beyond safe testing.
     #[serde(default = "default_sqlmap_max_level")]
     pub sqlmap_max_level: u8,
-    /// Max sqlmap `--risk` (1-3). Default 1 — avoids destructive payloads.
+    /// Max sqlmap `--risk` (1-3). Default 1 - avoids destructive payloads.
     #[serde(default = "default_sqlmap_max_risk")]
     pub sqlmap_max_risk: u8,
-    /// Max hydra parallel tasks. Default 4 — limits brute-force throughput.
+    /// Max hydra parallel tasks. Default 4 - limits brute-force throughput.
     #[serde(default = "default_hydra_max_tasks")]
     pub hydra_max_tasks: u16,
-    /// Max masscan packet rate (packets/sec). Default 1000 — prevents network saturation.
+    /// Max masscan packet rate (packets/sec). Default 1000 - prevents network saturation.
     #[serde(default = "default_masscan_max_rate")]
     pub masscan_max_rate: u32,
     /// Model context window size in characters. When set (> 0), derives
@@ -72,11 +72,11 @@ pub struct SafetyConfig {
     pub sudo_tools: Vec<String>,
     /// Expected tool calls per session. Used by the session budget tracker to
     /// plan output allocation. Higher values yield smaller per-call caps.
-    /// Default 10 — typical pentest workflow is 6-12 tool calls.
+    /// Default 10 - typical pentest workflow is 6-12 tool calls.
     #[serde(default = "default_expected_tool_calls")]
     pub expected_tool_calls: usize,
     /// Auto-save findings extracted from scan output (currently nuclei only).
-    /// Off by default — the operator opts in. When true, qualifying findings
+    /// Off by default - the operator opts in. When true, qualifying findings
     /// are deduplicated and persisted with `source = AutoExtracted`.
     #[serde(default)]
     pub auto_save_findings: bool,
@@ -84,7 +84,7 @@ pub struct SafetyConfig {
     /// (`info|low|medium|high|critical`). Default `"medium"`.
     #[serde(default = "default_auto_save_min_severity")]
     pub auto_save_min_severity: String,
-    /// Cap on auto-saved findings per scan — bounds finding spam and disk use.
+    /// Cap on auto-saved findings per scan - bounds finding spam and disk use.
     /// Default 25.
     #[serde(default = "default_auto_save_max_per_scan")]
     pub auto_save_max_per_scan: usize,
@@ -140,14 +140,14 @@ pub struct ExecutionConfig {
     #[serde(default = "default_scan_retention_secs")]
     pub scan_retention_secs: u64,
     /// Max concurrent *synchronous* tool executions, separate from
-    /// `max_concurrent_scans` (which bounds background scans). Default 4 —
+    /// `max_concurrent_scans` (which bounds background scans). Default 4 -
     /// prevents an LLM from spawning unbounded subprocesses via parallel calls.
     #[serde(default = "default_max_concurrent_execs")]
     pub max_concurrent_execs: usize,
     /// Minimum milliseconds between consecutive tool launches, process-wide. A
     /// proactive cooldown: back-to-back aggressive tools against one target can
     /// trip its WAF or rate-limiter (or get the tester banned). Default 0
-    /// (disabled — opt in). Complements the reactive WAF detection in the executor.
+    /// (disabled - opt in). Complements the reactive WAF detection in the executor.
     #[serde(default = "default_min_exec_gap_ms")]
     pub min_exec_gap_ms: u64,
 }
@@ -169,14 +169,14 @@ pub struct NetworkConfig {
     pub no_proxy: Vec<String>,
 }
 
-/// Metasploit Framework RPC integration — disabled by default.
+/// Metasploit Framework RPC integration - disabled by default.
 ///
 /// When enabled, the server connects to a running `msfrpcd` instance via
 /// MessagePack RPC. The operator must start msfrpcd separately.
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct MetasploitConfig {
-    /// Master switch — MSF tools only registered when true.
+    /// Master switch - MSF tools only registered when true.
     pub enabled: bool,
     /// msfrpcd host (default 127.0.0.1).
     pub host: String,
@@ -184,7 +184,7 @@ pub struct MetasploitConfig {
     pub port: u16,
     /// RPC username (default "msf").
     pub username: String,
-    /// RPC password — operator MUST change this.
+    /// RPC password - operator MUST change this.
     pub password: String,
     /// Use SSL for RPC connection (msfrpcd default).
     pub ssl: bool,
@@ -200,10 +200,10 @@ pub struct MetasploitConfig {
 }
 
 impl MetasploitConfig {
-    /// Validate MSF config — reject the default "changeme" password when enabled.
+    /// Validate MSF config - reject the default "changeme" password when enabled.
     pub fn validate(&self) -> Result<(), String> {
         if self.enabled && self.password == "changeme" {
-            return Err("metasploit is enabled but password is still 'changeme' — \
+            return Err("metasploit is enabled but password is still 'changeme' - \
                  change it in config before starting the server"
                 .into());
         }
@@ -228,7 +228,7 @@ impl Default for MetasploitConfig {
     }
 }
 
-/// Engagement scope — an operator-configured authorization allowlist.
+/// Engagement scope - an operator-configured authorization allowlist.
 ///
 /// Disabled by default (`enabled = false`), preserving current behaviour where
 /// any syntactically valid target may be scanned. When enabled, every target is
@@ -237,17 +237,17 @@ impl Default for MetasploitConfig {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct ScopeConfig {
-    /// Master switch — when false (default), no scope gating is applied.
+    /// Master switch - when false (default), no scope gating is applied.
     pub enabled: bool,
     /// In-scope IP ranges (CIDR like `10.0.0.0/8`, or a bare IP = single host).
     pub allowed_cidrs: Vec<String>,
     /// In-scope domains. Matches the domain and its subdomains (`example.com`
     /// matches `example.com` and `api.example.com`, not `notexample.com`).
     pub allowed_domains: Vec<String>,
-    /// Explicitly out-of-scope IP ranges — checked before the allow list (deny
+    /// Explicitly out-of-scope IP ranges - checked before the allow list (deny
     /// wins). Useful for carving out e.g. cloud metadata (`169.254.169.254/32`).
     pub denied_cidrs: Vec<String>,
-    /// Explicitly out-of-scope domains — checked before the allow list (deny wins).
+    /// Explicitly out-of-scope domains - checked before the allow list (deny wins).
     pub denied_domains: Vec<String>,
     /// Always allow loopback targets (`localhost`, `127.0.0.0/8`, `::1`) regardless
     /// of the lists. Default true so local lab targets (Juice Shop, DVWA) keep working.
@@ -283,7 +283,7 @@ impl ScopeConfig {
     }
 }
 
-/// NetExec (credentialed network execution) integration — disabled by default.
+/// NetExec (credentialed network execution) integration - disabled by default.
 ///
 /// NetExec authenticates to network services (SMB/WinRM/SSH/…) with operator
 /// credentials. It is intrusive, so it ships **off**; the `run_netexec` handler
@@ -292,7 +292,7 @@ impl ScopeConfig {
 #[derive(Clone, Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct NetExecConfig {
-    /// Master switch — the `run_netexec` tool refuses unless this is true.
+    /// Master switch - the `run_netexec` tool refuses unless this is true.
     pub enabled: bool,
 }
 

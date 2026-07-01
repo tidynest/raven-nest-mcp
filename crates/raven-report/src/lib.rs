@@ -2,18 +2,18 @@
 //!
 //! This crate owns the persistence layer for pentest findings and the
 //! multi-format report generators (Markdown, JSON, SARIF, HTML). It has no
-//! dependency on MCP or the server —
+//! dependency on MCP or the server -
 //! only `raven-server::tools::findings` calls into it.
 //!
-//! - [`finding`] — Data types: [`Finding`](finding::Finding),
+//! - [`finding`] - Data types: [`Finding`](finding::Finding),
 //!   [`FindingMeta`](finding::FindingMeta), [`Severity`](finding::Severity).
-//! - [`store`] — File-per-finding persistence with an in-memory index.
+//! - [`store`] - File-per-finding persistence with an in-memory index.
 //!   Handles legacy migration from the old single-file format.
-//! - [`markdown`], [`json`], [`sarif`], [`html`] — Report generators, one per
+//! - [`markdown`], [`json`], [`sarif`], [`html`] - Report generators, one per
 //!   output format. Each exposes `generate_report(&[&Finding], title) -> String`.
-//! - [`summary`] — Shared severity-count / overall-risk / tool-list helpers used
+//! - [`summary`] - Shared severity-count / overall-risk / tool-list helpers used
 //!   by every generator, so the summary numbers stay consistent across formats.
-//! - [`report`] — [`ReportFormat`](report::ReportFormat) selector mapping a
+//! - [`report`] - [`ReportFormat`](report::ReportFormat) selector mapping a
 //!   format name to its generator and file extension.
 
 pub mod finding;

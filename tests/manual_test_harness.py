@@ -240,8 +240,8 @@ class Runner:
 
 # ─── Phase 0: ping_target ────────────────────────────────────────
 PHASE_0 = [
-    {"id": "1.1",  "desc": "Minimal — IPv4",       "tool": "ping_target", "args": {"target": "127.0.0.1"},                       "any_of": ["bytes from", "icmp_seq", "PING"]},
-    {"id": "1.2",  "desc": "Minimal — hostname",    "tool": "ping_target", "args": {"target": "localhost"},                       "any_of": ["bytes from", "icmp_seq", "PING"]},
+    {"id": "1.1",  "desc": "Minimal - IPv4",       "tool": "ping_target", "args": {"target": "127.0.0.1"},                       "any_of": ["bytes from", "icmp_seq", "PING"]},
+    {"id": "1.2",  "desc": "Minimal - hostname",    "tool": "ping_target", "args": {"target": "localhost"},                       "any_of": ["bytes from", "icmp_seq", "PING"]},
     {"id": "1.3",  "desc": "count=1 (min)",         "tool": "ping_target", "args": {"target": "127.0.0.1", "count": 1},          "contains": ["1 packets transmitted"]},
     {"id": "1.4",  "desc": "count=10 (max)",         "tool": "ping_target", "args": {"target": "127.0.0.1", "count": 10},         "contains": ["10 packets transmitted"], "timeout": 15},
     {"id": "1.5",  "desc": "count=5 (mid)",          "tool": "ping_target", "args": {"target": "127.0.0.1", "count": 5},          "contains": ["5 packets transmitted"]},
@@ -272,8 +272,8 @@ PHASE_4_COOKIE = [
 
 # ─── Phase 1: Reconnaissance ────────────────────────────────────
 PHASE_1_NMAP = [
-    {"id": "2.1",  "desc": "Minimal — IP",           "tool": "run_nmap", "args": {"target": "127.0.0.1"},                                           "any_of": ["open", "port", "host"], "timeout": 60},
-    {"id": "2.2",  "desc": "Minimal — hostname",     "tool": "run_nmap", "args": {"target": "localhost"},                                            "any_of": ["open", "port", "host"], "timeout": 60},
+    {"id": "2.1",  "desc": "Minimal - IP",           "tool": "run_nmap", "args": {"target": "127.0.0.1"},                                           "any_of": ["open", "port", "host"], "timeout": 60},
+    {"id": "2.2",  "desc": "Minimal - hostname",     "tool": "run_nmap", "args": {"target": "localhost"},                                            "any_of": ["open", "port", "host"], "timeout": 60},
     {"id": "2.3",  "desc": "Specific ports",         "tool": "run_nmap", "args": {"target": "127.0.0.1", "ports": "22,80"},                         "any_of": ["80", "22"], "timeout": 60},
     {"id": "2.4",  "desc": "Port range",             "tool": "run_nmap", "args": {"target": "127.0.0.1", "ports": "1-100"},                         "any_of": ["open", "port", "host"], "timeout": 60},
     {"id": "2.5",  "desc": "scan_type=service",      "tool": "run_nmap", "args": {"target": "127.0.0.1", "scan_type": "service"},                   "any_of": ["open", "service", "version"], "timeout": 90},
@@ -290,8 +290,8 @@ PHASE_1_NMAP = [
 ]
 
 PHASE_1_WHATWEB = [
-    {"id": "3.1",  "desc": "Minimal — bWAPP",        "tool": "run_whatweb", "args": {"target": "http://localhost"},                                               "any_of": ["apache", "php", "http"], "timeout": 30},
-    {"id": "3.2",  "desc": "Minimal — Juice Shop",   "tool": "run_whatweb", "args": {"target": "http://localhost:3000"},                                          "any_of": ["express", "node", "http"], "timeout": 30},
+    {"id": "3.1",  "desc": "Minimal - bWAPP",        "tool": "run_whatweb", "args": {"target": "http://localhost"},                                               "any_of": ["apache", "php", "http"], "timeout": 30},
+    {"id": "3.2",  "desc": "Minimal - Juice Shop",   "tool": "run_whatweb", "args": {"target": "http://localhost:3000"},                                          "any_of": ["express", "node", "http"], "timeout": 30},
     {"id": "3.3",  "desc": "aggression=stealthy",    "tool": "run_whatweb", "args": {"target": "http://localhost", "aggression": "stealthy"},                     "any_of": ["apache", "php", "http"], "timeout": 30},
     {"id": "3.4",  "desc": "aggression=passive",     "tool": "run_whatweb", "args": {"target": "http://localhost", "aggression": "passive"},                      "any_of": ["apache", "php", "http"], "timeout": 30},
     {"id": "3.5",  "desc": "aggression=aggressive",  "tool": "run_whatweb", "args": {"target": "http://localhost", "aggression": "aggressive"},                   "any_of": ["apache", "php", "http"], "timeout": 60},
@@ -316,7 +316,7 @@ PHASE_1_MASSCAN = [
 ]
 
 PHASE_1_TESTSSL = [
-    {"id": "11.1",  "desc": "Minimal — hostname",   "tool": "run_testssl", "args": {"target": "localhost"},                                      "any_of": ["ssl", "tls", "error", "fail", "connect", "refused", "couldn't"], "timeout": 120},
+    {"id": "11.1",  "desc": "Minimal - hostname",   "tool": "run_testssl", "args": {"target": "localhost"},                                      "any_of": ["ssl", "tls", "error", "fail", "connect", "refused", "couldn't"], "timeout": 120},
     {"id": "11.2",  "desc": "host:port",             "tool": "run_testssl", "args": {"target": "localhost:443"},                                  "any_of": ["ssl", "tls", "error", "fail", "connect", "refused", "couldn't"], "timeout": 120},
     {"id": "11.3",  "desc": "quick=true",            "tool": "run_testssl", "args": {"target": "localhost:443", "quick": True},                   "any_of": ["ssl", "tls", "error", "fail", "connect", "refused", "couldn't"], "timeout": 60},
     {"id": "11.4",  "desc": "quick=false",           "tool": "run_testssl", "args": {"target": "localhost:443", "quick": False},                  "any_of": ["ssl", "tls", "error", "fail", "connect", "refused", "couldn't"], "timeout": 120},
@@ -335,8 +335,8 @@ PHASE_1_TESTSSL = [
 
 # ─── Phase 2: Web Scanning ───────────────────────────────────────
 PHASE_2_NUCLEI = [
-    {"id": "5.1",  "desc": "Minimal — bWAPP",    "tool": "run_nuclei", "args": {"target": "http://localhost"},                                                    "any_of": ["nuclei", "found", "info", "no findings", "template", "matched"], "timeout": 300},
-    {"id": "5.2",  "desc": "Minimal — Juice Shop","tool": "run_nuclei", "args": {"target": "http://localhost:3000"},                                              "any_of": ["nuclei", "found", "info", "no findings", "template", "matched"], "timeout": 300},
+    {"id": "5.1",  "desc": "Minimal - bWAPP",    "tool": "run_nuclei", "args": {"target": "http://localhost"},                                                    "any_of": ["nuclei", "found", "info", "no findings", "template", "matched"], "timeout": 300},
+    {"id": "5.2",  "desc": "Minimal - Juice Shop","tool": "run_nuclei", "args": {"target": "http://localhost:3000"},                                              "any_of": ["nuclei", "found", "info", "no findings", "template", "matched"], "timeout": 300},
     {"id": "5.3",  "desc": "severity=info",        "tool": "run_nuclei", "args": {"target": "http://localhost", "severity": "info"},                               "any_of": ["info", "found", "no findings", "nuclei"], "timeout": 300},
     {"id": "5.4",  "desc": "severity=low",         "tool": "run_nuclei", "args": {"target": "http://localhost", "severity": "low"},                                "any_of": ["low", "found", "no findings", "nuclei"], "timeout": 300},
     {"id": "5.5",  "desc": "severity=medium",      "tool": "run_nuclei", "args": {"target": "http://localhost", "severity": "medium"},                             "any_of": ["medium", "found", "no findings", "nuclei"], "timeout": 300},
@@ -354,8 +354,8 @@ PHASE_2_NUCLEI = [
 ]
 
 PHASE_2_NIKTO = [
-    {"id": "6.1",  "desc": "Minimal — URL",        "tool": "run_nikto", "args": {"target": "http://localhost"},                                                         "any_of": ["nikto", "+", "server", "host"], "timeout": 300},
-    {"id": "6.2",  "desc": "Minimal — hostname",   "tool": "run_nikto", "args": {"target": "localhost"},                                                                "any_of": ["nikto", "+", "server", "host"], "timeout": 300},
+    {"id": "6.1",  "desc": "Minimal - URL",        "tool": "run_nikto", "args": {"target": "http://localhost"},                                                         "any_of": ["nikto", "+", "server", "host"], "timeout": 300},
+    {"id": "6.2",  "desc": "Minimal - hostname",   "tool": "run_nikto", "args": {"target": "localhost"},                                                                "any_of": ["nikto", "+", "server", "host"], "timeout": 300},
     {"id": "6.3",  "desc": "hostname + port=80",    "tool": "run_nikto", "args": {"target": "localhost", "port": 80},                                                   "any_of": ["nikto", "+", "server", "host"], "timeout": 300},
     {"id": "6.4",  "desc": "hostname + port=443",   "tool": "run_nikto", "args": {"target": "localhost", "port": 443},                                                  "any_of": ["nikto", "+", "ssl", "error", "fail", "refused"], "timeout": 60},
     {"id": "6.5",  "desc": "hostname + port=3000",  "tool": "run_nikto", "args": {"target": "localhost", "port": 3000},                                                 "any_of": ["nikto", "+", "server", "host", "express"], "timeout": 300},
@@ -375,8 +375,8 @@ PHASE_2_NIKTO = [
 ]
 
 PHASE_2_FEROX = [
-    {"id": "7.1",  "desc": "Minimal — bWAPP",       "tool": "run_feroxbuster", "args": {"target": "http://localhost"},                                                                                                                          "any_of": ["200", "301", "302", "http", "found", "url"], "timeout": 300},
-    {"id": "7.2",  "desc": "Minimal — Juice Shop",  "tool": "run_feroxbuster", "args": {"target": "http://localhost:3000"},                                                                                                                     "any_of": ["200", "301", "302", "http", "found", "url"], "timeout": 300},
+    {"id": "7.1",  "desc": "Minimal - bWAPP",       "tool": "run_feroxbuster", "args": {"target": "http://localhost"},                                                                                                                          "any_of": ["200", "301", "302", "http", "found", "url"], "timeout": 300},
+    {"id": "7.2",  "desc": "Minimal - Juice Shop",  "tool": "run_feroxbuster", "args": {"target": "http://localhost:3000"},                                                                                                                     "any_of": ["200", "301", "302", "http", "found", "url"], "timeout": 300},
     {"id": "7.3",  "desc": "Custom wordlist",        "tool": "run_feroxbuster", "args": {"target": "http://localhost", "wordlist": "/usr/share/seclists/Discovery/Web-Content/raft-medium-words.txt"},                                            "any_of": ["200", "301", "302", "http", "found", "url"], "timeout": 300},
     {"id": "7.4",  "desc": "extensions",             "tool": "run_feroxbuster", "args": {"target": "http://localhost", "extensions": "php,html,txt"},                                                                                            "any_of": ["200", "301", "302", "http", "found", "url"], "timeout": 300},
     {"id": "7.5",  "desc": "Custom threads",         "tool": "run_feroxbuster", "args": {"target": "http://localhost", "threads": 5},                                                                                                            "any_of": ["200", "301", "302", "http", "found", "url"], "timeout": 300},
@@ -414,7 +414,7 @@ PHASE_2_FFUF = [
 
 # ─── Phase 3: Exploitation ───────────────────────────────────────
 PHASE_3_SQLMAP = [
-    {"id": "9.1",  "desc": "Minimal — GET sqli",    "tool": "run_sqlmap", "args": {"url": "http://localhost/sqli_1.php?title=test&action=search"},                                                                         "any_of": ["sqlmap", "parameter", "injectable", "dbms", "payload", "not appear"], "timeout": 180},
+    {"id": "9.1",  "desc": "Minimal - GET sqli",    "tool": "run_sqlmap", "args": {"url": "http://localhost/sqli_1.php?title=test&action=search"},                                                                         "any_of": ["sqlmap", "parameter", "injectable", "dbms", "payload", "not appear"], "timeout": 180},
     {"id": "9.2",  "desc": "With cookie",            "tool": "run_sqlmap", "args": {"url": "http://localhost/sqli_1.php?title=test&action=search", "cookie": "PHPSESSID={BWAPP_COOKIE}; security_level=0"},                 "any_of": ["sqlmap", "parameter", "injectable", "dbms", "payload", "not appear"], "skip_if": "BWAPP_COOKIE", "timeout": 180},
     {"id": "9.3",  "desc": "POST data injection",   "tool": "run_sqlmap", "args": {"url": "http://localhost/sqli_6.php", "data": "title=test&action=search", "cookie": "PHPSESSID={BWAPP_COOKIE}; security_level=0"},      "any_of": ["sqlmap", "parameter", "injectable", "dbms", "payload", "not appear"], "skip_if": "BWAPP_COOKIE", "timeout": 180},
     {"id": "9.4",  "desc": "level=1 (explicit)",    "tool": "run_sqlmap", "args": {"url": "http://localhost/sqli_1.php?title=test&action=search", "level": 1},                                                             "any_of": ["sqlmap", "parameter", "injectable", "dbms", "not appear"], "timeout": 180},
@@ -429,16 +429,16 @@ PHASE_3_SQLMAP = [
     {"id": "9.13", "desc": "technique=U",             "tool": "run_sqlmap", "args": {"url": "http://localhost/sqli_1.php?title=test&action=search", "technique": "U"},                                                       "any_of": ["sqlmap", "parameter", "injectable", "dbms", "not appear", "union"], "timeout": 180},
     {"id": "9.14", "desc": "technique=T",             "tool": "run_sqlmap", "args": {"url": "http://localhost/sqli_1.php?title=test&action=search", "technique": "T"},                                                       "any_of": ["sqlmap", "parameter", "injectable", "dbms", "not appear", "time"], "timeout": 300},
     {"id": "9.15", "desc": "technique=BEUSTQ",        "tool": "run_sqlmap", "args": {"url": "http://localhost/sqli_1.php?title=test&action=search", "technique": "BEUSTQ"},                                                  "any_of": ["sqlmap", "parameter", "injectable", "dbms", "not appear"], "timeout": 300},
-    {"id": "9.16", "desc": "Full combo — GET",        "tool": "run_sqlmap", "args": {"url": "http://localhost/sqli_1.php?title=test&action=search", "cookie": "PHPSESSID={BWAPP_COOKIE}; security_level=0", "level": 2, "risk": 1, "technique": "BEU"}, "any_of": ["sqlmap", "parameter", "injectable", "dbms", "not appear"], "skip_if": "BWAPP_COOKIE", "timeout": 300},
-    {"id": "9.17", "desc": "Full combo — POST",       "tool": "run_sqlmap", "args": {"url": "http://localhost/sqli_6.php", "data": "title=test&action=search", "cookie": "PHPSESSID={BWAPP_COOKIE}; security_level=0", "level": 2, "risk": 1, "technique": "BEUSTQ"}, "any_of": ["sqlmap", "parameter", "injectable", "dbms", "not appear"], "skip_if": "BWAPP_COOKIE", "timeout": 300},
+    {"id": "9.16", "desc": "Full combo - GET",        "tool": "run_sqlmap", "args": {"url": "http://localhost/sqli_1.php?title=test&action=search", "cookie": "PHPSESSID={BWAPP_COOKIE}; security_level=0", "level": 2, "risk": 1, "technique": "BEU"}, "any_of": ["sqlmap", "parameter", "injectable", "dbms", "not appear"], "skip_if": "BWAPP_COOKIE", "timeout": 300},
+    {"id": "9.17", "desc": "Full combo - POST",       "tool": "run_sqlmap", "args": {"url": "http://localhost/sqli_6.php", "data": "title=test&action=search", "cookie": "PHPSESSID={BWAPP_COOKIE}; security_level=0", "level": 2, "risk": 1, "technique": "BEUSTQ"}, "any_of": ["sqlmap", "parameter", "injectable", "dbms", "not appear"], "skip_if": "BWAPP_COOKIE", "timeout": 300},
     {"id": "9.18", "desc": "Non-injectable page",    "tool": "run_sqlmap", "args": {"url": "http://localhost/login.php?foo=bar"},                                                                                           "any_of": ["not appear", "injectable", "all tested", "sqlmap"], "timeout": 120},
     {"id": "9.19", "desc": "Empty URL",               "tool": "run_sqlmap", "args": {"url": ""},                                                                                                                            "error": True},
     {"id": "9.20", "desc": "level=0 (below range)",   "tool": "run_sqlmap", "args": {"url": "http://localhost/sqli_1.php?title=test&action=search", "level": 0},                                                             "any_of": ["sqlmap", "parameter", "injectable", "dbms", "not appear"], "timeout": 180},
 ]
 
 PHASE_3_HYDRA = [
-    {"id": "10.1",  "desc": "Minimal — SSH",        "tool": "run_hydra", "args": {"target": "127.0.0.1", "service": "ssh", "userlist": "/tmp/raven-nest/test-users.txt", "passlist": "/tmp/raven-nest/test-passwords.txt"},                                                                                             "any_of": ["hydra", "login", "password", "valid", "host", "0 valid"], "timeout": 120},
-    {"id": "10.2",  "desc": "HTTP POST form — bWAPP","tool": "run_hydra", "args": {"target": "127.0.0.1", "service": "http-post-form", "userlist": "/tmp/raven-nest/test-users.txt", "passlist": "/tmp/raven-nest/test-passwords.txt", "form_params": "/login.php:login=^USER^&password=^PASS^&security_level=0&form=submit:F=Invalid credentials"}, "any_of": ["hydra", "login", "password", "valid", "host", "bee"], "timeout": 120},
+    {"id": "10.1",  "desc": "Minimal - SSH",        "tool": "run_hydra", "args": {"target": "127.0.0.1", "service": "ssh", "userlist": "/tmp/raven-nest/test-users.txt", "passlist": "/tmp/raven-nest/test-passwords.txt"},                                                                                             "any_of": ["hydra", "login", "password", "valid", "host", "0 valid"], "timeout": 120},
+    {"id": "10.2",  "desc": "HTTP POST form - bWAPP","tool": "run_hydra", "args": {"target": "127.0.0.1", "service": "http-post-form", "userlist": "/tmp/raven-nest/test-users.txt", "passlist": "/tmp/raven-nest/test-passwords.txt", "form_params": "/login.php:login=^USER^&password=^PASS^&security_level=0&form=submit:F=Invalid credentials"}, "any_of": ["hydra", "login", "password", "valid", "host", "bee"], "timeout": 120},
     {"id": "10.3",  "desc": "Form without form_params","tool": "run_hydra", "args": {"target": "127.0.0.1", "service": "http-post-form", "userlist": "/tmp/raven-nest/test-users.txt", "passlist": "/tmp/raven-nest/test-passwords.txt"},                                                                                  "error": True, "any_of": ["form_params", "required", "missing"]},
     {"id": "10.4",  "desc": "HTTP GET form",         "tool": "run_hydra", "args": {"target": "127.0.0.1", "service": "http-get-form", "userlist": "/tmp/raven-nest/test-users.txt", "passlist": "/tmp/raven-nest/test-passwords.txt", "form_params": "/login.php:login=^USER^&password=^PASS^:F=Invalid"},                  "any_of": ["hydra", "login", "password", "valid", "host", "0 valid"], "timeout": 120},
     {"id": "10.5",  "desc": "tasks=2",               "tool": "run_hydra", "args": {"target": "127.0.0.1", "service": "ssh", "userlist": "/tmp/raven-nest/test-users.txt", "passlist": "/tmp/raven-nest/test-passwords.txt", "tasks": 2},                                                                                    "any_of": ["hydra", "login", "password", "valid", "host", "0 valid"], "timeout": 120},
@@ -454,8 +454,8 @@ PHASE_3_HYDRA = [
 
 # ─── Phase 4: HTTP Request (remaining after cookie) ──────────────
 PHASE_4_HTTP = [
-    {"id": "12.1",  "desc": "Minimal — GET bWAPP",     "tool": "http_request", "args": {"url": "http://localhost"},                                                                      "any_of": ["200", "html", "bwapp", "login", "bee"]},
-    {"id": "12.2",  "desc": "Minimal — GET Juice Shop", "tool": "http_request", "args": {"url": "http://localhost:3000"},                                                                 "any_of": ["200", "html", "juice", "owasp"]},
+    {"id": "12.1",  "desc": "Minimal - GET bWAPP",     "tool": "http_request", "args": {"url": "http://localhost"},                                                                      "any_of": ["200", "html", "bwapp", "login", "bee"]},
+    {"id": "12.2",  "desc": "Minimal - GET Juice Shop", "tool": "http_request", "args": {"url": "http://localhost:3000"},                                                                 "any_of": ["200", "html", "juice", "owasp"]},
     {"id": "12.4",  "desc": "GET after POST (jar test)","tool": "http_request", "args": {"url": "http://localhost/portal.php"},                                                            "any_of": ["200", "portal", "welcome", "bwapp", "bugs"]},
     {"id": "12.5",  "desc": "method=PUT",               "tool": "http_request", "args": {"url": "http://localhost", "method": "PUT"},                                                     "any_of": ["200", "405", "method", "not allowed", "html"]},
     {"id": "12.6",  "desc": "method=DELETE",            "tool": "http_request", "args": {"url": "http://localhost", "method": "DELETE"},                                                  "any_of": ["200", "405", "method", "not allowed", "html"]},
@@ -534,7 +534,7 @@ PHASE_6_FINDINGS = [
     {"id": "18.1",  "desc": "list_findings empty",      "tool": "list_findings", "args": {},                                               "any_of": ["no finding", "0 finding", "empty", "none"]},
     {"id": "22.1",  "desc": "generate_report empty",    "tool": "generate_report", "args": {},                                             "any_of": ["0 finding", "report", "saved", "generated"]},
 
-    # Group B: save_finding — all params
+    # Group B: save_finding - all params
     {"id": "19.1",  "desc": "Required only",             "tool": "save_finding", "args": {"title": "Test SQLi", "severity": "high", "description": "SQL injection in search", "target": "http://localhost/sqli_1.php", "tool": "sqlmap"}, "any_of": ["saved", "finding", "id"], "extract": {"FINDING_A": r"(?:finding[_ ]?id|id)[:\s]+([a-f0-9-]+)"}},
     {"id": "19.2",  "desc": "All params",                "tool": "save_finding", "args": {"title": "Full Finding", "severity": "critical", "description": "RCE via deser", "target": "http://localhost:3000", "tool": "nuclei", "evidence": "HTTP 500 stack trace", "remediation": "Upgrade lib", "cvss": 9.8, "cve": "CVE-2024-1234"}, "any_of": ["saved", "finding", "id"], "extract": {"FINDING_B": r"(?:finding[_ ]?id|id)[:\s]+([a-f0-9-]+)"}},
     {"id": "19.3",  "desc": "severity=critical",         "tool": "save_finding", "args": {"title": "C", "severity": "critical", "description": "d", "target": "t", "tool": "t"}, "any_of": ["saved", "finding", "id"], "extract": {"FINDING_C": r"(?:finding[_ ]?id|id)[:\s]+([a-f0-9-]+)"}},
@@ -656,20 +656,20 @@ def main():
             runner.phase("Phase 4 (pre): bWAPP Login", PHASE_4_COOKIE)
 
         if do_all or "phase1" in phases_requested:
-            runner.phase("Phase 1: Recon — nmap", PHASE_1_NMAP)
-            runner.phase("Phase 1: Recon — whatweb", PHASE_1_WHATWEB)
-            runner.phase("Phase 1: Recon — masscan", PHASE_1_MASSCAN)
-            runner.phase("Phase 1: Recon — testssl", PHASE_1_TESTSSL)
+            runner.phase("Phase 1: Recon - nmap", PHASE_1_NMAP)
+            runner.phase("Phase 1: Recon - whatweb", PHASE_1_WHATWEB)
+            runner.phase("Phase 1: Recon - masscan", PHASE_1_MASSCAN)
+            runner.phase("Phase 1: Recon - testssl", PHASE_1_TESTSSL)
 
         if do_all or "phase2" in phases_requested:
-            runner.phase("Phase 2: Web — nuclei", PHASE_2_NUCLEI)
-            runner.phase("Phase 2: Web — nikto", PHASE_2_NIKTO)
-            runner.phase("Phase 2: Web — feroxbuster", PHASE_2_FEROX)
-            runner.phase("Phase 2: Web — ffuf", PHASE_2_FFUF)
+            runner.phase("Phase 2: Web - nuclei", PHASE_2_NUCLEI)
+            runner.phase("Phase 2: Web - nikto", PHASE_2_NIKTO)
+            runner.phase("Phase 2: Web - feroxbuster", PHASE_2_FEROX)
+            runner.phase("Phase 2: Web - ffuf", PHASE_2_FFUF)
 
         if do_all or "phase3" in phases_requested:
-            runner.phase("Phase 3: Exploitation — sqlmap", PHASE_3_SQLMAP)
-            runner.phase("Phase 3: Exploitation — hydra", PHASE_3_HYDRA)
+            runner.phase("Phase 3: Exploitation - sqlmap", PHASE_3_SQLMAP)
+            runner.phase("Phase 3: Exploitation - hydra", PHASE_3_HYDRA)
 
         if do_all or "phase4" in phases_requested:
             runner.phase("Phase 4: HTTP Request", PHASE_4_HTTP)

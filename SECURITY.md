@@ -17,10 +17,10 @@ the default branch (`main`) receives security fixes.
 
 ## Reporting a Vulnerability
 
-Please report security issues **privately** — do not open a public issue for a
+Please report security issues **privately** - do not open a public issue for a
 vulnerability.
 
-- Preferred: GitHub **private vulnerability reporting** —
+- Preferred: GitHub **private vulnerability reporting** -
   <https://github.com/tidynest/raven-nest-mcp/security/advisories/new>.
 - Include: affected version/commit, a description, reproduction steps or a PoC,
   and the impact you observed.
@@ -32,7 +32,7 @@ explanation of why.
 
 ## Scope
 
-In scope: bugs that let the server bypass its own safety controls — e.g. command
+In scope: bugs that let the server bypass its own safety controls - e.g. command
 injection past `validate_target`, allowlist or scope bypass, path traversal in
 finding/report/scan storage, or credential leakage in logs/output.
 

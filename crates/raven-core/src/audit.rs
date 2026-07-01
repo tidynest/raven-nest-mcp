@@ -26,12 +26,12 @@ const SECRET_FLAGS: &[&str] = &[
     "--api-key",
     "--auth",
     "--header",
-    "-H", // header (nuclei cookie) / NTLM hash (nxc) — always credential-bearing
+    "-H", // header (nuclei cookie) / NTLM hash (nxc) - always credential-bearing
 ];
 
 /// Short flags that carry a credential ONLY for credential-brute tools
-/// (hydra `-p <pass>` / `-P <passlist>`). Elsewhere `-p` is benign — e.g.
-/// nmap `-p 80,443` is a port list — so gating by tool keeps non-secret
+/// (hydra `-p <pass>` / `-P <passlist>`). Elsewhere `-p` is benign - e.g.
+/// nmap `-p 80,443` is a port list - so gating by tool keeps non-secret
 /// args in the trail instead of over-redacting them.
 const CRED_SHORT_FLAGS: &[&str] = &["-p", "-P"];
 
@@ -117,7 +117,7 @@ fn append_line(config: &RavenConfig, line: &str) -> std::io::Result<()> {
     writeln!(f, "{line}")
 }
 
-/// Record one tool invocation. Best-effort — never fails the caller.
+/// Record one tool invocation. Best-effort - never fails the caller.
 pub fn record(config: &RavenConfig, entry: &AuditEntry) {
     let line = serde_json::json!({
         "ts": chrono::Utc::now().to_rfc3339(),

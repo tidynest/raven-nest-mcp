@@ -81,7 +81,7 @@ pub async fn run(
 
 /// Parse nuclei JSONL output into a compact findings summary.
 ///
-/// Each JSONL line becomes: `[SEVERITY] template-id — name @ matched-url (type)`
+/// Each JSONL line becomes: `[SEVERITY] template-id - name @ matched-url (type)`
 /// Reduces raw JSON noise to an actionable table of findings.
 pub fn parse_nuclei_jsonl(raw: &str, max_results: usize) -> Option<String> {
     let mut findings = Vec::new();
@@ -95,7 +95,7 @@ pub fn parse_nuclei_jsonl(raw: &str, max_results: usize) -> Option<String> {
         // Try parsing as JSON. If truncation broke the line, try adding a closing brace.
         let v = serde_json::from_str::<serde_json::Value>(trimmed)
             .or_else(|_| {
-                // Truncated JSON — try to salvage by closing the object
+                // Truncated JSON - try to salvage by closing the object
                 let salvaged = format!("{trimmed}}}");
                 serde_json::from_str::<serde_json::Value>(&salvaged)
             })
@@ -125,7 +125,7 @@ pub fn parse_nuclei_jsonl(raw: &str, max_results: usize) -> Option<String> {
             }
 
             findings.push(format!(
-                "[{severity}] {template} — {name} @ {matched} ({kind})"
+                "[{severity}] {template} - {name} @ {matched} ({kind})"
             ));
         }
     }

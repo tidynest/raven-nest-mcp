@@ -1,16 +1,16 @@
-//! NetExec credentialed network-execution handler — gated, off by default.
+//! NetExec credentialed network-execution handler - gated, off by default.
 //!
 //! NetExec (`nxc`) authenticates to network services and enumerates them. This
 //! handler is deliberately restrictive, because the tool is intrusive and
 //! credentialed:
 //!
-//! - **Disabled by default** — runs only when `[netexec] enabled = true`.
-//! - **Read-only actions only** — a curated allowlist (auth + enumeration); no
+//! - **Disabled by default** - runs only when `[netexec] enabled = true`.
+//! - **Read-only actions only** - a curated allowlist (auth + enumeration); no
 //!   command execution (`-x`/`-X`), no modules (`-M`), no credential dumping
 //!   (`--sam`/`--lsa`/`--ntds`).
-//! - **Single scalar credential** — one username + one password OR hash; never a
+//! - **Single scalar credential** - one username + one password OR hash; never a
 //!   list/file (no spray), and no `--continue-on-success`.
-//! - **Single host** — CIDR, dash-notation IP ranges, comma lists, and target
+//! - **Single host** - CIDR, dash-notation IP ranges, comma lists, and target
 //!   files are all rejected (one credential across many hosts is spray).
 //!
 //! `destructive_hint` is set on the tool because failed authentication can lock
@@ -28,7 +28,7 @@ const PROTOCOLS: &[&str] = &["smb", "winrm", "ssh", "ldap", "mssql", "ftp", "rdp
 
 /// Map a curated read-only action to its NetExec flags. Returns `None` for an
 /// unknown action. NO command/module execution and NO credential dumping are
-/// reachable here — that is the security boundary, not a convenience list.
+/// reachable here - that is the security boundary, not a convenience list.
 fn action_flags(action: &str) -> Option<&'static [&'static str]> {
     Some(match action {
         "auth" => &[],
@@ -82,7 +82,7 @@ fn validate_scalar(label: &str, value: &str) -> Result<(), rmcp::ErrorData> {
     }
     if std::path::Path::new(value).is_file() {
         return Err(rmcp::ErrorData::invalid_params(
-            format!("{label} resolves to a file — pass a single value, not a list (no spray)"),
+            format!("{label} resolves to a file - pass a single value, not a list (no spray)"),
             None,
         ));
     }
@@ -90,7 +90,7 @@ fn validate_scalar(label: &str, value: &str) -> Result<(), rmcp::ErrorData> {
 }
 
 /// Reject targets NetExec would expand to MORE than one host: CIDR (`/`),
-/// dash-notation IP ranges (`10.0.0.1-20` — a digit-`-`-digit), comma/whitespace
+/// dash-notation IP ranges (`10.0.0.1-20` - a digit-`-`-digit), comma/whitespace
 /// lists, or a path to an existing file (NetExec reads a target file as a host
 /// list). A single IP or an ordinary hostname (whose hyphens sit beside letters)
 /// passes. This is the credential-spray boundary, so it errs toward rejection.
@@ -105,7 +105,7 @@ fn reject_multihost_target(target: &str) -> Result<(), rmcp::ErrorData> {
             .any(|w| w[1] == b'-' && w[0].is_ascii_digit() && w[2].is_ascii_digit());
     if multi {
         return Err(rmcp::ErrorData::invalid_params(
-            "NetExec targets a single host only — no CIDR, IP ranges (a-b), lists, or target files"
+            "NetExec targets a single host only - no CIDR, IP ranges (a-b), lists, or target files"
                 .to_string(),
             None,
         ));
@@ -121,21 +121,21 @@ pub async fn run(
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     if !config.netexec.enabled {
         return Err(rmcp::ErrorData::invalid_params(
-            "NetExec is disabled. Set [netexec] enabled = true in config to use it — \
+            "NetExec is disabled. Set [netexec] enabled = true in config to use it - \
              it is intrusive and credentialed, so enable it only for authorized engagements.",
             None,
         ));
     }
 
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
-    // Single host only — reject anything NetExec would expand to multiple hosts.
+    // Single host only - reject anything NetExec would expand to multiple hosts.
     reject_multihost_target(&req.target)?;
 
     let protocol = req.protocol.to_ascii_lowercase();
     if !PROTOCOLS.contains(&protocol.as_str()) {
         return Err(rmcp::ErrorData::invalid_params(
             format!(
-                "unsupported protocol '{protocol}' — allowed: {}",
+                "unsupported protocol '{protocol}' - allowed: {}",
                 PROTOCOLS.join(", ")
             ),
             None,
@@ -145,7 +145,7 @@ pub async fn run(
     let action = req.action.as_deref().unwrap_or("auth");
     let Some(flags) = action_flags(action) else {
         return Err(rmcp::ErrorData::invalid_params(
-            "invalid action — allowed: auth, shares, users, groups, loggedon, sessions, disks, pass-pol"
+            "invalid action - allowed: auth, shares, users, groups, loggedon, sessions, disks, pass-pol"
                 .to_string(),
             None,
         ));

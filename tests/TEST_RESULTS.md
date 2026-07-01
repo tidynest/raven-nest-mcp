@@ -20,7 +20,7 @@
 > +135 tests added since (recon tools, engagement, scope, audit, report formats,
 > auto-extract across 8 scanners, secret scanning [gitleaks/trufflehog], ffuf
 > match-code default, proactive launch cooldown) are counted in the summary above
-> but not itemized here — regenerate with `cargo test --workspace -- --list`.
+> but not itemized here - regenerate with `cargo test --workspace -- --list`.
 
 ---
 

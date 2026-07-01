@@ -1,5 +1,5 @@
 # Multi-stage: build the server on debian, run it on Kali (which already packages
-# 20 of the 22 wrapped tools as apt packages — far less upkeep than hand-building
+# 20 of the 22 wrapped tools as apt packages - far less upkeep than hand-building
 # the Go/Rust tools on debian-slim).
 #
 # ponytail: COPY . . busts the cargo layer on any source change, so each release
@@ -11,7 +11,7 @@ WORKDIR /src
 COPY . .
 RUN cargo build --release --locked --bin raven-server
 
-# katana + dalfox are NOT in the Kali apt repo (verified against pkg.kali.org) —
+# katana + dalfox are NOT in the Kali apt repo (verified against pkg.kali.org) -
 # build them in a throwaway Go stage so the toolchain stays out of the runtime image.
 # ponytail: @latest is non-reproducible; pin @vX.Y.Z if you need deterministic builds.
 FROM golang:1-bookworm AS gobuild
@@ -21,13 +21,13 @@ RUN go install github.com/projectdiscovery/katana/cmd/katana@latest \
 FROM kalilinux/kali-rolling AS runtime
 ENV DEBIAN_FRONTEND=noninteractive
 # 20 apt tools + iputils-ping (ping_target) + libssl3 (raven-server links OpenSSL
-# via native-tls) + CA roots. katana/dalfox come from the Go stage. MSF excluded —
+# via native-tls) + CA roots. katana/dalfox come from the Go stage. MSF excluded -
 # roughly doubles image size (see distribution plan); ship a ':full' tag if wanted.
 #
 # Kali packages ProjectDiscovery httpx as `httpx-toolkit` because python3-httpx
 # (an apt dependency of other tools here) owns `/usr/bin/httpx`. The server calls
 # `httpx`, so symlink the PD binary into /usr/local/bin, which precedes /usr/bin
-# on PATH — keeps the server's command name portable across non-Kali installs.
+# on PATH - keeps the server's command name portable across non-Kali installs.
 RUN apt-get update && apt-get install -y --no-install-recommends \
       nmap masscan nuclei nikto sqlmap hydra john ffuf feroxbuster wpscan \
       whatweb subfinder httpx-toolkit dnsx dnsrecon \
@@ -51,10 +51,10 @@ COPY README.md LICENSE CHANGELOG.md SECURITY.md \
 # Static OCI labels so any build (incl. local `docker build`) is well-described on
 # the package page. CI additionally injects version/revision/created via
 # docker/metadata-action (see release.yml). The mcp-name label is required by the
-# MCP registry's oci ownership check — keep it == server.json `name`.
+# MCP registry's oci ownership check - keep it == server.json `name`.
 LABEL org.opencontainers.image.source="https://github.com/tidynest/raven-nest-mcp" \
       org.opencontainers.image.title="Raven Nest MCP" \
-      org.opencontainers.image.description="AI-driven penetration testing — 22 security tools + Metasploit behind 43 safety-hardened MCP endpoints." \
+      org.opencontainers.image.description="AI-driven penetration testing - 22 security tools + Metasploit behind 43 safety-hardened MCP endpoints." \
       org.opencontainers.image.documentation="https://github.com/tidynest/raven-nest-mcp/blob/main/docs/USAGE.md" \
       org.opencontainers.image.licenses="Apache-2.0" \
       io.modelcontextprotocol.server.name="io.github.tidynest/raven-nest-mcp"

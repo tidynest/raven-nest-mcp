@@ -1,8 +1,8 @@
 //! Markdown report generator for pentest findings.
 //!
 //! Produces a structured report with:
-//! 1. **Executive summary** — severity breakdown table with counts.
-//! 2. **Findings section** — numbered entries with target, tool, CVSS/CVE,
+//! 1. **Executive summary** - severity breakdown table with counts.
+//! 2. **Findings section** - numbered entries with target, tool, CVSS/CVE,
 //!    description, evidence, and remediation.
 //!
 //! Called by [`raven_server::tools::findings::generate_report`] which also
@@ -15,7 +15,7 @@ use crate::summary::{count_by_severity, overall_risk, unique_tools};
 ///
 /// Prevents injected markdown (e.g. `# Fake Header` in a finding title)
 /// from breaking report structure. Applied to titles, descriptions, and
-/// remediation text — but NOT to evidence (which is inside a code fence).
+/// remediation text - but NOT to evidence (which is inside a code fence).
 fn escape_markdown(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for c in s.chars() {
@@ -32,7 +32,7 @@ fn escape_markdown(s: &str) -> String {
 
 /// Generate a complete markdown pentest report from a list of findings.
 ///
-/// Findings are rendered in the order provided — callers typically pass them
+/// Findings are rendered in the order provided - callers typically pass them
 /// pre-sorted by severity via [`FindingStore::load_all`](crate::store::FindingStore::load_all).
 ///
 /// Report structure: Table of Contents, Executive Summary (severity table +
@@ -58,7 +58,7 @@ pub fn generate_report(findings: &[&Finding], title: &str) -> String {
     }
     report.push('\n');
 
-    // Executive Summary — severity breakdown table + overall risk
+    // Executive Summary - severity breakdown table + overall risk
     report.push_str("## Executive Summary\n\n");
     let counts = count_by_severity(findings);
     report.push_str(&format!(
@@ -78,15 +78,15 @@ pub fn generate_report(findings: &[&Finding], title: &str) -> String {
     report.push_str("## Methodology\n\n");
     report.push_str(
         "This assessment followed the Penetration Testing Execution Standard (PTES):\n\n\
-        1. **Pre-engagement** — scope and rules of engagement defined\n\
-        2. **Intelligence gathering** — passive and active reconnaissance\n\
-        3. **Vulnerability analysis** — automated and manual vulnerability identification\n\
-        4. **Exploitation** — verification of identified vulnerabilities\n\
-        5. **Post-exploitation** — impact assessment and lateral movement testing\n\
-        6. **Reporting** — documentation of findings with remediation guidance\n\n",
+        1. **Pre-engagement** - scope and rules of engagement defined\n\
+        2. **Intelligence gathering** - passive and active reconnaissance\n\
+        3. **Vulnerability analysis** - automated and manual vulnerability identification\n\
+        4. **Exploitation** - verification of identified vulnerabilities\n\
+        5. **Post-exploitation** - impact assessment and lateral movement testing\n\
+        6. **Reporting** - documentation of findings with remediation guidance\n\n",
     );
 
-    // Tools Used — deduplicated list
+    // Tools Used - deduplicated list
     report.push_str("## Tools Used\n\n");
     for t in &unique_tools(findings) {
         report.push_str(&format!("- {t}\n"));
@@ -273,7 +273,7 @@ mod tests {
         f.description = "## Injected Section\n\nMalicious content".into();
         let findings = vec![&f];
         let report = generate_report(&findings, "Injection Test");
-        // The title should be escaped — no raw "# Injected Header" as an actual heading
+        // The title should be escaped - no raw "# Injected Header" as an actual heading
         assert!(report.contains("\\# Injected Header"));
         // The description should be escaped
         assert!(report.contains("\\#\\# Injected Section"));
@@ -285,7 +285,7 @@ mod tests {
         f.evidence = Some("# This should NOT be escaped\n`code here`".into());
         let findings = vec![&f];
         let report = generate_report(&findings, "Evidence Test");
-        // Evidence is inside a code fence — should NOT be escaped
+        // Evidence is inside a code fence - should NOT be escaped
         assert!(report.contains("# This should NOT be escaped"));
         assert!(report.contains("`code here`"));
     }

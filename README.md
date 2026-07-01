@@ -8,7 +8,7 @@
 
 A pentesting toolkit that runs as an [MCP](https://modelcontextprotocol.io/) server, giving AI assistants structured access to industry-standard security tools through a safety-hardened interface.
 
-> **Authorized use only.** Raven Nest is an offensive-security tool intended solely for testing systems you own or have explicit written permission to assess. Unauthorized scanning, enumeration, or exploitation may be illegal. You are solely responsible for obtaining authorization and complying with all applicable laws. The software is provided "as is", without warranty of any kind — see [LICENSE](LICENSE).
+> **Authorized use only.** Raven Nest is an offensive-security tool intended solely for testing systems you own or have explicit written permission to assess. Unauthorized scanning, enumeration, or exploitation may be illegal. You are solely responsible for obtaining authorization and complying with all applicable laws. The software is provided "as is", without warranty of any kind - see [LICENSE](LICENSE).
 
 ## Demo
 
@@ -18,11 +18,11 @@ Real MCP traffic to the tools - no LLM in the loop, fully deterministic. Targets
 
 ![Scan to structured finding to report](docs/assets/report.gif)
 
-**Recon flow — connectivity, ports, web stack**
+**Recon flow - connectivity, ports, web stack**
 
 ![Recon flow: ping, nmap, whatweb](docs/assets/recon.gif)
 
-**Metasploit module discovery** — *requires an MSF-enabled build; the default container image excludes Metasploit*
+**Metasploit module discovery** - *requires an MSF-enabled build; the default container image excludes Metasploit*
 
 ![Metasploit search and module info](docs/assets/metasploit.gif)
 
@@ -52,12 +52,12 @@ Raven Nest wraps 22 security tools plus Metasploit Framework behind an MCP inter
 
 ## How It Fits Together
 
-Raven Nest is an MCP **server** — it doesn't do anything on its own. An MCP
+Raven Nest is an MCP **server** - it doesn't do anything on its own. An MCP
 **host** launches it over stdio and drives the tools. Pick whichever host suits you:
 
-- **Any MCP host (recommended)** — point Claude Desktop, Cursor, or any MCP client
+- **Any MCP host (recommended)** - point Claude Desktop, Cursor, or any MCP client
   at the Docker image below; the host spawns the server for you.
-- **Companion REPL** — [`raven-nest-client`](https://github.com/tidynest/raven-nest-client)
+- **Companion REPL** - [`raven-nest-client`](https://github.com/tidynest/raven-nest-client)
   is a TypeScript terminal client (tab-completion, scan/finding/report commands,
   engagement scoping) for driving Raven Nest by hand. It can launch either a local
   `raven-server` build or the Docker image.
@@ -83,7 +83,7 @@ base, so you don't have to install them yourself. Point your MCP client at it
 }
 ```
 
-`masscan` and `nmap -O` need raw sockets — append `--cap-add=NET_RAW` and
+`masscan` and `nmap -O` need raw sockets - append `--cap-add=NET_RAW` and
 `--cap-add=NET_ADMIN` to `args` if you use them. The server is also listed on the
 [MCP Registry](https://registry.modelcontextprotocol.io) as
 `io.github.tidynest/raven-nest-mcp`.

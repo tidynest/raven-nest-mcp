@@ -3,16 +3,16 @@
 //! Scans a directory tree (`trufflehog filesystem`) for secrets and, unlike
 //! gitleaks, can *verify* them by testing the credential against its live API.
 //! Verification is **off by default** because it makes outbound calls to
-//! third-party services with discovered credentials — opt in with `verify` only
+//! third-party services with discovered credentials - opt in with `verify` only
 //! when that is in scope for the engagement.
 //!
 //! The scan path is confined to the configured output directory (plus
 //! `/usr/share`, `/usr/lib`) by [`validate_file_path`](super::validate_file_path).
-//! Secret values (`Raw`/`RawV2`/`Redacted`) are never echoed by the parser —
-//! only the detector name and `file:line` are returned. Slow tool — uses a
+//! Secret values (`Raw`/`RawV2`/`Redacted`) are never echoed by the parser -
+//! only the detector name and `file:line` are returned. Slow tool - uses a
 //! [`ProgressTicker`](crate::progress::ProgressTicker).
 //!
-//! SECURITY: never pass `--trust-local-git-config` — it enables RCE from a
+//! SECURITY: never pass `--trust-local-git-config` - it enables RCE from a
 //! malicious scanned repo (CVE-2025-41390). This handler scans the working
 //! tree only and never touches git config.
 //!
@@ -30,7 +30,7 @@ pub struct TrufflehogRequest {
     #[schemars(description = "Directory to scan (must be under the output directory)")]
     pub path: String,
     #[schemars(
-        description = "Verify secrets against their live APIs — makes outbound calls with found credentials (default false)"
+        description = "Verify secrets against their live APIs - makes outbound calls with found credentials (default false)"
     )]
     pub verify: Option<bool>,
 }
@@ -120,7 +120,7 @@ fn parse_trufflehog(raw: &str) -> Option<String> {
         return if raw.trim().is_empty() {
             Some("No secrets detected.".to_string())
         } else {
-            None // had output but couldn't parse it — fall back to raw
+            None // had output but couldn't parse it - fall back to raw
         };
     }
 
