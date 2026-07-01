@@ -41,41 +41,19 @@ pub async fn run(
         }
     }
 
-    let result = client
-        .execute_module("auxiliary", &req.module, &opts)
+    // Run via a console so the module's printed findings are captured;
+    // module.execute alone only exposes the (usually empty) results hash.
+    let output = client
+        .run_auxiliary_console(&req.module, &opts)
         .await
         .map_err(crate::error::to_mcp)?;
-    let uuid = result
-        .get("uuid")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
 
-    // Poll for completion
-    let mut output = format!("Auxiliary module launched (uuid {uuid})\n");
-    let mut delay = 2u64;
-    for _ in 0..10 {
-        tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
-        if let Ok(status) = client.module_results(uuid).await {
-            let state = status
-                .get("status")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
-            if state == "completed" || state == "errored" {
-                output.push_str(&format!("Status: {state}\n"));
-                if let Some(result_data) = status.get("result") {
-                    let s = serde_json::to_string_pretty(result_data).unwrap_or_default();
-                    let truncated = if s.len() > 3000 {
-                        format!("{}...", &s[..3000])
-                    } else {
-                        s
-                    };
-                    output.push_str(&truncated);
-                }
-                break;
-            }
-        }
-        delay = (delay * 2).min(16);
-    }
+    let output = if output.trim().is_empty() {
+        format!("Module '{}' ran but produced no output.", req.module)
+    } else {
+        // Truncate on a char boundary (console text is UTF-8).
+        output.chars().take(4000).collect::<String>()
+    };
 
     Ok(CallToolResult::success(vec![Content::text(output)]))
 }

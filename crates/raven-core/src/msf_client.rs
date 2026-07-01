@@ -76,6 +76,18 @@ fn is_blocked(module_name: &str, patterns: &[String]) -> bool {
     })
 }
 
+/// Reject text that cannot be safely written as an msfconsole command.
+/// Commands are newline-separated, so a control character (newline, CR, ...)
+/// in a module path or option value could inject additional console commands.
+fn validate_console_token(s: &str) -> Result<(), PentestError> {
+    if s.chars().any(char::is_control) {
+        return Err(PentestError::MsfRpcError(
+            "value contains control characters (possible console-command injection)".into(),
+        ));
+    }
+    Ok(())
+}
+
 /// Metasploit RPC client - held behind `Arc` in the server.
 pub struct MsfClient {
     config: MetasploitConfig,
@@ -303,6 +315,102 @@ impl MsfClient {
             .await
     }
 
+    // ── Console API ─────────────────────────────────────────────────
+    // module.execute exposes only a module's structured results hash, which
+    // most scanners leave empty - their findings go to console print output.
+    // Running through a console captures that printed text.
+
+    /// Create an interactive console. Returns its id.
+    async fn console_create(&self) -> Result<String, PentestError> {
+        let r = self.auth_call("console.create", &[]).await?;
+        r.get("id")
+            .and_then(|v| {
+                v.as_str()
+                    .map(String::from)
+                    .or_else(|| v.as_i64().map(|n| n.to_string()))
+            })
+            .ok_or_else(|| PentestError::MsfRpcError("console.create: no id in response".into()))
+    }
+
+    /// Write text (commands) to a console.
+    async fn console_write(&self, id: &str, data: &str) -> Result<Value, PentestError> {
+        self.auth_call(
+            "console.write",
+            &[Value::String(id.into()), Value::String(data.into())],
+        )
+        .await
+    }
+
+    /// Read pending output from a console. Returns `{data, prompt, busy}`.
+    async fn console_read(&self, id: &str) -> Result<Value, PentestError> {
+        self.auth_call("console.read", &[Value::String(id.into())])
+            .await
+    }
+
+    /// Destroy a console (best-effort cleanup).
+    async fn console_destroy(&self, id: &str) -> Result<Value, PentestError> {
+        self.auth_call("console.destroy", &[Value::String(id.into())])
+            .await
+    }
+
+    /// Run an auxiliary module through a console so its `print_good`/`print_status`
+    /// output is captured (module.execute only returns the results hash, which
+    /// most scanners leave empty). Returns the accumulated console text.
+    ///
+    /// Options are written as `set KEY VALUE` console commands; keys/values and
+    /// the module path are validated to reject control characters that could
+    /// inject extra commands.
+    pub async fn run_auxiliary_console(
+        &self,
+        module: &str,
+        options: &serde_json::Map<String, Value>,
+    ) -> Result<String, PentestError> {
+        if is_blocked(module, &self.config.blocked_modules) {
+            return Err(PentestError::MsfRpcError(format!(
+                "module '{module}' is blocked by config"
+            )));
+        }
+        validate_console_token(module)?;
+        for (k, v) in options {
+            validate_console_token(k)?;
+            validate_console_token(v.as_str().unwrap_or_default())?;
+        }
+
+        let mut cmds = format!("use {module}\n");
+        for (k, v) in options {
+            cmds.push_str(&format!("set {k} {}\n", v.as_str().unwrap_or_default()));
+        }
+        cmds.push_str("run\n");
+
+        let id = self.console_create().await?;
+        // Run the module, then poll until the console reports it is no longer
+        // busy, accumulating printed output. Cleanup is best-effort.
+        let result = async {
+            // Drain the msfconsole startup banner so it doesn't pollute output.
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            let _ = self.console_read(&id).await;
+            self.console_write(&id, &cmds).await?;
+            let mut out = String::new();
+            let mut delay = 1u64;
+            for _ in 0..15 {
+                tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
+                let r = self.console_read(&id).await?;
+                if let Some(data) = r.get("data").and_then(|v| v.as_str()) {
+                    out.push_str(data);
+                }
+                let busy = r.get("busy").and_then(|v| v.as_bool()).unwrap_or(false);
+                if !busy && !out.trim().is_empty() {
+                    break;
+                }
+                delay = (delay + 1).min(4);
+            }
+            Ok::<String, PentestError>(out)
+        }
+        .await;
+        let _ = self.console_destroy(&id).await;
+        result
+    }
+
     /// List all active sessions.
     pub async fn list_sessions(&self) -> Result<Value, PentestError> {
         self.auth_call("session.list", &[]).await
@@ -517,6 +625,17 @@ mod tests {
         assert!(is_blocked("exploit/foo", &patterns));
         assert!(is_blocked("exploit/foo/bar", &patterns));
         assert!(!is_blocked("exploit/foobar", &patterns));
+    }
+
+    #[test]
+    fn console_token_rejects_control_chars() {
+        // Newlines/CR would let an option value inject extra console commands.
+        assert!(validate_console_token("scanner/http/http_version").is_ok());
+        assert!(validate_console_token("Mozilla/5.0 (X11; Linux)").is_ok()); // spaces ok
+        assert!(validate_console_token("8080").is_ok());
+        assert!(validate_console_token("x\nrun").is_err());
+        assert!(validate_console_token("x\rset PAYLOAD evil").is_err());
+        assert!(validate_console_token("x\tset").is_err());
     }
 
     // --- rmpv_to_json (msfrpcd MessagePack → JSON decode) ---
