@@ -1,4 +1,4 @@
-//! Metasploit module search — find exploits, auxiliaries, and post modules.
+//! Metasploit module search - find exploits, auxiliaries, and post modules.
 
 use raven_core::msf_client::MsfClient;
 use rmcp::{

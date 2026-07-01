@@ -260,7 +260,7 @@ pub async fn run(
 ///
 /// Removes `<script>` and `<style>` blocks, strips remaining tags (inserting
 /// newlines for block elements), decodes common HTML entities, and collapses
-/// repeated whitespace. Not a full parser — optimised for reducing HTML
+/// repeated whitespace. Not a full parser - optimised for reducing HTML
 /// response size in context-constrained environments.
 fn strip_html(html: &str) -> String {
     // Phase 1: Remove script/style blocks and HTML comments
@@ -374,7 +374,7 @@ fn strip_html(html: &str) -> String {
                     continue;
                 }
             }
-            // Malformed — keep `&#` literal and advance past it
+            // Malformed - keep `&#` literal and advance past it
             out.push_str("&#");
             remaining = after;
         }
@@ -463,7 +463,7 @@ mod tests {
         let html = "&#169; &#8212; &#65;";
         let text = strip_html(html);
         assert!(text.contains('\u{00A9}')); // &#169; = ©
-        assert!(text.contains('\u{2014}')); // &#8212; = —
+        assert!(text.contains('\u{2014}')); // &#8212; = -
         assert!(text.contains('A')); // &#65; = A
         assert!(!text.contains("&#"));
     }

@@ -40,7 +40,7 @@ prefix entirely.
 }
 ```
 
-Tools then appear as `raven.run_nmap`, `raven.list_findings`, etc. — much
+Tools then appear as `raven.run_nmap`, `raven.list_findings`, etc. - much
 easier for smaller models to handle.
 
 ## Tool Installation
@@ -77,7 +77,7 @@ Metasploit modules + ping/http + 5 scan management + 6 finding management +
 | httpx | `httpx` | `go install github.com/projectdiscovery/httpx/cmd/httpx@latest` |
 | dnsx | `dnsx` | `go install github.com/projectdiscovery/dnsx/cmd/dnsx@latest` |
 | katana | `katana` | `go install github.com/projectdiscovery/katana/cmd/katana@latest` |
-| netexec | `nxc` | `pipx install netexec` — gated; set `[netexec] enabled = true` |
+| netexec | `nxc` | `pipx install netexec` - gated; set `[netexec] enabled = true` |
 
 ### Tool Paths Configuration
 
@@ -125,13 +125,13 @@ Best-to-worst for Raven Nest tool calling, based on the
 | Model | Size | VRAM (8GB fit?) | Tool F1 | Notes |
 |-------|------|-----------------|---------|-------|
 | Qwen3 8B @64K (dense) | ~5 GB | Yes | 0.933 | **Daily driver.** Zero param hallucination, no interactive fabrication. 8/8 batch steps at 64K context. ~40 tok/s. |
-| Qwen3.5 9B @49K (dense) | ~6.6 GB | Yes (tight, 7.3/8.2 GB) | ~0.93+ | **Best batch model.** 6+ granular findings, professional reports. Batch-only — fabricates in interactive mode. ~30 tok/s. |
+| Qwen3.5 9B @49K (dense) | ~6.6 GB | Yes (tight, 7.3/8.2 GB) | ~0.93+ | **Best batch model.** 6+ granular findings, professional reports. Batch-only - fabricates in interactive mode. ~30 tok/s. |
 | Qwen3 14B (dense) | ~10 GB | No (CPU offload) | 0.971 | Tested. Correct tool selection in batch mode. Fabricates in interactive. ~8 tok/s with partial offload. |
 
-14 models tested — only the Qwen3/3.5 family produces usable results.
-Dense models outperform MoE for tool calling — all parameters participate
+14 models tested - only the Qwen3/3.5 family produces usable results.
+Dense models outperform MoE for tool calling - all parameters participate
 in structured output generation, reducing parameter name hallucination.
-BFCL benchmark scores do not predict Ollama compatibility — models ranked
+BFCL benchmark scores do not predict Ollama compatibility - models ranked
 \#3 and #4 on BFCL both failed because their tool-calling format doesn't
 match Ollama's protocol.
 
@@ -139,8 +139,8 @@ match Ollama's protocol.
 
 | Model | Size | Tool Calling | Verdict |
 |-------|------|-------------|---------|
-| Qwen3 8B @64K | 5 GB | Excellent | **Daily driver** — no fabrication in interactive mode, 8/8 batch steps, 0 param hallucination. Saves 1 finding per run. |
-| Qwen3.5 9B @49K | 6.6 GB | Excellent (batch) | **Best batch model** — 6 findings, professional reports. Fabricates in interactive mode. VRAM tight (7.3/8.2 GB). |
+| Qwen3 8B @64K | 5 GB | Excellent | **Daily driver** - no fabrication in interactive mode, 8/8 batch steps, 0 param hallucination. Saves 1 finding per run. |
+| Qwen3.5 9B @49K | 6.6 GB | Excellent (batch) | **Best batch model** - 6 findings, professional reports. Fabricates in interactive mode. VRAM tight (7.3/8.2 GB). |
 | Qwen3 14B | 9 GB | Good (batch) | Correct tool selection, sqlmap finds 4 injection types. Fabricates in interactive. ~8 tok/s. |
 | Qwen3.5 35B-A3B (MoE) | 23 GB | Good (batch) | Excellent in batch mode, fabricates in single-step interactive. 32K context. |
 | Hermes 3 8B | 4.7 GB | Marginal | Individual tool calls work, but can't chain in batch. Tool substitution (whatweb->http_request). sqlmap always silent. |
@@ -149,21 +149,21 @@ match Ollama's protocol.
 | Granite 3.3 8B | 5 GB | **Incompatible** | Outputs tool names as plain text instead of structured API calls. |
 | xLAM-2-8B-fc-r | 8.5 GB | **Incompatible** | Outputs tool calls as JSON arrays in text. Correct tool names and params, but ollmcp can't intercept them. |
 | Phi-4-mini (3.8B) | 2.5 GB | **Incompatible** | Outputs tool calls as Python-like pseudo-code text. Never triggers Ollama tool API. |
-| Dolphin 3.0 8B | 4.9 GB | **Incompatible** | No `tools` capability in Ollama — ollmcp refuses tool mode entirely. |
+| Dolphin 3.0 8B | 4.9 GB | **Incompatible** | No `tools` capability in Ollama - ollmcp refuses tool mode entirely. |
 | Qwen 2.5 Coder 14B | 9 GB | **Incompatible** | Outputs tool calls as JSON text instead of using the tool-calling API. |
 | Devstral 24B | 14 GB | **Not recommended** | ~90s/call (CPU offload), frequent empty responses, incorrect tool mapping. |
-| Qwen3-Coder 32B | 18 GB | **Not recommended** | Overly autonomous — scans everything but saves 0 findings. Ollama XML crash. ~60s/call. |
+| Qwen3-Coder 32B | 18 GB | **Not recommended** | Overly autonomous - scans everything but saves 0 findings. Ollama XML crash. ~60s/call. |
 
 ### Models to Avoid
 
-- **Ministral 3B/8B** — fails silently with >2 tools attached (fatal for 43 tools)
-- **Mistral Nemo 12B** — MCP role bug breaks multi-turn tool use
-- **xLAM 8B (v1)** — F1 score 0.570, frequently misses tools
-- **xLAM-2-8B-fc-r (v2)** — despite BFCL #4, outputs JSON text instead of using Ollama tool API
-- **Phi-4-mini** — outputs pseudo-code instead of structured tool calls
-- **Dolphin 3.0** — no tool-calling support in Ollama at all
-- **DeepSeek models** — tool calling requires thinking mode disabled
-- **Any model under 3B parameters** — unreliable for structured tool calling (Granite 4.0 at 3.4B is borderline)
+- **Ministral 3B/8B** - fails silently with >2 tools attached (fatal for 43 tools)
+- **Mistral Nemo 12B** - MCP role bug breaks multi-turn tool use
+- **xLAM 8B (v1)** - F1 score 0.570, frequently misses tools
+- **xLAM-2-8B-fc-r (v2)** - despite BFCL #4, outputs JSON text instead of using Ollama tool API
+- **Phi-4-mini** - outputs pseudo-code instead of structured tool calls
+- **Dolphin 3.0** - no tool-calling support in Ollama at all
+- **DeepSeek models** - tool calling requires thinking mode disabled
+- **Any model under 3B parameters** - unreliable for structured tool calling (Granite 4.0 at 3.4B is borderline)
 
 ## Context Budget System
 
@@ -177,7 +177,7 @@ On startup, the budget subtracts estimated overhead from `context_budget`:
 - Server instructions (~500 chars)
 - AI reasoning per turn (~1,500 chars x `expected_tool_calls`)
 
-The remainder is the **usable budget** — divided fairly among remaining
+The remainder is the **usable budget** - divided fairly among remaining
 expected tool calls. As the session progresses, per-call caps shrink
 automatically.
 
@@ -225,7 +225,7 @@ When output exceeds the per-call cap, it is truncated preserving the head
 | Model | context_budget | expected_tool_calls | Notes |
 |-------|---------------|---------------------|-------|
 | Qwen3 8B @64K | 65536 | 10 | Daily driver, interactive. Best balance of speed and capacity. |
-| Qwen3.5 9B @49K | 49152 | 8 | Batch mode only. Tight VRAM — no room for thinking mode. |
+| Qwen3.5 9B @49K | 49152 | 8 | Batch mode only. Tight VRAM - no room for thinking mode. |
 | Qwen3 14B @40K | 40960 | 8 | Batch mode only. Partial CPU offload. |
 | Cloud models | 0 (disabled) | - | Set `context_budget = 0` to disable budget tracking entirely. |
 
@@ -240,14 +240,14 @@ expected_tool_calls = 10
 ### Disabling the Budget
 
 Set `context_budget = 0` to disable budgeting entirely. All tools get
-`OutputMode::Full` with a generous 50,000-char cap — suitable for cloud
+`OutputMode::Full` with a generous 50,000-char cap - suitable for cloud
 models with large context windows.
 
 ## ANSI Stripping
 
 All tool responses pass through centralised ANSI escape code stripping in
 `wrap_result()` before being sent to the model. This covers every code
-path — parser output, raw fallback, error messages, and background scan
+path - parser output, raw fallback, error messages, and background scan
 results. No ANSI codes leak through regardless of which tool or mode is
 used.
 
@@ -263,7 +263,7 @@ This appears in generated reports alongside severity, CVSS, and CVE.
 
 Local models may use wrong parameter names based on their training data.
 For example, Qwen 3.5 used `"data"` instead of `"body"` for
-`http_request` — likely influenced by Python's `requests.post(data=...)`.
+`http_request` - likely influenced by Python's `requests.post(data=...)`.
 
 **Built-in protection:** every request struct uses
 `#[serde(deny_unknown_fields)]`, so misnamed parameters produce an
@@ -296,25 +296,25 @@ strings like `"abc"` still produce a clear parse error.
 Local models have limited context (typically 32-64K tokens). Raven Nest
 includes several built-in mitigations to reduce context consumption:
 
-**Context budget tracker** — automatically scales output verbosity from
+**Context budget tracker** - automatically scales output verbosity from
 Full to Compact to Minimal as the session progresses (see Context Budget
 System above).
 
-**Built-in output parsers** — tool outputs are parsed into compact
+**Built-in output parsers** - tool outputs are parsed into compact
 summaries instead of raw verbose output:
-- **sqlmap** — extracts injection points, DBMS info; strips progress lines
-- **nuclei** — parses JSONL into `[severity] template — name @ url` table
-- **nikto** — keeps only finding lines (prefixed with `+`)
-- **feroxbuster** — extracts `status URL` pairs, filters 404s
-- **testssl** — extracts vulnerability assessments and certificate info
-- **nmap** — parses XML into structured port/service table, NSE script results (vulners top-5 CVEs by CVSS, other scripts compressed to single-line summaries), host scripts
-- **hydra** — extracts cracked credentials
-- **whatweb** — extracts technology identifications
-- **masscan** — extracts open port/protocol pairs
-- **ffuf** — extracts discovered URLs with status codes
-- **httpx** — extracts per-URL status, title, tech, TLS
-- **dnsx** — extracts resolved DNS records
-- **katana** — extracts crawled/deduplicated endpoints
+- **sqlmap** - extracts injection points, DBMS info; strips progress lines
+- **nuclei** - parses JSONL into `[severity] template - name @ url` table
+- **nikto** - keeps only finding lines (prefixed with `+`)
+- **feroxbuster** - extracts `status URL` pairs, filters 404s
+- **testssl** - extracts vulnerability assessments and certificate info
+- **nmap** - parses XML into structured port/service table, NSE script results (vulners top-5 CVEs by CVSS, other scripts compressed to single-line summaries), host scripts
+- **hydra** - extracts cracked credentials
+- **whatweb** - extracts technology identifications
+- **masscan** - extracts open port/protocol pairs
+- **ffuf** - extracts discovered URLs with status codes
+- **httpx** - extracts per-URL status, title, tech, TLS
+- **dnsx** - extracts resolved DNS records
+- **katana** - extracts crawled/deduplicated endpoints
 
 **HTTP response reduction:**
 - HTML responses are automatically stripped to plain text (scripts, styles,
@@ -336,9 +336,9 @@ large tool response.
 
 **Live-tested context budgets:**
 - Qwen3 8B at 32K: 3-4 tool calls before exhaustion
-- Qwen3 8B at 64K (q8_0 KV cache): **8/8 steps with no exhaustion** — context problem solved
+- Qwen3 8B at 64K (q8_0 KV cache): **8/8 steps with no exhaustion** - context problem solved
 - Qwen3.5 9B at 49K: 8/8 steps, but thinking mode causes empty responses (VRAM-limited)
-- Thinking mode accelerates exhaustion — disable it for simple tool calls
+- Thinking mode accelerates exhaustion - disable it for simple tool calls
 - After clearing context (`cc` in ollmcp), the model must re-authenticate
   since the session cookie is lost from context
 
@@ -349,20 +349,20 @@ large tool response.
   loading everything at once
 - Keep loop limits modest (10-15) to prevent runaway context growth
 - Batch multiple steps into a single prompt to maximise work per context
-  fill — Qwen3 8B can chain 5-6 tool calls in one multi-step prompt
+  fill - Qwen3 8B can chain 5-6 tool calls in one multi-step prompt
 - When the model goes silent, type `cc` to clear context and re-prompt
   for remaining steps (re-authenticate first)
 
 ### Interactive Fabrication (Qwen3.5 Variants)
 
 All Qwen3.5 variants (9B dense, 35B-A3B MoE) fabricate tool outputs
-in interactive single-step mode. This is a universal architecture issue —
+in interactive single-step mode. This is a universal architecture issue -
 the model generates plausible-looking tool responses instead of actually
 calling tools. Once one fake response enters context, the pattern persists
 even with explicit tool names in the prompt.
 
 **Workaround:** Use Qwen3 8B for interactive work (no fabrication). Use
-Qwen3.5 9B for batch mode only — give all steps in a single prompt and
+Qwen3.5 9B for batch mode only - give all steps in a single prompt and
 the model calls tools correctly.
 
 ### Info-Level Finding Gap
@@ -371,7 +371,7 @@ Neither model reliably saves info-level findings in batch mode. Both
 prioritize higher-severity results from nikto/sqlmap. When nuclei is
 the only tool (individual mode), Qwen3 8B does save the info finding.
 
-**Mitigation (shipped):** enable server-side auto-save — set
+**Mitigation (shipped):** enable server-side auto-save - set
 `auto_save_findings = true` (and optionally `auto_save_min_severity = "info"`)
 under `[safety]`. Qualifying nuclei findings are then extracted and saved
 automatically, independent of whether the model remembers to call
@@ -428,7 +428,7 @@ language.
 
 ### Thinking Mode
 
-- Disable thinking mode (`tm` in ollmcp) for simple tool invocations —
+- Disable thinking mode (`tm` in ollmcp) for simple tool invocations -
   it wastes context budget and can cause empty responses at tight VRAM.
 - At Qwen3.5 9B (7.3/8.2 GB VRAM), thinking mode is unusable.
 - Thinking mode is useful for complex reasoning about scan results.
@@ -474,10 +474,10 @@ Key tool parameters:
 - msf_search: query
 - msf_exploit: module, options
 
-All scanning tools accept a "cookie" parameter — pass session cookies
+All scanning tools accept a "cookie" parameter - pass session cookies
 explicitly after authenticating with http_request.
 
-Keep responses concise. Do not repeat raw tool output — summarize key
+Keep responses concise. Do not repeat raw tool output - summarize key
 findings instead.
 ```
 
@@ -506,7 +506,7 @@ cat > ~/.mcphost.json << 'EOF'
 EOF
 
 # Configure ollmcp (system prompt, context, loop limit)
-# See ~/.config/ollmcp/config.json — set num_ctx to match context_budget, loopLimit: 15
+# See ~/.config/ollmcp/config.json - set num_ctx to match context_budget, loopLimit: 15
 
 # Launch ollmcp once and disable HIL confirmations permanently:
 # Type: hil > d > y, then save-config (sc)
@@ -548,31 +548,31 @@ Qwen3.5 9B produces 6+ granular findings with professional reports.
 ### Monitoring Scans
 
 For **background scans** launched via `launch_scan`:
-- `list_scans` — show all running/completed background scans with IDs
-- `get_scan_status(scan_id)` — check if a specific scan is running/completed/failed
-- `get_scan_results(scan_id)` — retrieve output of a completed scan
+- `list_scans` - show all running/completed background scans with IDs
+- `get_scan_status(scan_id)` - check if a specific scan is running/completed/failed
+- `get_scan_results(scan_id)` - retrieve output of a completed scan
 
 For **findings and reports:**
-- `list_findings` — list all saved findings sorted by severity
-- `get_finding(finding_id)` — get full finding details
-- `generate_report(title, format)` — generate a report (markdown default; json/sarif/html) from all findings
+- `list_findings` - list all saved findings sorted by severity
+- `get_finding(finding_id)` - get full finding details
+- `generate_report(title, format)` - generate a report (markdown default; json/sarif/html) from all findings
 
-Direct tool calls (run_nuclei, run_nmap, etc.) return when done — the
+Direct tool calls (run_nuclei, run_nmap, etc.) return when done - the
 MCP server sends progress notifications to the client during execution.
 
 ## Reproduction Testing (severity=info)
 
 Results from 3x identical runs per configuration:
 
-**Qwen3 8B @64K — Individual (nuclei severity=info only):**
+**Qwen3 8B @64K - Individual (nuclei severity=info only):**
 - 3/3 runs produced exactly 1 info finding (WAF/SNMPv3/SSH detection)
 - Wording varies slightly but detections are consistent
 
-**Qwen3 8B @64K — Batch (full pentest with nuclei severity=info):**
+**Qwen3 8B @64K - Batch (full pentest with nuclei severity=info):**
 - 3/3 runs produced exactly 1 high finding (SQL injection from sqlmap)
 - Info-level nuclei findings were never saved (0/3 runs)
 
-**Qwen3.5 9B @49K — Batch (full pentest with nuclei severity=info):**
+**Qwen3.5 9B @49K - Batch (full pentest with nuclei severity=info):**
 - Runs produced 6, 7, and 8 findings respectively (improving)
 - Info-level finding saved in only 1/3 runs (WAF detection)
 - Consistent: SQLi (critical), outdated Apache/PHP (high), missing headers (medium)
@@ -610,11 +610,11 @@ Upgrade path for 8 GB VRAM + 32 GB RAM:
 
 | Model | Context | VRAM Use | Speed | Use Case |
 |-------|---------|----------|-------|----------|
-| Qwen3 8B @64K | 64K | ~5 GB (full GPU) | ~40 tok/s | **Daily driver** — interactive + batch, no fabrication |
-| Qwen3.5 9B @49K | 49K | ~7.3 GB (tight) | ~30 tok/s | **Best batch** — 6+ findings, professional reports |
+| Qwen3 8B @64K | 64K | ~5 GB (full GPU) | ~40 tok/s | **Daily driver** - interactive + batch, no fabrication |
+| Qwen3.5 9B @49K | 49K | ~7.3 GB (tight) | ~30 tok/s | **Best batch** - 6+ findings, professional reports |
 | Qwen3 14B | 40K+ | GPU + CPU split | ~8 tok/s | Batch-only, CVE hallucination, not recommended |
-| Devstral Small 2 24B | 128K | GPU + CPU split | ~6 tok/s | Not recommended — empty responses, slow |
-| Qwen3-Coder 32B | 128K | GPU + CPU split | ~3-5 tok/s | Not recommended — no finding discipline |
+| Devstral Small 2 24B | 128K | GPU + CPU split | ~6 tok/s | Not recommended - empty responses, slow |
+| Qwen3-Coder 32B | 128K | GPU + CPU split | ~3-5 tok/s | Not recommended - no finding discipline |
 
 ## Resource Considerations
 
@@ -625,7 +625,7 @@ Upgrade path for 8 GB VRAM + 32 GB RAM:
 | Qwen 3.5 35B-A3B (Q4) | ~22 GB | ~23 GB | Moderate (MoE, only 3B active) |
 | Qwen3-Coder 32B | ~20 GB | ~20 GB | ~3-5 tok/s with layer splitting |
 
-Running both Ollama and Raven Nest simultaneously is lightweight — the MCP
+Running both Ollama and Raven Nest simultaneously is lightweight - the MCP
 server is a single Rust binary with minimal memory footprint. The LLM is
 the bottleneck.
 

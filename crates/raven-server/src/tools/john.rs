@@ -32,7 +32,7 @@ pub async fn run(
     req: JohnRequest,
     peer: Option<rmcp::Peer<rmcp::RoleServer>>,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
-    // Validate file paths — prevent reading arbitrary files
+    // Validate file paths - prevent reading arbitrary files
     super::validate_file_path(&req.hash_file, &config.execution.output_dir)?;
     if let Some(ref wordlist) = req.wordlist {
         super::validate_file_path(wordlist, &config.execution.output_dir)?;

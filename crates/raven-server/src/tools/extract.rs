@@ -3,12 +3,12 @@
 //! Some scanners emit structured, severity-tagged results that map cleanly onto
 //! a [`Finding`]. When `auto_save_findings` is enabled in config, the server
 //! parses those results into [`ExtractedFinding`]s and persists the qualifying
-//! ones via [`auto_save`] — deduplicated and tagged `source = AutoExtracted`.
+//! ones via [`auto_save`] - deduplicated and tagged `source = AutoExtracted`.
 //!
 //! [`auto_save`] is tool-agnostic; each tool gets an `extract_*` parser that
 //! yields rows. Wired: nuclei, nikto, dalfox, nmap, sqlmap, testssl, gitleaks,
 //! trufflehog. The secret scanners (gitleaks/trufflehog) deliberately read only
-//! location + identifier fields — a secret value never reaches a finding.
+//! location + identifier fields - a secret value never reaches a finding.
 
 use raven_core::config::RavenConfig;
 use raven_report::finding::{Finding, FindingSource, Severity};
@@ -41,7 +41,7 @@ pub fn parse_severity(s: &str) -> Option<Severity> {
 ///
 /// Mirrors the field access in
 /// [`nuclei::parse_nuclei_jsonl`](crate::tools::nuclei::parse_nuclei_jsonl) but
-/// yields structured rows. Lines without a parseable severity are skipped — only
+/// yields structured rows. Lines without a parseable severity are skipped - only
 /// actionable, severity-tagged detections become findings.
 pub fn extract_nuclei(raw: &str) -> Vec<ExtractedFinding> {
     let mut out = Vec::new();
@@ -99,7 +99,7 @@ fn truncate_title(s: &str, n: usize) -> String {
 
 /// Extract findings from nikto's text output. Nikto emits no severity, so every
 /// finding is tagged Low (conservative). Target/banner/run-summary lines are
-/// dropped — only the `+`-prefixed findings remain.
+/// dropped - only the `+`-prefixed findings remain.
 pub fn extract_nikto(raw: &str) -> Vec<ExtractedFinding> {
     raw.lines()
         .map(str::trim)
@@ -164,8 +164,8 @@ pub fn extract_dalfox(raw: &str) -> Vec<ExtractedFinding> {
 }
 
 /// Map a CVSS base score to a [`Severity`] using the official FIRST.org CVSS
-/// qualitative severity rating scale — identical in CVSS v3.0/v3.1/v4.0:
-/// 9.0–10.0 Critical · 7.0–8.9 High · 4.0–6.9 Medium · 0.1–3.9 Low · 0.0 None.
+/// qualitative severity rating scale - identical in CVSS v3.0/v3.1/v4.0:
+/// 9.0-10.0 Critical · 7.0-8.9 High · 4.0-6.9 Medium · 0.1-3.9 Low · 0.0 None.
 /// Raven has no `None`, so 0.0 (and any out-of-range value) maps to `Info`.
 /// Ref: <https://www.first.org/cvss/v4.0/specification-document> §"Qualitative Severity Rating Scale".
 pub fn severity_from_cvss(score: f32) -> Severity {
@@ -178,7 +178,7 @@ pub fn severity_from_cvss(score: f32) -> Severity {
     }
 }
 
-/// Extract findings from nmap XML — one per CVE reported by the `vulners` NSE
+/// Extract findings from nmap XML - one per CVE reported by the `vulners` NSE
 /// script, severity derived from CVSS. Sorted worst-first so the per-scan cap
 /// keeps the most severe. Deduplicated downstream by [`auto_save`].
 pub fn extract_nmap(raw: &str) -> Vec<ExtractedFinding> {
@@ -213,7 +213,7 @@ fn find_cve(line: &str) -> Option<String> {
 /// each such line is one High finding; the following `Type:` lines enrich its
 /// evidence. A clean ("not injectable") run yields nothing.
 ///
-/// ponytail: anchors on the `Parameter:`/`Type:` line prefixes — robust to
+/// ponytail: anchors on the `Parameter:`/`Type:` line prefixes - robust to
 /// sqlmap's verbose progress noise without parsing the whole block structure.
 pub fn extract_sqlmap(raw: &str) -> Vec<ExtractedFinding> {
     let clean = crate::tools::strip_ansi(raw);
@@ -236,7 +236,7 @@ pub fn extract_sqlmap(raw: &str) -> Vec<ExtractedFinding> {
     out
 }
 
-/// Extract TLS findings from testssl.sh text output — one per line tagged
+/// Extract TLS findings from testssl.sh text output - one per line tagged
 /// `VULNERABLE` (the negated "not vulnerable" lines are excluded). testssl's
 /// text mode drops its own severity rating, so every confirmed vuln is High;
 /// a CVE is pulled from the line when present.
@@ -268,7 +268,7 @@ pub fn extract_testssl(raw: &str) -> Vec<ExtractedFinding> {
 
 /// Extract secret findings from a gitleaks JSON report. Each leak is High.
 ///
-/// SECURITY: reads only rule/location/description — the `Secret` and `Match`
+/// SECURITY: reads only rule/location/description - the `Secret` and `Match`
 /// fields are never touched, so a live secret value cannot reach a finding.
 pub fn extract_gitleaks(raw: &str) -> Vec<ExtractedFinding> {
     let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(raw.trim()) else {
@@ -307,7 +307,7 @@ pub fn extract_gitleaks(raw: &str) -> Vec<ExtractedFinding> {
             Some(ExtractedFinding {
                 title: format!("Secret: {rule}"),
                 severity: Severity::High,
-                evidence: format!("{loc} — {desc}"),
+                evidence: format!("{loc} - {desc}"),
                 cve: None,
             })
         })
@@ -317,7 +317,7 @@ pub fn extract_gitleaks(raw: &str) -> Vec<ExtractedFinding> {
 /// Extract secret findings from trufflehog JSONL. A *verified* secret (live
 /// credential) is Critical; an unverified detection is High.
 ///
-/// SECURITY: reads only detector/verified/location — the `Raw`/`RawV2`/
+/// SECURITY: reads only detector/verified/location - the `Raw`/`RawV2`/
 /// `Redacted` fields are never touched, so a secret value cannot reach a finding.
 pub fn extract_trufflehog(raw: &str) -> Vec<ExtractedFinding> {
     let mut out = Vec::new();
@@ -372,7 +372,7 @@ pub fn extract_trufflehog(raw: &str) -> Vec<ExtractedFinding> {
 /// No-op unless `auto_save_findings` is enabled. Findings less severe than
 /// `auto_save_min_severity` are dropped; at most `auto_save_max_per_scan` are
 /// saved. Each is deduplicated via [`FindingStore::insert_dedup`] and tagged
-/// `source = AutoExtracted`. Silent by design (tracing only) — never affects the
+/// `source = AutoExtracted`. Silent by design (tracing only) - never affects the
 /// tool's response or the context budget.
 pub fn auto_save(
     store: &Arc<RwLock<FindingStore>>,
@@ -415,7 +415,7 @@ pub fn auto_save(
         finding.source = FindingSource::AutoExtracted;
         match store.insert_dedup(finding) {
             Ok((_, true)) => saved += 1,
-            Ok((_, false)) => {} // duplicate — silently skipped
+            Ok((_, false)) => {} // duplicate - silently skipped
             Err(e) => tracing::warn!("auto-save insert failed: {e}"),
         }
     }

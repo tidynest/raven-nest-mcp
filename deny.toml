@@ -1,6 +1,6 @@
 # cargo-deny configuration.
 #
-# License allowlist for the dependency tree. Permissive licenses only — no
+# License allowlist for the dependency tree. Permissive licenses only - no
 # copyleft. Every entry is required by at least one crate's SPDX expression
 # (derived from `cargo metadata`); expressions that also offer a copyleft
 # option (LGPL) or an exception (LLVM) are satisfied here via their permissive

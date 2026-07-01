@@ -48,7 +48,7 @@ pub async fn run(
     let is_root = unsafe { libc::geteuid() } == 0;
     if req.scan_type.as_deref() == Some("os") && !is_root && !config.safety.needs_sudo("nmap") {
         return Err(rmcp::ErrorData::invalid_params(
-            "scan_type 'os' requires root privileges — either run the server as root or add \"nmap\" to sudo_tools in config",
+            "scan_type 'os' requires root privileges - either run the server as root or add \"nmap\" to sudo_tools in config",
             None,
         ));
     }
@@ -274,7 +274,7 @@ pub fn parse_nmap_xml(xml: &str, max_hosts: usize) -> Option<String> {
         host_count += 1;
         if host_count > max_hosts {
             output.push_str(&format!(
-                "\n(+{} more hosts — use get_scan_results for full output)\n",
+                "\n(+{} more hosts - use get_scan_results for full output)\n",
                 root.children()
                     .filter(|n| n.tag_name().name() == "host")
                     .count()
@@ -470,7 +470,7 @@ mod tests {
     #[test]
     fn parse_empty_nmaprun_returns_none() {
         let xml = r#"<?xml version="1.0"?><nmaprun/>"#;
-        // No hosts, no runstats — output is empty
+        // No hosts, no runstats - output is empty
         assert!(parse_nmap_xml(xml, 10).is_none());
     }
 
@@ -604,7 +604,7 @@ mod tests {
         assert!(result.contains("Host scripts:"));
         assert!(result.contains("clock-skew:"));
 
-        // Output should be compact — well under 1000 chars
+        // Output should be compact - well under 1000 chars
         assert!(
             result.len() < 1200,
             "Parsed vuln output too large: {} chars",

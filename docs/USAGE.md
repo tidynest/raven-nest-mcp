@@ -4,7 +4,7 @@
 
 ### Run with Docker (skips host-tool install)
 
-The published image bundles `raven-server` and all 22 tools — see the
+The published image bundles `raven-server` and all 22 tools - see the
 [README Quick Start](../README.md#run-with-docker-recommended). The host-tool
 setup below is only needed for a from-source install.
 
@@ -20,17 +20,17 @@ The binary is at `target/release/raven-server`.
 
 ### Host Tools
 
-Install the scanning tools you want to use. All are optional — the server
+Install the scanning tools you want to use. All are optional - the server
 starts regardless, but tool calls will fail if the binary isn't installed.
 
 ```bash
-# Core tools (official repos — Arch Linux)
+# Core tools (official repos - Arch Linux)
 sudo pacman -S nmap nikto whatweb testssl.sh sqlmap hydra masscan wpscan john gitleaks
 
 # AUR tools
 yay -S feroxbuster-bin ffuf-bin enum4linux-ng dalfox-bin trufflehog-bin
 
-# Go tools (ProjectDiscovery) — nuclei, subfinder, httpx, dnsx, katana
+# Go tools (ProjectDiscovery) - nuclei, subfinder, httpx, dnsx, katana
 # go install github.com/projectdiscovery/nuclei/v3/cmd/nuclei@latest
 # go install github.com/projectdiscovery/subfinder/v2/cmd/subfinder@latest
 # go install github.com/projectdiscovery/httpx/cmd/httpx@latest
@@ -40,7 +40,7 @@ yay -S feroxbuster-bin ffuf-bin enum4linux-ng dalfox-bin trufflehog-bin
 
 # Python tools
 # pip install dnsrecon
-# pipx install netexec    # provides the `nxc` binary — gated, off by default
+# pipx install netexec    # provides the `nxc` binary - gated, off by default
 ```
 
 `ping` is available by default on all Linux systems.
@@ -66,8 +66,8 @@ git clone https://github.com/danielmiessler/SecLists.git /usr/share/seclists
 ```
 
 Default wordlist paths:
-- **feroxbuster** — `/usr/share/seclists/Discovery/Web-Content/raft-medium-directories.txt`
-- **ffuf** — `/usr/share/seclists/Discovery/Web-Content/raft-medium-words.txt`
+- **feroxbuster** - `/usr/share/seclists/Discovery/Web-Content/raft-medium-directories.txt`
+- **ffuf** - `/usr/share/seclists/Discovery/Web-Content/raft-medium-words.txt`
 
 You can override these per-call via the `wordlist` parameter.
 
@@ -75,7 +75,7 @@ You can override these per-call via the `wordlist` parameter.
 
 ## Connecting to an MCP Client
 
-The server communicates over stdio — stdout carries JSON-RPC, logs go to stderr.
+The server communicates over stdio - stdout carries JSON-RPC, logs go to stderr.
 
 ### Claude Code
 
@@ -117,7 +117,7 @@ correctly):
 ### Local AI (ollmcp)
 
 When using local models (Ollama, llama.cpp), rename the server to avoid
-hyphens — many local models struggle with tool names containing hyphens:
+hyphens - many local models struggle with tool names containing hyphens:
 
 ```json
 {
@@ -132,7 +132,7 @@ hyphens — many local models struggle with tool names containing hyphens:
 
 Launch: `ollmcp --model <model> -j ~/.mcphost.json`
 
-For small-context models (32K-64K), set `context_budget` in the config —
+For small-context models (32K-64K), set `context_budget` in the config -
 see the [Configuration](#configuration) section.
 
 ---
@@ -147,15 +147,15 @@ sections: `[safety]`, `[scope]`, `[execution]`, `[network]`, `[metasploit]`, and
 
 The server searches for config in this order, using the first one found:
 
-1. **`RAVEN_CONFIG` env var** — explicit file path (e.g. `RAVEN_CONFIG=/etc/raven.toml`)
-2. **Exe-relative** — `config/default.toml` relative to the binary (checks parent dir too, for `target/release/` layouts)
-3. **CWD** — `config/default.toml` in the current working directory
-4. **Built-in defaults** — hardcoded fallback if nothing else is found
+1. **`RAVEN_CONFIG` env var** - explicit file path (e.g. `RAVEN_CONFIG=/etc/raven.toml`)
+2. **Exe-relative** - `config/default.toml` relative to the binary (checks parent dir too, for `target/release/` layouts)
+3. **CWD** - `config/default.toml` in the current working directory
+4. **Built-in defaults** - hardcoded fallback if nothing else is found
 
 If all fail, the server starts with safe defaults (all tools allowed, 600s
 timeout, output at `/tmp/raven-nest`).
 
-### `[safety]` — Tool Allowlisting and Limits
+### `[safety]` - Tool Allowlisting and Limits
 
 ```toml
 [safety]
@@ -172,7 +172,7 @@ max_output_chars = 50000
 # context_budget = 65536
 # expected_tool_calls = 10
 
-# Auto-save findings extracted from scan output (8 scanners — see table). Opt-in.
+# Auto-save findings extracted from scan output (8 scanners - see table). Opt-in.
 # auto_save_findings = false
 # auto_save_min_severity = "medium"   # info|low|medium|high|critical
 # auto_save_max_per_scan = 25
@@ -197,12 +197,12 @@ max_output_chars = 50000
 | `sqlmap_max_level` | integer (1-5) | 2 | Caps sqlmap `--level`. Higher levels add more injection vectors but are slower and noisier. |
 | `sqlmap_max_risk` | integer (1-3) | 1 | Caps sqlmap `--risk`. Risk 2+ may cause data modification; risk 3 adds OR-based payloads. |
 | `hydra_max_tasks` | integer | 4 | Max parallel threads for hydra brute-forcing. Prevents account lockout and network saturation. |
-| `masscan_max_rate` | integer | 1000 | Max packets/sec for masscan. High rates can disrupt networks — increase only with explicit authorisation. |
+| `masscan_max_rate` | integer | 1000 | Max packets/sec for masscan. High rates can disrupt networks - increase only with explicit authorisation. |
 | `tool_paths` | table | empty | Map of tool name to absolute binary path, for tools not on `$PATH`. Falls back to `$PATH` lookup if not specified. |
 | `sudo_tools` | string list | `[]` | Tools invoked via `sudo` for privilege escalation. See [sudo_tools](#sudo_tools--privilege-escalation) below. |
 | `expected_tool_calls` | integer | 10 | Expected tool calls per session. Used by the session budget tracker to plan per-call output allocation. Higher values yield smaller per-call caps. Typical pentest: 6-12 calls. |
 | `auto_save_findings` | bool | `false` | Auto-extract findings from scan output (nmap, nuclei, nikto, dalfox, sqlmap, testssl, gitleaks, trufflehog) into the finding store. Opt-in. |
-| `auto_save_min_severity` | string | `medium` | Minimum severity an auto-extracted finding must meet to be saved (`info`–`critical`). |
+| `auto_save_min_severity` | string | `medium` | Minimum severity an auto-extracted finding must meet to be saved (`info`-`critical`). |
 | `auto_save_max_per_scan` | integer | 25 | Cap on auto-extracted findings saved per scan. |
 
 #### Context Budget
@@ -219,7 +219,7 @@ cap proportionally:
 | 131072 | 32,768 | 21,845 | Qwen3 14B, models with 128K context |
 
 **When to set this:** Only when using models with limited context windows. Leave
-at 0 (disabled) for Claude or other large-context models — `max_output_chars`
+at 0 (disabled) for Claude or other large-context models - `max_output_chars`
 alone handles truncation fine.
 
 #### Session Budget Tracker
@@ -274,11 +274,11 @@ the budget system (Full = 100%, Compact = 50%, Minimal = 25%, minimum 3):
 
 These caps are applied before the budget tracker's per-call enforcement.
 
-#### `sudo_tools` — Privilege Escalation
+#### `sudo_tools` - Privilege Escalation
 
 Some tools require root privileges:
-- **masscan** — raw socket access for SYN scanning
-- **nmap** with `scan_type: "os"` — raw sockets for OS fingerprinting
+- **masscan** - raw socket access for SYN scanning
+- **nmap** with `scan_type: "os"` - raw sockets for OS fingerprinting
 
 Instead of running the entire server as root, you can grant passwordless `sudo`
 for just these binaries:
@@ -309,9 +309,9 @@ their root-privilege check when sudo is configured.
 
 Edit the username and paths in the sudoers file for your environment.
 
-### `[scope]` — Engagement Authorization
+### `[scope]` - Engagement Authorization
 
-Off by default — any syntactically valid target may be scanned. When
+Off by default - any syntactically valid target may be scanned. When
 `enabled = true`, `validate_target` (the chokepoint every tool and the scan
 launcher share) requires each target to match an allowed entry **and** not match
 a denied entry (deny wins). Loopback is always allowed unless `allow_localhost = false`.
@@ -335,7 +335,7 @@ a denied entry (deny wins). Loopback is always allowed unless `allow_localhost =
 | `denied_domains` | string list | `[]` | Blocked domains (deny wins over allow). |
 | `allow_localhost` | bool | `true` | Allow loopback (`localhost`, `127.0.0.0/8`, `::1`) regardless of the allowlists. |
 
-### `[execution]` — Timeouts, Concurrency, Output
+### `[execution]` - Timeouts, Concurrency, Output
 
 ```toml
 [execution]
@@ -368,7 +368,7 @@ output_dir = "/tmp/raven-nest"
 and OS detection (`nmap -O`) can take several minutes on large targets. Increase
 their specific timeouts rather than raising the global default.
 
-### `[network]` — Proxy Configuration
+### `[network]` - Proxy Configuration
 
 ```toml
 [network]
@@ -388,7 +388,7 @@ request inspection. Both upper- and lower-case env vars are set, so tools using
 either convention pick up the proxy automatically. The `http_request` tool also
 honours these proxy settings.
 
-### `[metasploit]` — Metasploit Framework Integration
+### `[metasploit]` - Metasploit Framework Integration
 
 Disabled by default. See [docs/METASPLOIT.md](METASPLOIT.md) for full setup.
 
@@ -408,23 +408,23 @@ require_confirmation = true
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `enabled` | bool | `false` | Master switch — MSF tools only registered when true |
+| `enabled` | bool | `false` | Master switch - MSF tools only registered when true |
 | `host` | string | `127.0.0.1` | msfrpcd host |
 | `port` | integer | `55553` | msfrpcd port |
 | `username` | string | `msf` | RPC username |
-| `password` | string | `changeme` | RPC password — **change this** |
+| `password` | string | `changeme` | RPC password - **change this** |
 | `ssl` | bool | `true` | Use SSL (msfrpcd default) |
 | `max_search_results` | integer | `20` | Cap module search results |
 | `max_concurrent_exploits` | integer | `1` | Max simultaneous exploit executions |
 | `require_confirmation` | bool | `true` | Require double-call to execute exploits |
 | `blocked_modules` | string list | `[]` | Regex patterns for blocked modules |
 
-### `[netexec]` — Credentialed Enumeration (Gated)
+### `[netexec]` - Credentialed Enumeration (Gated)
 
 Disabled by default. The `run_netexec` tool refuses to run unless
 `enabled = true`. Even when enabled it permits only **read-only enumeration**
 (auth, shares, users, groups, loggedon, sessions, disks, pass-pol) against a
-**single host** with a **single scalar credential** — no command/module
+**single host** with a **single scalar credential** - no command/module
 execution, no credential lists or spraying, no CIDR ranges. Requires the `nxc`
 binary on `PATH` (or set `[safety.tool_paths].nxc`).
 
@@ -435,7 +435,7 @@ binary on `PATH` (or set `[safety.tool_paths].nxc`).
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `enabled` | bool | `false` | Master switch — `run_netexec` returns an error when false. |
+| `enabled` | bool | `false` | Master switch - `run_netexec` returns an error when false. |
 
 ---
 
@@ -503,10 +503,10 @@ by CVSS score; other scripts are summarised to single-line entries.
 | `scan_type` | string | no | `quick` (default), `service`, `os`, `vuln` |
 
 Scan type presets:
-- **quick** — `-T4 -F` (top 100 ports, aggressive timing). When `ports` is specified, `-F` is omitted.
-- **service** — `-sV` (version detection)
-- **os** — `-O` (OS fingerprinting, requires root or `sudo_tools` config)
-- **vuln** — `-sV --script=vuln` (vulnerability scripts)
+- **quick** - `-T4 -F` (top 100 ports, aggressive timing). When `ports` is specified, `-F` is omitted.
+- **service** - `-sV` (version detection)
+- **os** - `-O` (OS fingerprinting, requires root or `sudo_tools` config)
+- **vuln** - `-sV --script=vuln` (vulnerability scripts)
 
 #### `run_whatweb`
 Identify web technologies (CMS, frameworks, server software). Output is parsed
@@ -519,7 +519,7 @@ to extract technology identification lines with bracket-notation tags.
 | `cookie` | string | no | Cookie string for authenticated scanning (e.g. `PHPSESSID=abc123`) |
 
 #### `run_masscan`
-High-speed port scanning. Requires root or `sudo_tools` config — returns an
+High-speed port scanning. Requires root or `sudo_tools` config - returns an
 error if neither is available. Output is parsed to extract discovered open ports.
 
 | Parameter | Type | Required | Description |
@@ -530,13 +530,13 @@ error if neither is available. Output is parsed to extract discovered open ports
 
 > **Limitation:** masscan uses raw SYN packets that bypass the kernel TCP
 > stack. It **cannot scan localhost** (`127.0.0.1`) or Docker bridge IPs
-> (`172.17.x.x`) — the kernel short-circuits loopback traffic, and Docker's
+> (`172.17.x.x`) - the kernel short-circuits loopback traffic, and Docker's
 > iptables NAT rules don't apply to raw packets. Use nmap for local/Docker
 > targets. masscan works correctly against targets on real network interfaces.
 
 #### `run_subfinder`
 Passive subdomain enumeration via certificate transparency logs, DNS databases,
-and search engine scraping. Does not actively probe the target — purely passive.
+and search engine scraping. Does not actively probe the target - purely passive.
 Output is parsed from JSONL format into `host (source)` lines.
 
 | Parameter | Type | Required | Description |
@@ -623,13 +623,13 @@ Web server misconfiguration scanner. Output is parsed to extract finding lines
 | `timeout_secs` | integer | no | Scan timeout in seconds (default 600) |
 
 Tuning presets map to nikto's `-T` flag:
-- **quick** — `-T 1234` (interesting files, misconfigs, info disclosure, XSS)
-- **thorough** — `-T 123456789abc` (all test categories)
-- **injection** — `-T 9` (SQL/command injection tests)
-- **fileupload** — `-T 0` (file upload tests)
+- **quick** - `-T 1234` (interesting files, misconfigs, info disclosure, XSS)
+- **thorough** - `-T 123456789abc` (all test categories)
+- **injection** - `-T 9` (SQL/command injection tests)
+- **fileupload** - `-T 0` (file upload tests)
 
 > **URL vs hostname:** When `target` is a full URL (starts with `http://`),
-> the `port` parameter is ignored — nikto v2.6+ rejects the `-p` flag when
+> the `port` parameter is ignored - nikto v2.6+ rejects the `-p` flag when
 > given a URL. Use the port in the URL instead (e.g. `http://localhost:3000`).
 > When `target` is a bare hostname, `-p` is added automatically. Port 443
 > automatically enables SSL.
@@ -647,8 +647,8 @@ from JSON into a structured summary of versions, vulnerabilities, and users.
 | `cookie` | string | no | Cookie string for authenticated scanning |
 
 Enumerate presets:
-- **quick** — `--enumerate vp,vt,u` (vulnerable plugins, vulnerable themes, users)
-- **thorough** — `--enumerate vp,vt,u,ap,at,cb,dbe` (all plugins, all themes, users, config backups, DB exports)
+- **quick** - `--enumerate vp,vt,u` (vulnerable plugins, vulnerable themes, users)
+- **thorough** - `--enumerate vp,vt,u,ap,at,cb,dbe` (all plugins, all themes, users, config backups, DB exports)
 
 > **API token:** Without a WPVulnDB API token, wpscan still identifies
 > versions and plugins but cannot look up their known vulnerabilities.
@@ -681,7 +681,7 @@ The `severity` parameter accepts any case (`high`, `HIGH`, `High`) and is
 normalised internally. Invalid values are silently ignored.
 
 > **Non-TLS targets:** If the target has no TLS service, testssl returns
-> minimal output or a connection error. This is expected — the tool is
+> minimal output or a connection error. This is expected - the tool is
 > designed for TLS analysis only.
 
 ---
@@ -703,7 +703,7 @@ status-code + URL pairs, filtering out 404 responses.
 
 #### `run_ffuf`
 Web fuzzing with FUZZ keyword substitution. The URL must contain the `FUZZ`
-keyword — requests are rejected without it. Output is parsed to extract result
+keyword - requests are rejected without it. Output is parsed to extract result
 lines containing status codes, sizes, and word counts.
 
 | Parameter | Type | Required | Description |
@@ -712,7 +712,7 @@ lines containing status codes, sizes, and word counts.
 | `wordlist` | string | no | Path to wordlist (default: raft-medium-words.txt) |
 | `method` | string | no | HTTP method (default `GET`) |
 | `headers` | string | no | Custom headers (comma-separated `Name: Value` pairs) |
-| `match_codes` | string | no | Match HTTP status codes (e.g. `200,301,302`) or `all`. Defaults to `200,204,301,302,307,401,403,405,500` — pinned so results don't depend on ffuf's version-specific default (which narrowed to 2XX, hiding redirects and 401/403). |
+| `match_codes` | string | no | Match HTTP status codes (e.g. `200,301,302`) or `all`. Defaults to `200,204,301,302,307,401,403,405,500` - pinned so results don't depend on ffuf's version-specific default (which narrowed to 2XX, hiding redirects and 401/403). |
 | `filter_size` | string | no | Filter responses by size in bytes |
 | `threads` | integer | no | Concurrent threads (default 40; 10 for localhost; max 150) |
 | `cookie` | string | no | Cookie string for authenticated fuzzing (e.g. `PHPSESSID=abc123`) |
@@ -783,7 +783,7 @@ Scan a directory's working tree or a git repo's full commit history for
 committed secrets (API keys, tokens, private keys) via gitleaks. The scan path
 is confined to the configured output directory (same gate as `run_john`), so
 clone target repos into the engagement workspace first. Secret values are
-redacted by default and never echoed in the summary — only the rule id and
+redacted by default and never echoed in the summary - only the rule id and
 `file:line` (plus short commit, in history mode) are returned. Exit code 1
 (secrets found) is treated as success, not an error.
 
@@ -797,11 +797,11 @@ redacted by default and never echoed in the summary — only the rule id and
 
 #### `run_trufflehog`
 Scan a directory tree for secrets via trufflehog. Unlike gitleaks it can
-*verify* a secret by testing it against its live API — this is **off by
+*verify* a secret by testing it against its live API - this is **off by
 default** because verification makes outbound calls to third-party services
 with discovered credentials; enable `verify` only when that is in scope. Path
 is confined to the output directory (same gate as `run_john`). Secret values
-are never echoed in the summary — only the detector name and `file:line`.
+are never echoed in the summary - only the detector name and `file:line`.
 
 > **Safety:** this handler never passes `--trust-local-git-config`
 > (CVE-2025-41390 RCE); it scans the working tree only.
@@ -809,13 +809,13 @@ are never echoed in the summary — only the detector name and `file:line`.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `path` | string | yes | Directory to scan (must be under the output directory) |
-| `verify` | boolean | no | Verify secrets against their live APIs — makes outbound calls with found credentials (default false) |
+| `verify` | boolean | no | Verify secrets against their live APIs - makes outbound calls with found credentials (default false) |
 
 ---
 
 ### NetExec (Gated)
 
-Disabled by default — see [`[netexec]`](#netexec--credentialed-enumeration-gated).
+Disabled by default - see [`[netexec]`](#netexec--credentialed-enumeration-gated).
 Read-only, single-host, single-credential enumeration only.
 
 #### `run_netexec`
@@ -850,7 +850,7 @@ module path, rank, and description.
 | `limit` | integer | no | Max results (default 20) |
 
 #### `msf_module_info`
-Get details about a module — description, references (CVEs, EDB IDs), required
+Get details about a module - description, references (CVEs, EDB IDs), required
 options with defaults, and compatible payloads (for exploit modules, top 5).
 Module type is inferred from the path prefix.
 
@@ -895,10 +895,10 @@ Manage active Metasploit sessions.
 | `command` | string | conditional | Command to execute. Required for `interact`. |
 
 Actions:
-- **list** — show all active sessions with type, tunnel, and platform
-- **interact** — run a command in a session (output read after 2s delay, max 4096 chars)
-- **stop** — terminate a session
-- **compatible_modules** — list post modules compatible with a session (top 20)
+- **list** - show all active sessions with type, tunnel, and platform
+- **interact** - run a command in a session (output read after 2s delay, max 4096 chars)
+- **stop** - terminate a session
+- **compatible_modules** - list post modules compatible with a session (top 20)
 
 Blocked session commands: `rm`, `del`, `format`, `mkfs`, `dd`, `shutdown`,
 `reboot`, `halt`, `poweroff`, `upload`.
@@ -928,7 +928,7 @@ launch_scan -> Running -> Completed (success)
 
 The server enforces a concurrency cap (default 3, set via
 `max_concurrent_scans`). Launching a scan when all slots are occupied
-returns an error — cancel or wait for a running scan to finish first.
+returns an error - cancel or wait for a running scan to finish first.
 
 During execution, the server sends progress notifications every 15 seconds
 to keep the MCP client informed.
@@ -944,7 +944,7 @@ validated and the tool is checked against the allowlist before launching.
 | `timeout_secs` | integer | no | Scan timeout in seconds (default from config, typically 600) |
 
 Each tool uses safe preset arguments (e.g. sqlmap `--batch --level 1 --risk 1`,
-nmap `-T4 -F -oX -`). Custom arguments are not accepted — use the dedicated
+nmap `-T4 -F -oX -`). Custom arguments are not accepted - use the dedicated
 tool handlers (e.g. `run_nmap`, `run_sqlmap`) for fine-grained control.
 
 #### `get_scan_status`
@@ -982,7 +982,7 @@ List all scans and their current status. No parameters.
 #### `save_finding`
 Record a vulnerability finding. Each finding is stored as an individual JSON file
 under `{output_dir}/findings/` and indexed in memory for fast listing. There is no
-hard cap on finding count — the store scales to tens of thousands of findings with
+hard cap on finding count - the store scales to tens of thousands of findings with
 bounded memory (only metadata is kept in RAM; full data lives on disk).
 
 | Parameter | Type | Required | Description |
@@ -997,7 +997,7 @@ bounded memory (only metadata is kept in RAM; full data lives on disk).
 | `cvss` | float | no | CVSS score (0.0-10.0) |
 | `cve` | string | no | CVE identifier (e.g. `CVE-2024-1234`) |
 | `owasp_category` | string | no | OWASP Top 10 category (e.g. `A03:2021 Injection`) |
-| `scan_id` | string | no | Originating scan ID (UUID) — links the finding to a launched scan; recall via `list_findings_by_scan` |
+| `scan_id` | string | no | Originating scan ID (UUID) - links the finding to a launched scan; recall via `list_findings_by_scan` |
 
 #### `get_finding`
 Retrieve full details of a finding as JSON.
@@ -1047,7 +1047,7 @@ summary (finding count by severity) instead of the full report to conserve conte
 ### Engagement
 
 Engagements scope findings and reports to a per-client/per-target subdirectory,
-so separate jobs don't co-mingle. Switching is filesystem-backed — the active
+so separate jobs don't co-mingle. Switching is filesystem-backed - the active
 engagement's findings live under `{output_dir}/engagements/{name}/findings/` and
 its reports alongside.
 
@@ -1088,7 +1088,7 @@ The `validate_target` function accepts targets in these formats:
 - Hostname labels starting or ending with hyphens (`-evil.com`, `test-.com`)
 - Empty hostname labels (`a..b`)
 
-URL query strings are allowed to contain `&` — it is safe because tool
+URL query strings are allowed to contain `&` - it is safe because tool
 arguments are passed directly to `Command::arg()`, not through a shell.
 
 ### Lenient Deserialization
@@ -1117,12 +1117,12 @@ When the server rejects a request, errors follow predictable formats:
 | Shell metachar | `invalid target: forbidden character: ';'` |
 | Tool not allowed | `tool not allowed: burpsuite` |
 | Invalid CIDR | `invalid target: 192.168.1.0/33` |
-| Root required | `masscan requires root privileges — either run the server as root or add "masscan" to sudo_tools in config` |
+| Root required | `masscan requires root privileges - either run the server as root or add "masscan" to sudo_tools in config` |
 | Timeout | `command timed out after nmap time out after 600s` |
 | Tool exit error | `nmap failed (exit exit status: 1): <stderr output>` |
 | FUZZ keyword missing | `URL must contain the FUZZ keyword (e.g. http://example.com/FUZZ)` |
 | Form params missing | `form_params is required for http-post-form/http-get-form` |
-| Invalid scan type | `invalid scan_type 'brute' — must be: standard, zone_transfer, srv` |
+| Invalid scan type | `invalid scan_type 'brute' - must be: standard, zone_transfer, srv` |
 
 ---
 
@@ -1131,10 +1131,10 @@ When the server rejects a request, errors follow predictable formats:
 Every tool call passes through multiple validation layers before any subprocess
 is spawned:
 
-1. **Allowlist** — the tool binary must be in `config.safety.allowed_tools`. Calls
+1. **Allowlist** - the tool binary must be in `config.safety.allowed_tools`. Calls
    for unlisted tools are rejected immediately.
 
-2. **Input validation** — targets are validated against strict rules:
+2. **Input validation** - targets are validated against strict rules:
    - Must be a valid IP (v4/v6), hostname, CIDR range, `host:port`, or
      HTTP(S) URL.
    - Shell metacharacters are rejected: `` ; | & $ ` ( ) { } < > ! \n ``
@@ -1146,44 +1146,44 @@ is spawned:
    - When `[scope]` is enabled, the target must match an allowed CIDR/domain
      and must not match a denied one (deny wins); loopback allowed unless disabled.
 
-3. **Argument building** — users pick presets (e.g. `scan_type: "service"`),
+3. **Argument building** - users pick presets (e.g. `scan_type: "service"`),
    never raw CLI flags. The server translates presets into safe argument lists.
 
-4. **Parameter validation** — all request structs use `deny_unknown_fields`,
+4. **Parameter validation** - all request structs use `deny_unknown_fields`,
    which rejects any parameter the tool doesn't recognise. This catches LLM
    parameter hallucination with clear error messages (e.g. "unknown field
    `verbosity`"). Numeric parameters also accept string-encoded numbers
    (e.g. `"2"` instead of `2`) via a lenient deserializer, handling a common
    LLM serialisation quirk.
 
-5. **Safety caps** — dangerous tools have configurable upper limits that the
+5. **Safety caps** - dangerous tools have configurable upper limits that the
    AI cannot exceed:
    - sqlmap: `--level` clamped to `sqlmap_max_level`, `--risk` to `sqlmap_max_risk`
    - hydra: `-t` (parallel tasks) clamped to `hydra_max_tasks`
    - masscan: `--rate` clamped to `masscan_max_rate`
    - john: `--max-run-time` capped at 600 seconds
 
-6. **Execution containment** — configurable timeout per tool, `kill_on_drop` on
+6. **Execution containment** - configurable timeout per tool, `kill_on_drop` on
    all subprocesses (no orphaned processes), concurrent scan limit enforced.
 
-7. **Output sanitisation** — truncation at `max_output_chars` (70% head / 30%
+7. **Output sanitisation** - truncation at `max_output_chars` (70% head / 30%
    tail), with structured parsing to reduce noise before truncation.
 
-8. **Output quality assessment** — checks for empty results, missing tool
+8. **Output quality assessment** - checks for empty results, missing tool
    completion markers, and rate-limit/WAF indicators; appends warnings when
    detected (e.g. "Output appears empty", "Possible rate limiting detected").
 
-9. **Session budget tracking** — when `context_budget` is set, tracks cumulative
+9. **Session budget tracking** - when `context_budget` is set, tracks cumulative
    output across all tool calls and dynamically shrinks per-call caps. Escalates
    through Full -> Compact -> Minimal output modes. Hard floor at 1,000 chars
    remaining refuses new calls.
 
-10. **Metasploit safety** — when MSF is enabled, an additional 5-layer model
+10. **Metasploit safety** - when MSF is enabled, an additional 5-layer model
     applies: disabled by default, per-tool allowlisting, module blocklist,
     exploit confirmation gate, and session command filtering. See
     [docs/METASPLOIT.md](METASPLOIT.md).
 
-11. **Audit logging** — every tool invocation is appended to
+11. **Audit logging** - every tool invocation is appended to
     `{output_dir}/audit.log` (JSON lines) with the tool, target, and
     credential-redacted arguments. Best-effort; never blocks the tool call.
 
@@ -1196,7 +1196,7 @@ Tool output goes through a multi-stage pipeline before reaching the AI model:
 ### Structured Parsers
 
 All subprocess tools have output parsers that extract the essential
-information and discard noise. Parsers return `Option<String>` — if parsing
+information and discard noise. Parsers return `Option<String>` - if parsing
 fails, the raw output is used as a fallback. Each parser has a result cap to
 prevent context overflow (see [Parser Result Caps](#parser-result-caps)).
 
@@ -1226,15 +1226,15 @@ prevent context overflow (see [Parser Result Caps](#parser-result-caps)).
 
 The `http_request` tool applies additional processing to HTTP responses:
 
-- **HTML stripping** — removes `<script>` and `<style>` blocks, strips all
+- **HTML stripping** - removes `<script>` and `<style>` blocks, strips all
   HTML tags (inserting newlines for block elements), decodes HTML entities
   (named like `&amp;`, numeric like `&#169;`), and collapses blank lines.
-- **Header filtering** — only security-relevant headers are shown:
+- **Header filtering** - only security-relevant headers are shown:
   `server`, `x-powered-by`, `set-cookie`, `content-type`, `location`,
   `www-authenticate`, `x-frame-options`, `content-security-policy`,
   `strict-transport-security`, `x-content-type-options`,
   `access-control-allow-origin`, `x-xss-protection`.
-- **Body cap** — response bodies are truncated to the effective cap (default
+- **Body cap** - response bodies are truncated to the effective cap (default
   20,000 chars; derived from `context_budget / 6` when set).
 
 ### Truncation
@@ -1288,7 +1288,7 @@ automatically reduce their default concurrency to prevent self-DoS:
 | feroxbuster | 50 | 10 | 200 |
 | ffuf | 40 | 10 | 150 |
 
-This only affects the default — explicit `threads` values are still honoured
+This only affects the default - explicit `threads` values are still honoured
 (up to the max).
 
 ---
@@ -1411,26 +1411,26 @@ Add it to the list and restart the server.
 All request structs use `deny_unknown_fields`. This means misspelled or
 extra parameters are rejected. Check the exact parameter names in the
 [Tools Reference](#tools-reference). Common mistakes:
-- `target` vs `url` — nmap/ping/masscan use `target`; sqlmap/ffuf/http_request use `url`
-- `data` vs `body` — sqlmap uses `data`; http_request uses `body`
+- `target` vs `url` - nmap/ping/masscan use `target`; sqlmap/ffuf/http_request use `url`
+- `data` vs `body` - sqlmap uses `data`; http_request uses `body`
 
 ### testssl returns minimal output
 
 The target likely doesn't have TLS configured. testssl only analyses
-SSL/TLS — it won't produce meaningful results for plain HTTP services.
+SSL/TLS - it won't produce meaningful results for plain HTTP services.
 
 ### Quality warnings in output
 
 The server appends warnings when output quality is suspect:
-- **"returned minimal output (N chars)"** — tool produced less than 50
+- **"returned minimal output (N chars)"** - tool produced less than 50
   characters. The scan may have failed silently or the target returned
   nothing.
-- **"output missing expected completion indicators"** — the tool ran but
+- **"output missing expected completion indicators"** - the tool ran but
   didn't include its normal completion marker (e.g. nmap's "Nmap done").
   Results may be incomplete.
-- **"target may be rate-limiting requests"** — output contains indicators
+- **"target may be rate-limiting requests"** - output contains indicators
   like "429", "blocked", or "access denied". Consider reducing scan
   aggressiveness or adding delays.
-- **"exited with error (code N) and produced no output"** — the tool
+- **"exited with error (code N) and produced no output"** - the tool
   returned a non-zero exit code with empty stdout. Check that the tool
   is installed correctly and the target is reachable.

@@ -1,4 +1,4 @@
-//! Metasploit session management — list, interact, stop.
+//! Metasploit session management - list, interact, stop.
 
 use raven_core::msf_client::MsfClient;
 use rmcp::{

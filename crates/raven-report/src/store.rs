@@ -33,7 +33,7 @@ pub struct FindingStore {
     /// eviction stays exact.
     seen: HashMap<u64, HashSet<String>>,
     /// Reverse map: finding ID → its fingerprint, so `delete` can evict from
-    /// `seen` using only the in-memory index — never re-reading the (possibly
+    /// `seen` using only the in-memory index - never re-reading the (possibly
     /// already-gone) file from disk.
     id_to_fp: HashMap<String, u64>,
     /// Directory where `{id}.json` files are stored.
@@ -43,7 +43,7 @@ pub struct FindingStore {
 /// Compute a content fingerprint for dedup, insensitive to case and surrounding
 /// whitespace so `"Nmap"` and `" nmap "` collapse to the same finding.
 ///
-/// Hashes the normalised `(tool, target, title, cve)` tuple — the natural
+/// Hashes the normalised `(tool, target, title, cve)` tuple - the natural
 /// identity of a finding regardless of which scan re-discovered it.
 fn fingerprint(tool: &str, target: &str, title: &str, cve: Option<&str>) -> u64 {
     let mut hasher = DefaultHasher::new();
@@ -120,7 +120,7 @@ impl FindingStore {
 
     /// Persist a new finding to disk and add it to the in-memory index.
     ///
-    /// Always inserts — manual saves are never skipped. The fingerprint and
+    /// Always inserts - manual saves are never skipped. The fingerprint and
     /// scan reverse-index are updated so later [`insert_dedup`](Self::insert_dedup)
     /// and [`list_by_scan`](Self::list_by_scan) calls see this finding.
     pub fn insert(&mut self, finding: Finding) -> Result<String, String> {
@@ -192,7 +192,7 @@ impl FindingStore {
         }
         // Pull metadata from the in-memory index BEFORE removing, so eviction of
         // the dedup/scan indices never depends on the on-disk file still being
-        // readable — an out-of-band deletion would otherwise leak stale entries
+        // readable - an out-of-band deletion would otherwise leak stale entries
         // and permanently block re-adding an identical finding.
         let Some(meta) = self.index.remove(id) else {
             return false;
@@ -222,7 +222,7 @@ impl FindingStore {
 
     /// List metadata for all findings, sorted by severity (critical first).
     ///
-    /// Zero disk I/O — reads only the in-memory index.
+    /// Zero disk I/O - reads only the in-memory index.
     pub fn list(&self) -> Vec<&FindingMeta> {
         let mut metas: Vec<&FindingMeta> = self.index.values().collect();
         metas.sort_by(|a, b| a.severity.cmp(&b.severity));
@@ -248,7 +248,7 @@ impl FindingStore {
     /// Load full findings from disk in severity order.
     ///
     /// Used by [`markdown::generate_report`](crate::markdown::generate_report)
-    /// — infrequent, so O(n) disk reads are acceptable.
+    /// - infrequent, so O(n) disk reads are acceptable.
     pub fn load_all(&self) -> Vec<Finding> {
         let sorted_ids: Vec<&str> = self.list().iter().map(|m| m.id.as_str()).collect();
         sorted_ids
@@ -257,7 +257,7 @@ impl FindingStore {
             .collect()
     }
 
-    /// The engagement root — the parent of the findings directory. Per-engagement
+    /// The engagement root - the parent of the findings directory. Per-engagement
     /// artifacts (e.g. generated reports) are written here so they scope with the
     /// store: the default store yields `{output_dir}`, an engagement store yields
     /// `{output_dir}/engagements/{name}`.
@@ -353,7 +353,7 @@ mod tests {
     #[test]
     fn delete_nonexistent() {
         let (store, _dir) = test_store();
-        // Mutable required for delete — shadow with mut
+        // Mutable required for delete - shadow with mut
         let mut store = store;
         assert!(!store.delete("does-not-exist"));
     }
@@ -452,7 +452,7 @@ mod tests {
         let legacy_json = serde_json::to_string_pretty(&vec![&f1, &f2]).unwrap();
         fs::write(output_dir.join("findings.json"), &legacy_json).unwrap();
 
-        // Open store — should auto-migrate
+        // Open store - should auto-migrate
         let store = FindingStore::new(output_dir.join("findings")).unwrap();
         assert_eq!(store.list().len(), 2);
 
@@ -501,7 +501,7 @@ mod tests {
 
     #[test]
     fn new_returns_error_on_unwritable_path() {
-        // /proc is not writable — FindingStore should return Err, not panic
+        // /proc is not writable - FindingStore should return Err, not panic
         let result = FindingStore::new(std::path::PathBuf::from("/proc/nonexistent/findings"));
         assert!(result.is_err());
     }
@@ -514,7 +514,7 @@ mod tests {
             .unwrap();
         assert!(inserted1);
 
-        // Same (tool, target, title, cve) fingerprint — should be skipped.
+        // Same (tool, target, title, cve) fingerprint - should be skipped.
         let (id2, inserted2) = store
             .insert_dedup(make_finding("XSS", Severity::High))
             .unwrap();
@@ -629,7 +629,7 @@ mod tests {
     fn dedup_index_survives_duplicate_save_then_delete() {
         // Two manual saves of identical content both persist (manual always
         // inserts). Deleting the one the index happens to point at must NOT
-        // orphan the fingerprint — the other copy still represents it, so a
+        // orphan the fingerprint - the other copy still represents it, so a
         // later insert_dedup of that content is still skipped.
         let (mut store, _dir) = test_store();
         let _id_a = store.insert(make_finding("dup", Severity::High)).unwrap();

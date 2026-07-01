@@ -12,7 +12,7 @@ Completes the `run_httpx` container fix from 0.2.4.
 ### Fixed
 - `run_httpx` hung indefinitely instead of returning. ProjectDiscovery httpx
   probes stdin even when a target is passed with `-u`, and the executor let child
-  tools inherit raven-server's own stdin — the stdio MCP pipe, which never reaches
+  tools inherit raven-server's own stdin - the stdio MCP pipe, which never reaches
   EOF during a session. Child processes are now spawned with a null stdin, so
   stdin-probing tools see an immediate EOF and proceed. (0.2.4 corrected the httpx
   binary on PATH but this deeper block only surfaced under live MCP traffic.)
@@ -23,7 +23,7 @@ Container image and logging fixes.
 
 ### Fixed
 - Container image: `ping_target` failed with `os error 2` because the Kali runtime
-  stage never installed `ping` — added `iputils-ping`.
+  stage never installed `ping` - added `iputils-ping`.
 - Container image: `run_httpx` invoked python3-httpx's CLI (which owns `/usr/bin/httpx`
   on Kali) instead of ProjectDiscovery's httpx, failing with `No such option: -u`.
   The PD binary (`httpx-toolkit`) is now symlinked into `/usr/local/bin/httpx`, which
@@ -51,7 +51,7 @@ Documentation and packaging refinements.
 
 ## [0.2.2] - 2026-06-24
 
-Packaging release — distribution via container image and the MCP registry.
+Packaging release - distribution via container image and the MCP registry.
 
 ### Added
 - GHCR container image (`ghcr.io/tidynest/raven-nest-mcp`), built on each release
@@ -60,7 +60,7 @@ Packaging release — distribution via container image and the MCP registry.
 
 ## [0.2.1] - 2026-06-24
 
-Maintenance and packaging release — no API or tool changes.
+Maintenance and packaging release - no API or tool changes.
 
 ### Added
 - Release workflow: pushing a `vX.Y.Z` tag builds `raven-server` and attaches a
@@ -73,7 +73,7 @@ Maintenance and packaging release — no API or tool changes.
   decoder (326 workspace tests).
 
 ### Changed
-- All three crates marked `publish = false` — this is an application, not a
+- All three crates marked `publish = false` - this is an application, not a
   library set, and is never published to crates.io.
 
 ### Fixed
@@ -86,28 +86,28 @@ First tagged release. 22 security tools plus the Metasploit Framework across 43
 MCP endpoints. Highlights accumulated since the initial 0.1.0 state:
 
 ### Added
-- **Secret scanning** — `run_gitleaks` (working-tree and git-history modes) and
+- **Secret scanning** - `run_gitleaks` (working-tree and git-history modes) and
   `run_trufflehog` (filesystem, optional live verification, off by default).
   Scan paths are confined via `validate_file_path`; secret values are never
   echoed in parsed output or persisted findings. trufflehog never passes
   `--trust-local-git-config` (CVE-2025-41390).
-- **Recon tools** — `run_httpx`, `run_dnsx`, `run_katana`.
-- **Engagement scope** — optional `[scope]` authorization allowlist
+- **Recon tools** - `run_httpx`, `run_dnsx`, `run_katana`.
+- **Engagement scope** - optional `[scope]` authorization allowlist
   (CIDRs/domains, deny-wins, loopback-aware); off by default.
-- **Engagements** — `set_engagement` / `list_engagements`; each scopes its own
+- **Engagements** - `set_engagement` / `list_engagements`; each scopes its own
   findings and reports directory.
-- **Audit logging** — every tool execution appended to `{output_dir}/audit.log`
+- **Audit logging** - every tool execution appended to `{output_dir}/audit.log`
   (JSON lines, redacted args, 0600, size-rotated).
 - **Auto-extracted findings** from eight scanners (nuclei, nikto, dalfox, nmap,
   sqlmap, testssl, gitleaks, trufflehog), opt-in via `auto_save_findings`,
   deduplicated and tagged `AutoExtracted`.
-- **Scan↔finding linking** — `scan_id` on findings + `list_findings_by_scan`.
-- **Report formats** — JSON, SARIF 2.1.0, and HTML in addition to Markdown
+- **Scan↔finding linking** - `scan_id` on findings + `list_findings_by_scan`.
+- **Report formats** - JSON, SARIF 2.1.0, and HTML in addition to Markdown
   (`generate_report` `format` parameter).
 - **Structured tool output** (`structured_content`) on finding/scan/report tools.
-- **NetExec** (`run_netexec`) — gated, read-only credentialed enumeration; off
+- **NetExec** (`run_netexec`) - gated, read-only credentialed enumeration; off
   by default.
-- **Resource controls** — `scan_retention_secs` (scan registry TTL/eviction),
+- **Resource controls** - `scan_retention_secs` (scan registry TTL/eviction),
   `max_concurrent_execs` (synchronous execution cap), and `min_exec_gap_ms`
   (proactive per-launch cooldown).
 

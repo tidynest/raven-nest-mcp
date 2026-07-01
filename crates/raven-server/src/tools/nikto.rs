@@ -45,7 +45,7 @@ pub async fn run(
     let is_url = req.target.starts_with("http://") || req.target.starts_with("https://");
     let mut args = vec!["-h".to_string(), req.target, "-nocheck".into()];
 
-    // nikto v2.6+ rejects -p alongside a full URI — only add it for bare hostnames
+    // nikto v2.6+ rejects -p alongside a full URI - only add it for bare hostnames
     if !is_url {
         let port = req.port.unwrap_or(80);
         args.extend(["-p".into(), port.to_string()]);

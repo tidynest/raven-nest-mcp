@@ -48,7 +48,7 @@ pub async fn run(
             "standard" | "" => {} // default
             other => {
                 return Err(rmcp::ErrorData::invalid_params(
-                    format!("invalid scan_type '{other}' — must be: standard, zone_transfer, srv"),
+                    format!("invalid scan_type '{other}' - must be: standard, zone_transfer, srv"),
                     None,
                 ));
             }
@@ -81,7 +81,7 @@ pub async fn run(
 /// dnsrecon outputs a JSON array of record objects with `type`, `name`, `address`
 /// (or `target` for SRV/MX). Extracts `TYPE NAME VALUE`, caps at 30.
 fn parse_dnsrecon_json(raw: &str, max_results: usize) -> Option<String> {
-    // dnsrecon may emit text before/after JSON — find the array.
+    // dnsrecon may emit text before/after JSON - find the array.
     // Use "[{" to avoid matching bracket chars in non-JSON text like "[*]".
     let trimmed = raw.trim();
     let json_start = trimmed.find("[{").or_else(|| trimmed.find("[\n"))?;

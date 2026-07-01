@@ -9,7 +9,7 @@
 //! consumes from the remaining budget, and the per-tool cap shrinks as the
 //! session progresses.
 //!
-//! When `context_budget` is 0 (disabled), the tracker is permissive — all
+//! When `context_budget` is 0 (disabled), the tracker is permissive - all
 //! tools get [`OutputMode::Full`] with generous caps.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -17,9 +17,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 /// Output verbosity mode, automatically escalated as context budget is consumed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputMode {
-    /// Full parsed output — all findings, all details.
+    /// Full parsed output - all findings, all details.
     Full,
-    /// Aggressive filtering — only critical/high findings, top-N results.
+    /// Aggressive filtering - only critical/high findings, top-N results.
     Compact,
     /// One-line summary only.
     Minimal,

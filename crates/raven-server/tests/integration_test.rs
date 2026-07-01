@@ -21,7 +21,7 @@ use tempfile::TempDir;
 fn test_store() -> (RwLock<FindingStore>, TempDir) {
     let dir = TempDir::new().unwrap();
     // Root the store at <dir>/findings (matching production layout) so the
-    // store's base_dir() — where reports are written — is <dir>.
+    // store's base_dir() - where reports are written - is <dir>.
     let store = FindingStore::new(dir.path().join("findings")).unwrap();
     (RwLock::new(store), dir)
 }

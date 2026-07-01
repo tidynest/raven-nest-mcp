@@ -2,9 +2,9 @@
 //!
 //! WhatWeb identifies web technologies (CMS, frameworks, servers, JS libraries)
 //! from HTTP responses. Three aggression levels control how much probing is done:
-//! - `stealthy` (default, level 1) — single request, passive analysis.
-//! - `passive` (level 2) — follows redirects, parses additional pages.
-//! - `aggressive` (level 4) — actively probes with extra requests.
+//! - `stealthy` (default, level 1) - single request, passive analysis.
+//! - `passive` (level 2) - follows redirects, parses additional pages.
+//! - `aggressive` (level 4) - actively probes with extra requests.
 //!
 //! This is a fast tool (1-5s) and doesn't require a [`ProgressTicker`](crate::progress::ProgressTicker).
 
