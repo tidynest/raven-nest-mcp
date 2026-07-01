@@ -5,6 +5,23 @@ on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (pre-1.0:
 minor versions may carry feature additions and refinements).
 
+## [0.2.4] - 2026-07-01
+
+Container image and logging fixes.
+
+### Fixed
+- Container image: `ping_target` failed with `os error 2` because the Kali runtime
+  stage never installed `ping` — added `iputils-ping`.
+- Container image: `run_httpx` invoked python3-httpx's CLI (which owns `/usr/bin/httpx`
+  on Kali) instead of ProjectDiscovery's httpx, failing with `No such option: -u`.
+  The PD binary (`httpx-toolkit`) is now symlinked into `/usr/local/bin/httpx`, which
+  precedes `/usr/bin` on PATH.
+- Logging: the server forced `DEBUG` and ignored `RUST_LOG` (a bare-level directive
+  overrode the env filter). It now honors `RUST_LOG` and defaults to `info`, so
+  `RUST_LOG=off` silences output and `RUST_LOG=debug` restores verbose logs.
+- Bumped `anyhow` to 1.0.103 to patch RUSTSEC-2026-0190 (`Error::downcast_mut`
+  unsoundness).
+
 ## [0.2.3] - 2026-06-28
 
 Documentation and packaging refinements.
