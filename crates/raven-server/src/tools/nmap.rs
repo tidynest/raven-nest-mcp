@@ -118,7 +118,7 @@ fn summarize_script_output(output: &str, max_len: usize) -> String {
         return String::new();
     }
     let first = if lines[0].len() > max_len {
-        format!("{}…", &lines[0][..max_len])
+        format!("{}…", super::char_prefix(lines[0], max_len))
     } else {
         lines[0].to_string()
     };

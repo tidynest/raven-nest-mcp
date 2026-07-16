@@ -50,7 +50,7 @@ fn parse_search_results(value: &serde_json::Value, limit: usize) -> String {
                 .and_then(|v| v.as_str())
                 .unwrap_or("?");
             let desc = m.get("name").and_then(|v| v.as_str()).unwrap_or("");
-            let desc_short = if desc.len() > 70 { &desc[..70] } else { desc };
+            let desc_short = super::char_prefix(desc, 70);
             lines.push(format!("{rank:<10} {name}\n           {desc_short}"));
         }
         let header = format!("{total} module(s) found (showing {}):\n", lines.len());
