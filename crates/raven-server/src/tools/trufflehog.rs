@@ -59,13 +59,12 @@ pub async fn run(
         .await
         .map_err(crate::error::to_mcp)?;
 
-    let mut findings = Vec::new();
-    let output = if result.success {
-        findings = crate::tools::extract::extract_trufflehog(&result.stdout);
-        parse_trufflehog(&result.stdout).unwrap_or_else(|| result.stdout.clone())
+    let findings = if result.success {
+        crate::tools::extract::extract_trufflehog(&result.stdout)
     } else {
-        crate::error::format_result("trufflehog", &result)
+        Vec::new()
     };
+    let output = super::format_output("trufflehog", &result, parse_trufflehog);
     Ok((
         CallToolResult::success(vec![Content::text(output)]),
         findings,
