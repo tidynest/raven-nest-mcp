@@ -51,18 +51,12 @@ pub async fn run(
         .await
         .map_err(crate::error::to_mcp)?;
 
-    let mut findings = Vec::new();
-    let output = if result.success {
-        findings = crate::tools::extract::extract_dalfox(&result.stdout);
-        let mut out = parse_dalfox_json(&result.stdout, result_limit)
-            .unwrap_or_else(|| result.stdout.clone());
-        if let Some(ref warning) = result.warning {
-            out.push_str(&format!("\n\n⚠ {warning}"));
-        }
-        out
+    let findings = if result.success {
+        crate::tools::extract::extract_dalfox(&result.stdout)
     } else {
-        crate::error::format_result("dalfox", &result)
+        Vec::new()
     };
+    let output = super::format_output("dalfox", &result, |s| parse_dalfox_json(s, result_limit));
     Ok((
         CallToolResult::success(vec![Content::text(output)]),
         findings,

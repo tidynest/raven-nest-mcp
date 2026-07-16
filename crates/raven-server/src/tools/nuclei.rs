@@ -61,18 +61,12 @@ pub async fn run(
         .await
         .map_err(crate::error::to_mcp)?;
 
-    let mut findings = Vec::new();
-    let output = if result.success {
-        findings = crate::tools::extract::extract_nuclei(&result.stdout);
-        let mut out = parse_nuclei_jsonl(&result.stdout, result_limit)
-            .unwrap_or_else(|| result.stdout.clone());
-        if let Some(ref warning) = result.warning {
-            out.push_str(&format!("\n\n⚠ {warning}"));
-        }
-        out
+    let findings = if result.success {
+        crate::tools::extract::extract_nuclei(&result.stdout)
     } else {
-        crate::error::format_result("nuclei", &result)
+        Vec::new()
     };
+    let output = super::format_output("nuclei", &result, |s| parse_nuclei_jsonl(s, result_limit));
     Ok((
         CallToolResult::success(vec![Content::text(output)]),
         findings,

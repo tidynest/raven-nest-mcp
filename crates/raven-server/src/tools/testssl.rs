@@ -59,17 +59,12 @@ pub async fn run(
         .await
         .map_err(crate::error::to_mcp)?;
 
-    let mut findings = Vec::new();
-    let output = if result.success {
-        findings = crate::tools::extract::extract_testssl(&result.stdout);
-        let mut out = parse_testssl_output(&result.stdout).unwrap_or_else(|| result.stdout.clone());
-        if let Some(ref warning) = result.warning {
-            out.push_str(&format!("\n\n⚠ {warning}"));
-        }
-        out
+    let findings = if result.success {
+        crate::tools::extract::extract_testssl(&result.stdout)
     } else {
-        crate::error::format_result("testssl.sh", &result)
+        Vec::new()
     };
+    let output = super::format_output("testssl.sh", &result, parse_testssl_output);
     Ok((
         CallToolResult::success(vec![Content::text(output)]),
         findings,

@@ -33,17 +33,31 @@ pub(crate) async fn run_and_format(
     let result = executor::run(config, tool, args, timeout)
         .await
         .map_err(crate::error::to_mcp)?;
+    Ok(CallToolResult::success(vec![Content::text(format_output(
+        tool, &result, parse,
+    ))]))
+}
 
-    let output = if result.success {
+/// Format a completed tool run into user-facing text.
+///
+/// On success, apply `parse` (falling back to raw stdout) and append any quality
+/// warning; on failure defer to [`error::format_result`](crate::error::format_result).
+/// Shared by [`run_and_format`] and the auto-save scanner handlers, which build
+/// the same string but also return extracted findings.
+pub(crate) fn format_output(
+    tool: &str,
+    result: &executor::CommandResult,
+    parse: impl FnOnce(&str) -> Option<String>,
+) -> String {
+    if result.success {
         let mut out = parse(&result.stdout).unwrap_or_else(|| result.stdout.clone());
         if let Some(ref warning) = result.warning {
             out.push_str(&format!("\n\n⚠ {warning}"));
         }
         out
     } else {
-        crate::error::format_result(tool, &result)
-    };
-    Ok(CallToolResult::success(vec![Content::text(output)]))
+        crate::error::format_result(tool, result)
+    }
 }
 
 /// First `n` characters of `s`, on a char boundary.
