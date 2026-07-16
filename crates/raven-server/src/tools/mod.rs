@@ -348,6 +348,7 @@ pub mod nikto;
 pub mod nmap;
 pub mod nuclei;
 pub mod ping;
+pub mod resources;
 pub mod scans;
 pub mod sqlmap;
 pub mod subfinder;
