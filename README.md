@@ -28,7 +28,7 @@ Real MCP traffic to the tools - no LLM in the loop, fully deterministic. Targets
 
 ## What It Does
 
-Raven Nest wraps 22 security tools plus Metasploit Framework behind an MCP interface with input validation, output quality assessment, session-aware context budgeting, and configurable safety limits. It handles tool execution, background scan management, vulnerability finding persistence, and multi-format report generation (Markdown, JSON, SARIF, HTML). 43 MCP endpoints total.
+Raven Nest wraps 22 security tools plus Metasploit Framework behind an MCP interface with input validation, output quality assessment, session-aware context budgeting, and configurable safety limits. It handles tool execution, background scan management, vulnerability finding persistence, and multi-format report generation (Markdown, JSON, SARIF, HTML). Findings, reports, and scans are also exposed as MCP resources for browsing. 43 MCP endpoints total.
 
 ### Supported Tools
 
@@ -178,7 +178,7 @@ Additional hardening:
 - **File permissions** -- cookie files and scan spill files are created with `0o600` (owner-only)
 - **Markdown escaping** -- report generation escapes user-supplied finding fields to prevent markdown injection
 - **Finding ID validation** -- finding get/delete operations require valid UUID format, preventing path traversal
-- **Engagement scope** -- an optional authorization allowlist (`[scope]`): when enabled, every target must match an allowed CIDR/domain and must not match a denied one (deny wins); loopback is allowed unless disabled. Off by default
+- **Engagement scope** -- an optional authorization allowlist (`[scope]`): when enabled, every target must match an allowed CIDR/domain and must not match a denied one (deny wins); loopback is allowed unless disabled. `http_request` re-validates each redirect hop against the scope, so a redirect cannot escape it. Off by default
 - **Audit logging** -- every tool execution is appended to `{output_dir}/audit.log` with the tool, target, and redacted arguments
 - **Proactive cooldown** -- an optional `min_exec_gap_ms` spaces out consecutive tool launches so back-to-back aggressive tools don't trip a target's WAF or rate-limiter; complements the reactive WAF/rate-limit detection. Off by default
 
@@ -206,9 +206,22 @@ The `generate_report` endpoint produces a structured report -- Markdown by defau
 - **Executive Summary** with severity breakdown table and overall risk rating
 - **Methodology** section (PTES framework)
 - **Tools Used** (deduplicated from findings)
+- **Scope & Timeline** -- targets assessed and the engagement window, derived from the findings
 - **Numbered Findings** with severity, target, tool, CVSS score, CVE identifier, OWASP Top 10 category, evidence, and remediation guidance
 
-Findings support an `owasp_category` field for mapping vulnerabilities to the OWASP Top 10 (e.g. "A03:2021 Injection").
+The Markdown and HTML formats render the full narrative (table of contents, methodology, scope, generation timestamp); JSON and SARIF are structured envelopes for tooling. Findings support an `owasp_category` field for mapping vulnerabilities to the OWASP Top 10 (e.g. "A03:2021 Injection").
+
+## MCP Resources
+
+Beyond tools, the server exposes its data as read-only [MCP resources](https://modelcontextprotocol.io/docs/concepts/resources) under the `raven://` scheme, so a client can browse or attach them without a tool call:
+
+- `raven://findings` -- JSON index of every saved finding
+- `raven://findings/{id}` -- a single finding as JSON
+- `raven://reports/{markdown|json|sarif|html}` -- a report rendered on demand
+- `raven://scans` -- JSON index of background scans
+- `raven://scans/{id}` -- a scan's captured output
+
+Each saved finding and tracked scan is also listed individually, so they show up as browsable entries in resource-aware clients.
 
 ## Output Parsers
 
@@ -232,7 +245,7 @@ The `http_request` tool maintains a shared cookie jar that persists within a ses
 
 ## Testing
 
-314 unit and integration tests across 3 crates:
+344 unit and integration tests across 3 crates:
 
 ```bash
 cargo test --workspace
@@ -240,9 +253,9 @@ cargo test --workspace
 
 | Crate | Tests |
 |-------|-------|
-| raven-core | 88 |
-| raven-report | 54 |
-| raven-server | 162 |
+| raven-core | 104 |
+| raven-report | 64 |
+| raven-server | 166 |
 | Integration | 10 |
 
 A Python-based MCP integration test harness is also available:
@@ -276,7 +289,7 @@ tests/
 - [docs/METASPLOIT.md](docs/METASPLOIT.md) -- Metasploit Framework integration setup and safety model
 - [docs/DATA_FLOW.md](docs/DATA_FLOW.md) -- data flow and sources of truth: which module owns each piece of state
 - [raven-nest-client](https://github.com/tidynest/raven-nest-client) -- companion TypeScript REPL client (versioned in lockstep with the server)
-- [CHANGELOG.md](CHANGELOG.md) -- release history (current: v0.2.2)
+- [CHANGELOG.md](CHANGELOG.md) -- release history (current: v0.2.7)
 
 ## License
 

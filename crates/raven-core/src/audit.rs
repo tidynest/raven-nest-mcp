@@ -26,7 +26,9 @@ const SECRET_FLAGS: &[&str] = &[
     "--api-key",
     "--auth",
     "--header",
-    "-H", // header (nuclei cookie) / NTLM hash (nxc) - always credential-bearing
+    "--api-token", // wpscan API token
+    "-b",          // cookie jar (feroxbuster / ffuf)
+    "-H",          // header (nuclei cookie) / NTLM hash (nxc) - always credential-bearing
 ];
 
 /// Short flags that carry a credential ONLY for credential-brute tools
@@ -37,7 +39,7 @@ const CRED_SHORT_FLAGS: &[&str] = &["-p", "-P"];
 
 /// Tools for which [`CRED_SHORT_FLAGS`] are treated as secret-bearing
 /// (hydra `-p`/`-P`, NetExec `-p` password).
-const CRED_TOOLS: &[&str] = &["hydra", "nxc"];
+const CRED_TOOLS: &[&str] = &["hydra", "nxc", "enum4linux-ng"];
 
 /// Substrings marking an inline argument as carrying a credential
 /// (e.g. a hydra form string `user=^USER^&pass=^PASS^`).
@@ -202,5 +204,27 @@ mod tests {
         );
         assert_eq!(h[4], "-H");
         assert_eq!(h[5], "<redacted>");
+    }
+
+    #[test]
+    fn redacts_enum4linux_wpscan_and_cookie_flags() {
+        // enum4linux-ng -p password (via CRED_TOOLS), wpscan --api-token and
+        // feroxbuster/ffuf -b cookie (via SECRET_FLAGS) must all be redacted;
+        // targets stay visible.
+        let e4l = redact(
+            "enum4linux-ng",
+            &["-A", "-u", "admin", "-p", "Secret123", "10.0.0.1"],
+        );
+        assert_eq!(e4l[3], "-p");
+        assert_eq!(e4l[4], "<redacted>");
+        assert_eq!(e4l[5], "10.0.0.1");
+
+        let wp = redact("wpscan", &["--url", "http://x", "--api-token", "TOKEN123"]);
+        assert_eq!(wp[2], "--api-token");
+        assert_eq!(wp[3], "<redacted>");
+
+        let fx = redact("feroxbuster", &["-u", "http://x", "-b", "PHPSESSID=abc"]);
+        assert_eq!(fx[2], "-b");
+        assert_eq!(fx[3], "<redacted>");
     }
 }

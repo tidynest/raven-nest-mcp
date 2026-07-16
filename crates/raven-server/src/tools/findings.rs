@@ -127,15 +127,20 @@ pub fn save_finding(
         finding.scan_id = Some(scan_id);
     }
 
-    let id = store
+    let (id, inserted) = store
         .write()
         .map_err(|_| rmcp::ErrorData::internal_error("store lock poisoned", None))?
-        .insert(finding)
+        .insert_dedup(finding)
         .map_err(|e| rmcp::ErrorData::internal_error(e, None))?;
 
+    let msg = if inserted {
+        format!("Finding saved. ID: {id}")
+    } else {
+        format!("Duplicate of an existing finding. ID: {id}")
+    };
     Ok(success_with(
-        format!("Finding saved. ID: {id}"),
-        serde_json::json!({ "finding_id": id }),
+        msg,
+        serde_json::json!({ "finding_id": id, "deduplicated": !inserted }),
     ))
 }
 

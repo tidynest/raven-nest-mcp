@@ -1025,10 +1025,11 @@ Remove a finding. The individual file is deleted from disk and the index is upda
 | `finding_id` | string | yes | Finding ID |
 
 #### `generate_report`
-Generate a pentest report from all saved findings. Markdown (default) includes
-a table of contents, methodology section, tools used, OWASP category mapping,
-and findings grouped by severity; JSON, SARIF, and HTML are also available via
-`format`. The report is automatically saved to
+Generate a pentest report from all saved findings. Markdown (default) and HTML
+include a table of contents, methodology section, tools used, a scope & timeline
+section (assessed targets and the engagement window), OWASP category mapping,
+findings grouped by severity, and a generation timestamp; JSON and SARIF are
+structured envelopes, also available via `format`. The report is automatically saved to
 `{output_dir}/report-{timestamp}.{ext}` (extension per format). Returns a brief
 summary (finding count by severity) instead of the full report to conserve context.
 
@@ -1061,6 +1062,23 @@ Switch the active engagement, creating it on first use. Subsequent
 
 #### `list_engagements`
 List all engagements and show which is active. No parameters.
+
+## MCP Resources
+
+Alongside the tools, the server exposes read-only resources under the `raven://`
+scheme, so a resource-aware client can browse or attach data without a tool call.
+
+| URI | Contents |
+|-----|----------|
+| `raven://findings` | JSON index of every saved finding |
+| `raven://findings/{id}` | a single finding as JSON |
+| `raven://reports/{format}` | a report rendered on demand (`markdown`, `json`, `sarif`, `html`) |
+| `raven://scans` | JSON index of background scans |
+| `raven://scans/{id}` | a scan's captured output |
+
+Each saved finding and tracked scan is also listed individually. Resources are a
+read-only view over the same `FindingStore` and `ScanManager` the tools use, not
+a separate store, so they reflect the active engagement's findings.
 
 ---
 

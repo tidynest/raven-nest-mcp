@@ -51,7 +51,7 @@ fn parse_module_info(info: &serde_json::Value) -> String {
         .and_then(|v| v.as_str())
         .unwrap_or("");
     let desc_short = if desc.len() > 300 {
-        format!("{}...", &desc[..300])
+        format!("{}...", super::char_prefix(desc, 300))
     } else {
         desc.to_string()
     };
@@ -104,7 +104,7 @@ fn parse_module_options(options: &serde_json::Value) -> String {
                 })
                 .unwrap_or("(none)");
             let desc = details.get("desc").and_then(|v| v.as_str()).unwrap_or("");
-            let desc_short = if desc.len() > 60 { &desc[..60] } else { desc };
+            let desc_short = super::char_prefix(desc, 60);
             lines.push(format!("  {name}: {desc_short} [default: {default}]"));
         }
     }

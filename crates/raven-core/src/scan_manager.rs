@@ -212,6 +212,23 @@ impl ScanManager {
         }
     }
 
+    /// Clamp quick-launch default args to the operator's safety caps.
+    ///
+    /// The dedicated tool handlers enforce caps (e.g. masscan `--rate`); this
+    /// mirrors that on the `launch_scan` path so a stricter operator cap can't
+    /// be silently bypassed by launching the same tool as a background scan.
+    fn clamp_to_caps(tool: &str, args: &mut [String], safety: &crate::config::SafetyConfig) {
+        if tool == "masscan"
+            && let Some(i) = args.iter().position(|a| a == "--rate")
+            && let Some(rate) = args.get_mut(i + 1)
+            && rate
+                .parse::<u32>()
+                .is_ok_and(|r| r > safety.masscan_max_rate)
+        {
+            *rate = safety.masscan_max_rate.to_string();
+        }
+    }
+
     /// Launch a new background scan, returning its UUID.
     ///
     /// Validates the tool against the allowlist and the target against injection rules
@@ -247,7 +264,8 @@ impl ScanManager {
         let scans_for_task = self.scans.clone();
         let scan_id = id.clone();
 
-        let arg_strings = Self::default_args(tool, target);
+        let mut arg_strings = Self::default_args(tool, target);
+        Self::clamp_to_caps(tool, &mut arg_strings, &self.config.safety);
 
         // Spawn the scan as a background tokio task
         let handle = tokio::spawn(async move {
@@ -591,6 +609,26 @@ mod tests {
         assert!(args.contains(&"--rate".to_string()));
         assert!(args.contains(&"100".to_string()));
         assert!(args.contains(&"--open".to_string()));
+    }
+
+    #[test]
+    fn clamp_to_caps_lowers_masscan_rate_below_cap() {
+        let mut cfg = RavenConfig::default();
+        // Operator cap stricter than the launch default of 100.
+        cfg.safety.masscan_max_rate = 50;
+        let mut args = ScanManager::default_args("masscan", "10.0.0.0/24");
+        ScanManager::clamp_to_caps("masscan", &mut args, &cfg.safety);
+        let i = args.iter().position(|a| a == "--rate").unwrap();
+        assert_eq!(args[i + 1], "50", "rate must be clamped to the cap");
+    }
+
+    #[test]
+    fn clamp_to_caps_leaves_rate_below_cap_untouched() {
+        let cfg = RavenConfig::default(); // masscan_max_rate default 1000 > 100
+        let mut args = ScanManager::default_args("masscan", "10.0.0.0/24");
+        ScanManager::clamp_to_caps("masscan", &mut args, &cfg.safety);
+        let i = args.iter().position(|a| a == "--rate").unwrap();
+        assert_eq!(args[i + 1], "100", "rate under the cap is unchanged");
     }
 
     #[test]

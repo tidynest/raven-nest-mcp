@@ -5,6 +5,48 @@ on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (pre-1.0:
 minor versions may carry feature additions and refinements).
 
+## [0.2.7] - 2026-07-16
+
+Security and correctness hardening, report improvements, and MCP resources.
+
+### Added
+- **MCP resources.** The server advertises the resources capability and serves
+  `raven://` resources: a findings index, one resource per saved finding, the
+  four report formats rendered on demand, a scans index, and per-scan output.
+  Clients can browse or attach this data without a tool call.
+- **Report Scope & Timeline.** Markdown and HTML reports gain a Scope & Timeline
+  section (assessed targets and the engagement window, derived from the
+  findings). Markdown also gains a generation timestamp, and HTML gains the
+  Methodology section, reaching parity with the markdown report.
+
+### Fixed
+- **Credential redaction gaps in the audit log.** wpscan `--api-token`,
+  feroxbuster/ffuf `-b` cookies, and enum4linux-ng `-p` passwords reached
+  `audit.log` in cleartext; they are now redacted.
+- **Redirect scope bypass in `http_request`.** The scope gate validated only the
+  initial host, so a redirect could reach an out-of-scope or internal address.
+  Every redirect hop is now re-validated against the engagement scope.
+- **UTF-8 truncation panic.** `http_request` body truncation sliced on a byte
+  index and could panic on a multibyte character; it now cuts on a character
+  boundary, as do the Metasploit and nmap output formatters.
+- **Metasploit exploit confirmation bypass.** The confirmation hash omitted
+  `options`, `lhost`, and `lport`, so they could change between the confirm and
+  execute calls; they are now part of the hash.
+- **`launch_scan` rate cap.** The background-scan path ignored
+  `masscan_max_rate`; it now clamps to the configured cap like the dedicated
+  handler.
+- **Finding store durability.** Findings are written via a temp file and atomic
+  rename so a crash mid-write cannot drop a finding; a failed delete reports
+  failure instead of a false success; and `save_finding` deduplicates.
+- **Report determinism and integrity.** Findings sort deterministically
+  (severity, timestamp, id); markdown escapes all finding fields and sizes the
+  evidence fence to prevent injection; SARIF represents the target as a logical
+  location so results are no longer dropped on code-scanning ingest.
+- **`http_request` audit trail.** Its requests are now recorded in the audit log
+  (method and URL only; credentials excluded).
+- **Metasploit RPC lock recovery.** The RPC client recovers from a poisoned lock
+  instead of panicking.
+
 ## [0.2.6] - 2026-07-02
 
 Metasploit auxiliary output fix and documentation.
