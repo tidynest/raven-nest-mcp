@@ -15,7 +15,7 @@
 use crate::config::MetasploitConfig;
 use crate::error::PentestError;
 use serde_json::Value;
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 
 /// Convert `rmpv::Value` to `serde_json::Value`, coercing byte-array keys to UTF-8 strings.
 ///
@@ -192,13 +192,13 @@ impl MsfClient {
             .ok_or_else(|| PentestError::MsfRpcError("auth.login: no token in response".into()))?
             .to_string();
 
-        *self.token.lock().unwrap() = Some(token.clone());
+        *self.token.lock().unwrap_or_else(PoisonError::into_inner) = Some(token.clone());
         Ok(token)
     }
 
     /// Get a valid token, authenticating if needed.
     async fn ensure_token(&self) -> Result<String, PentestError> {
-        if let Some(ref token) = *self.token.lock().unwrap() {
+        if let Some(ref token) = *self.token.lock().unwrap_or_else(PoisonError::into_inner) {
             return Ok(token.clone());
         }
         self.authenticate().await
@@ -496,7 +496,10 @@ impl MsfClient {
     /// Check if an exploit execution matches the pending confirmation.
     /// Returns true if confirmed (second call matches), false if this is the first call.
     pub fn check_confirmation(&self, hash: u64) -> bool {
-        let mut pending = self.pending_confirmation.lock().unwrap();
+        let mut pending = self
+            .pending_confirmation
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         if *pending == Some(hash) {
             *pending = None;
             true
@@ -508,7 +511,10 @@ impl MsfClient {
 
     /// Clear any pending confirmation.
     pub fn clear_confirmation(&self) {
-        *self.pending_confirmation.lock().unwrap() = None;
+        *self
+            .pending_confirmation
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner) = None;
     }
 }
 
