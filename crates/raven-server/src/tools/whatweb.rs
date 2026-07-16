@@ -8,8 +8,8 @@
 //!
 //! This is a fast tool (1-5s) and doesn't require a [`ProgressTicker`](crate::progress::ProgressTicker).
 
-use raven_core::{config::RavenConfig, executor, safety};
-use rmcp::model::{CallToolResult, Content};
+use raven_core::{config::RavenConfig, safety};
+use rmcp::model::CallToolResult;
 use rmcp::schemars;
 
 /// MCP request schema for `run_whatweb`.
@@ -48,20 +48,7 @@ pub async fn run(
         args.extend(["--cookie".into(), cookie.clone()]);
     }
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let result = executor::run(config, "whatweb", &arg_refs, None)
-        .await
-        .map_err(crate::error::to_mcp)?;
-
-    let output = if result.success {
-        let mut out = parse_whatweb_output(&result.stdout).unwrap_or_else(|| result.stdout.clone());
-        if let Some(ref warning) = result.warning {
-            out.push_str(&format!("\n\n⚠ {warning}"));
-        }
-        out
-    } else {
-        crate::error::format_result("whatweb", &result)
-    };
-    Ok(CallToolResult::success(vec![Content::text(output)]))
+    super::run_and_format(config, "whatweb", &arg_refs, None, parse_whatweb_output).await
 }
 
 /// Parse whatweb output, keeping only technology identification lines.

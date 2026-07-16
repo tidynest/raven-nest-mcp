@@ -16,12 +16,8 @@
 //! `destructive_hint` is set on the tool because failed authentication can lock
 //! out accounts.
 
-use raven_core::{config::RavenConfig, executor, safety};
-use rmcp::{
-    Peer, RoleServer,
-    model::{CallToolResult, Content},
-    schemars,
-};
+use raven_core::{config::RavenConfig, safety};
+use rmcp::{Peer, RoleServer, model::CallToolResult, schemars};
 
 /// Protocols NetExec may target. Curated and explicit.
 const PROTOCOLS: &[&str] = &["smb", "winrm", "ssh", "ldap", "mssql", "ftp", "rdp"];
@@ -185,23 +181,12 @@ pub async fn run(
     args.extend(flags.iter().map(|s| s.to_string()));
 
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let result = executor::run(config, "nxc", &arg_refs, None)
-        .await
-        .map_err(crate::error::to_mcp)?;
-
-    let output = if result.success {
-        let mut out = result.stdout.clone();
-        if out.trim().is_empty() {
-            out = "NetExec completed with no output.".to_string();
-        }
-        if let Some(ref warning) = result.warning {
-            out.push_str(&format!("\n\n⚠ {warning}"));
-        }
-        out
-    } else {
-        crate::error::format_result("nxc", &result)
-    };
-    Ok(CallToolResult::success(vec![Content::text(output)]))
+    super::run_and_format(config, "nxc", &arg_refs, None, |s| {
+        s.trim()
+            .is_empty()
+            .then(|| "NetExec completed with no output.".to_string())
+    })
+    .await
 }
 
 #[cfg(test)]

@@ -10,6 +10,42 @@
 //! Additionally, [`scans`] handles background scan launch/poll/cancel, and
 //! [`findings`] manages finding persistence and report generation.
 
+use raven_core::{config::RavenConfig, executor};
+use rmcp::model::{CallToolResult, Content};
+
+/// Run a subprocess tool and format the MCP response.
+///
+/// Collapses the ~12-line skeleton every `run_*` handler repeated: execute via
+/// [`executor::run`], and on success apply `parse` (falling back to raw stdout)
+/// and append any quality warning; on failure defer to [`error::format_result`](crate::error::format_result).
+///
+/// `parse` is a closure so callers can capture context (e.g. a budget-scaled
+/// result cap) or pass `|_| None` for tools with no structured parser. A
+/// [`ProgressTicker`](crate::progress::ProgressTicker) held in the caller stays
+/// alive across the `.await` here, so long-running handlers keep ticking.
+pub(crate) async fn run_and_format(
+    config: &RavenConfig,
+    tool: &str,
+    args: &[&str],
+    timeout: Option<u64>,
+    parse: impl FnOnce(&str) -> Option<String>,
+) -> Result<CallToolResult, rmcp::ErrorData> {
+    let result = executor::run(config, tool, args, timeout)
+        .await
+        .map_err(crate::error::to_mcp)?;
+
+    let output = if result.success {
+        let mut out = parse(&result.stdout).unwrap_or_else(|| result.stdout.clone());
+        if let Some(ref warning) = result.warning {
+            out.push_str(&format!("\n\n⚠ {warning}"));
+        }
+        out
+    } else {
+        crate::error::format_result(tool, &result)
+    };
+    Ok(CallToolResult::success(vec![Content::text(output)]))
+}
+
 /// Detect whether a target URL points to localhost.
 ///
 /// Used by [`feroxbuster`] and [`ffuf`] to reduce default thread counts for
