@@ -9,7 +9,7 @@
 //! persists the output to `{output_dir}/report-{timestamp}.md`.
 
 use crate::finding::Finding;
-use crate::summary::{count_by_severity, overall_risk, unique_tools};
+use crate::summary::{count_by_severity, overall_risk, time_range, unique_targets, unique_tools};
 
 /// Escape markdown special characters in user-supplied text.
 ///
@@ -58,12 +58,17 @@ fn max_backtick_run(s: &str) -> usize {
 /// OWASP categories.
 pub fn generate_report(findings: &[&Finding], title: &str) -> String {
     let mut report = format!("# {title}\n\n");
+    report.push_str(&format!(
+        "_Generated {}_\n\n",
+        chrono::Utc::now().to_rfc3339()
+    ));
 
     // Table of Contents
     report.push_str("## Table of Contents\n\n");
     report.push_str("- [Executive Summary](#executive-summary)\n");
     report.push_str("- [Methodology](#methodology)\n");
     report.push_str("- [Tools Used](#tools-used)\n");
+    report.push_str("- [Scope & Timeline](#scope--timeline)\n");
     report.push_str(&format!("- [Findings ({})](#findings)\n", findings.len()));
     for (i, f) in findings.iter().enumerate() {
         let n = i + 1;
@@ -112,6 +117,23 @@ pub fn generate_report(findings: &[&Finding], title: &str) -> String {
         report.push_str(&format!("- {t}\n"));
     }
     report.push('\n');
+
+    // Scope & Timeline - assessed targets and the engagement window, both
+    // derived from the findings themselves.
+    report.push_str("## Scope & Timeline\n\n");
+    let targets = unique_targets(findings);
+    report.push_str(&format!("**Targets assessed:** {}\n\n", targets.len()));
+    for t in &targets {
+        report.push_str(&format!("- {}\n", escape_markdown(t)));
+    }
+    match time_range(findings) {
+        Some((first, last)) => report.push_str(&format!(
+            "\n**Engagement window:** {} to {}\n\n",
+            first.to_rfc3339(),
+            last.to_rfc3339()
+        )),
+        None => report.push('\n'),
+    }
 
     // Individual findings
     report.push_str("## Findings\n\n");
@@ -344,5 +366,18 @@ mod tests {
         let report = generate_report(&findings, "T");
         assert!(report.contains("(#finding-1)"));
         assert!(report.contains("<a id=\"finding-1\"></a>"));
+    }
+
+    #[test]
+    fn report_has_scope_timeline_and_timestamp() {
+        let mut f = make("XSS", Severity::High);
+        f.target = "app.example.com".into();
+        let findings = vec![&f];
+        let report = generate_report(&findings, "Scope");
+        assert!(report.contains("_Generated "));
+        assert!(report.contains("## Scope & Timeline"));
+        assert!(report.contains("**Targets assessed:** 1"));
+        assert!(report.contains("- app.example.com"));
+        assert!(report.contains("**Engagement window:**"));
     }
 }
