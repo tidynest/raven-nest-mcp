@@ -7,11 +7,8 @@
 //! Like [`feroxbuster`](super::feroxbuster), thread count defaults lower for
 //! localhost targets (10 vs 40) and is capped at 150.
 
-use raven_core::{config::RavenConfig, executor, safety};
-use rmcp::{
-    model::{CallToolResult, Content},
-    schemars,
-};
+use raven_core::{config::RavenConfig, safety};
+use rmcp::{model::CallToolResult, schemars};
 
 /// Default wordlist path (SecLists raft-medium-words).
 const DEFAULT_WORDLIST: &str = "/usr/share/seclists/Discovery/Web-Content/raft-medium-words.txt";
@@ -120,21 +117,10 @@ pub async fn run(
     }
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let result = executor::run(config, "ffuf", &arg_refs, None)
-        .await
-        .map_err(crate::error::to_mcp)?;
-
-    let output = if result.success {
-        let mut out = parse_ffuf_output(&result.stdout, result_limit)
-            .unwrap_or_else(|| result.stdout.clone());
-        if let Some(ref warning) = result.warning {
-            out.push_str(&format!("\n\n⚠ {warning}"));
-        }
-        out
-    } else {
-        crate::error::format_result("ffuf", &result)
-    };
-    Ok(CallToolResult::success(vec![Content::text(output)]))
+    super::run_and_format(config, "ffuf", &arg_refs, None, |s| {
+        parse_ffuf_output(s, result_limit)
+    })
+    .await
 }
 
 /// True if `codes` is a valid ffuf `-mc` value: `"all"` or a digits/commas/
