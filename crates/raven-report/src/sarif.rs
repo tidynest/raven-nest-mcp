@@ -153,11 +153,23 @@ fn build_result(id: &str, idx: usize, f: &Finding) -> serde_json::Value {
         "ruleIndex": idx,
         "level": sarif_level(&f.severity),
         "message": { "text": message },
+        // Pentest findings target a network host/URL, not a source file. SARIF
+        // `artifactLocation.uri` is read as a repo-relative source path by GitHub
+        // code scanning, so putting the target there made results resolve to a
+        // nonexistent file and get dropped on ingest. `logicalLocations` is the
+        // correct construct for a non-file location; the target is also mirrored
+        // into `properties` for consumers that read it there.
+        // (If GitHub inline source-anchoring is ever wanted, add a synthetic
+        // `physicalLocation.artifactLocation.uri` like `targets/<slug>` instead.)
         "locations": [{
-            "physicalLocation": {
-                "artifactLocation": { "uri": f.target },
-            }
+            "logicalLocations": [{
+                "name": f.target,
+                "fullyQualifiedName": f.target,
+            }],
         }],
+        "properties": {
+            "target": f.target,
+        },
         "partialFingerprints": {
             "ravenFingerprint": fingerprint(f),
         },
@@ -280,6 +292,21 @@ mod tests {
                 .len(),
             0
         );
+    }
+
+    #[test]
+    fn target_is_a_logical_location_not_a_source_uri() {
+        let f = make("XSS", Severity::High); // target = https://example.com
+        let findings = vec![&f];
+        let v: serde_json::Value = serde_json::from_str(&generate_report(&findings, "t")).unwrap();
+        let result = &v["runs"][0]["results"][0];
+        assert_eq!(
+            result["locations"][0]["logicalLocations"][0]["fullyQualifiedName"],
+            "https://example.com"
+        );
+        // The old ingest bug: target rendered as a physical source path.
+        assert!(result["locations"][0]["physicalLocation"].is_null());
+        assert_eq!(result["properties"]["target"], "https://example.com");
     }
 
     #[test]
