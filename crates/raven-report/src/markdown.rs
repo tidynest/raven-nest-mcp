@@ -9,7 +9,7 @@
 //! persists the output to `{output_dir}/report-{timestamp}.md`.
 
 use crate::finding::Finding;
-use crate::summary::{count_by_severity, overall_risk, unique_tools};
+use crate::summary::{count_by_severity, overall_risk, time_range, unique_targets, unique_tools};
 
 /// Escape markdown special characters in user-supplied text.
 ///
@@ -30,6 +30,24 @@ fn escape_markdown(s: &str) -> String {
     out
 }
 
+/// Longest run of consecutive backticks in `s` (0 if none).
+///
+/// Used to size the evidence code fence so evidence containing a ``` sequence
+/// cannot close the fence early and inject markdown into the report.
+fn max_backtick_run(s: &str) -> usize {
+    let mut max = 0;
+    let mut cur = 0;
+    for c in s.chars() {
+        if c == '`' {
+            cur += 1;
+            max = max.max(cur);
+        } else {
+            cur = 0;
+        }
+    }
+    max
+}
+
 /// Generate a complete markdown pentest report from a list of findings.
 ///
 /// Findings are rendered in the order provided - callers typically pass them
@@ -40,20 +58,27 @@ fn escape_markdown(s: &str) -> String {
 /// OWASP categories.
 pub fn generate_report(findings: &[&Finding], title: &str) -> String {
     let mut report = format!("# {title}\n\n");
+    report.push_str(&format!(
+        "_Generated {}_\n\n",
+        chrono::Utc::now().to_rfc3339()
+    ));
 
     // Table of Contents
     report.push_str("## Table of Contents\n\n");
     report.push_str("- [Executive Summary](#executive-summary)\n");
     report.push_str("- [Methodology](#methodology)\n");
     report.push_str("- [Tools Used](#tools-used)\n");
+    report.push_str("- [Scope & Timeline](#scope--timeline)\n");
     report.push_str(&format!("- [Findings ({})](#findings)\n", findings.len()));
     for (i, f) in findings.iter().enumerate() {
         let n = i + 1;
+        // Label uses "Sev: title" (no nested brackets, which break link syntax);
+        // the anchor is an explicit `finding-N` id emitted at each heading, so it
+        // does not depend on GitHub's heading-slug algorithm.
         report.push_str(&format!(
-            "  - [{n}. [{}] {}](#{})\n",
+            "  - [{n}. {}: {}](#finding-{n})\n",
             f.severity,
             escape_markdown(&f.title),
-            n,
         ));
     }
     report.push('\n');
@@ -93,32 +118,52 @@ pub fn generate_report(findings: &[&Finding], title: &str) -> String {
     }
     report.push('\n');
 
+    // Scope & Timeline - assessed targets and the engagement window, both
+    // derived from the findings themselves.
+    report.push_str("## Scope & Timeline\n\n");
+    let targets = unique_targets(findings);
+    report.push_str(&format!("**Targets assessed:** {}\n\n", targets.len()));
+    for t in &targets {
+        report.push_str(&format!("- {}\n", escape_markdown(t)));
+    }
+    match time_range(findings) {
+        Some((first, last)) => report.push_str(&format!(
+            "\n**Engagement window:** {} to {}\n\n",
+            first.to_rfc3339(),
+            last.to_rfc3339()
+        )),
+        None => report.push('\n'),
+    }
+
     // Individual findings
     report.push_str("## Findings\n\n");
     for (i, f) in findings.iter().enumerate() {
+        let n = i + 1;
         report.push_str(&format!(
-            "### {}. [{}] {}\n\n",
-            i + 1,
+            "<a id=\"finding-{n}\"></a>\n\n### {n}. [{}] {}\n\n",
             f.severity,
             escape_markdown(&f.title)
         ));
-        report.push_str(&format!("- **Target:** {}\n", f.target));
-        report.push_str(&format!("- **Tool:** {}\n", f.tool));
+        report.push_str(&format!("- **Target:** {}\n", escape_markdown(&f.target)));
+        report.push_str(&format!("- **Tool:** {}\n", escape_markdown(&f.tool)));
 
         if let Some(cvss) = f.cvss {
             report.push_str(&format!("- **CVSS:** {cvss:.1}\n"));
         }
         if let Some(cve) = &f.cve {
-            report.push_str(&format!("- **CVE:** {cve}\n"));
+            report.push_str(&format!("- **CVE:** {}\n", escape_markdown(cve)));
         }
         if let Some(owasp) = &f.owasp_category {
-            report.push_str(&format!("- **OWASP:** {owasp}\n"));
+            report.push_str(&format!("- **OWASP:** {}\n", escape_markdown(owasp)));
         }
 
         report.push_str(&format!("\n{}\n\n", escape_markdown(&f.description)));
 
         if let Some(evidence) = &f.evidence {
-            report.push_str(&format!("**Evidence:**\n```\n{evidence}\n```\n\n"));
+            // Size the fence to outlast any backtick run in the evidence so a
+            // ``` inside it cannot close the fence and inject markdown.
+            let fence = "`".repeat(max_backtick_run(evidence).max(2) + 1);
+            report.push_str(&format!("**Evidence:**\n{fence}\n{evidence}\n{fence}\n\n"));
         }
         if let Some(remediation) = &f.remediation {
             report.push_str(&format!(
@@ -288,5 +333,51 @@ mod tests {
         // Evidence is inside a code fence - should NOT be escaped
         assert!(report.contains("# This should NOT be escaped"));
         assert!(report.contains("`code here`"));
+    }
+
+    #[test]
+    fn report_escapes_injection_in_target_and_tool() {
+        // target/tool come from scan output and must be escaped like title/desc.
+        let mut f = make("Finding", Severity::High);
+        f.target = "a|b`c".into();
+        f.tool = "tool|x".into();
+        let findings = vec![&f];
+        let report = generate_report(&findings, "T");
+        assert!(report.contains("**Target:** a\\|b\\`c"));
+        assert!(report.contains("**Tool:** tool\\|x"));
+    }
+
+    #[test]
+    fn report_evidence_fence_survives_inner_backticks() {
+        let mut f = make("Finding", Severity::Medium);
+        f.evidence = Some("before\n```\n# injected heading\n```\nafter".into());
+        let findings = vec![&f];
+        let report = generate_report(&findings, "T");
+        // Fence must be longer than the ``` inside, i.e. 4+ backticks.
+        assert!(report.contains("````"));
+        // Evidence content is still present and unescaped.
+        assert!(report.contains("# injected heading"));
+    }
+
+    #[test]
+    fn report_toc_uses_explicit_anchors() {
+        let a = make("First", Severity::High);
+        let findings = vec![&a];
+        let report = generate_report(&findings, "T");
+        assert!(report.contains("(#finding-1)"));
+        assert!(report.contains("<a id=\"finding-1\"></a>"));
+    }
+
+    #[test]
+    fn report_has_scope_timeline_and_timestamp() {
+        let mut f = make("XSS", Severity::High);
+        f.target = "app.example.com".into();
+        let findings = vec![&f];
+        let report = generate_report(&findings, "Scope");
+        assert!(report.contains("_Generated "));
+        assert!(report.contains("## Scope & Timeline"));
+        assert!(report.contains("**Targets assessed:** 1"));
+        assert!(report.contains("- app.example.com"));
+        assert!(report.contains("**Engagement window:**"));
     }
 }

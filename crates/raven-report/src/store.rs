@@ -127,7 +127,15 @@ impl FindingStore {
         let id = finding.id.clone();
         let path = self.finding_path(&id);
         let json = serde_json::to_string_pretty(&finding).map_err(|e| e.to_string())?;
-        fs::write(&path, json).map_err(|e| format!("disk write failed: {e}"))?;
+        // Write to a temp file then atomically rename, so a crash or full disk
+        // mid-write can't leave a truncated JSON that the loader silently drops
+        // (rename is atomic within the same directory). The loader only reads
+        // `.json`, so a leftover `.json.tmp` from a crash is ignored.
+        // ponytail: no fsync - rename prevents truncation; surviving power-loss of
+        // the last write isn't worth the dir-sync cost for a findings store.
+        let tmp = path.with_extension("json.tmp");
+        fs::write(&tmp, json).map_err(|e| format!("disk write failed: {e}"))?;
+        fs::rename(&tmp, &path).map_err(|e| format!("disk rename failed: {e}"))?;
         let fp = fingerprint(
             &finding.tool,
             &finding.target,
@@ -214,10 +222,18 @@ impl FindingStore {
             }
         }
         let path = self.finding_path(id);
-        if let Err(e) = fs::remove_file(&path) {
-            tracing::warn!("failed to delete finding file {}: {e}", path.display());
+        match fs::remove_file(&path) {
+            Ok(()) => true,
+            // Already gone on disk (e.g. out-of-band deletion) - deletion succeeded.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => true,
+            // A real FS error means the file survives, so the finding would
+            // resurrect on the next restart. Report failure rather than a false
+            // success (the in-memory indices are already evicted above).
+            Err(e) => {
+                tracing::warn!("finding {id} file removal failed, not durably deleted: {e}");
+                false
+            }
         }
-        true
     }
 
     /// List metadata for all findings, sorted by severity (critical first).
@@ -225,7 +241,15 @@ impl FindingStore {
     /// Zero disk I/O - reads only the in-memory index.
     pub fn list(&self) -> Vec<&FindingMeta> {
         let mut metas: Vec<&FindingMeta> = self.index.values().collect();
-        metas.sort_by(|a, b| a.severity.cmp(&b.severity));
+        // Sort by severity, then timestamp, then id so the order is fully
+        // deterministic - HashMap iteration order must never leak into reports
+        // (it produced spurious diffs between otherwise-identical runs).
+        metas.sort_by(|a, b| {
+            a.severity
+                .cmp(&b.severity)
+                .then_with(|| a.timestamp.cmp(&b.timestamp))
+                .then_with(|| a.id.cmp(&b.id))
+        });
         metas
     }
 
@@ -241,7 +265,15 @@ impl FindingStore {
             .flatten()
             .filter_map(|id| self.index.get(id))
             .collect();
-        metas.sort_by(|a, b| a.severity.cmp(&b.severity));
+        // Sort by severity, then timestamp, then id so the order is fully
+        // deterministic - HashMap iteration order must never leak into reports
+        // (it produced spurious diffs between otherwise-identical runs).
+        metas.sort_by(|a, b| {
+            a.severity
+                .cmp(&b.severity)
+                .then_with(|| a.timestamp.cmp(&b.timestamp))
+                .then_with(|| a.id.cmp(&b.id))
+        });
         metas
     }
 
@@ -373,6 +405,37 @@ mod tests {
             severities,
             vec![&Severity::Critical, &Severity::High, &Severity::Low]
         );
+    }
+
+    #[test]
+    fn list_order_is_deterministic_within_a_severity() {
+        use chrono::TimeZone;
+        let (mut store, _dir) = test_store();
+        // Same severity, controlled timestamps b < a < c.
+        let mut a = make_finding("A", Severity::High);
+        let mut b = make_finding("B", Severity::High);
+        let mut c = make_finding("C", Severity::High);
+        b.timestamp = chrono::Utc.timestamp_opt(1_000, 0).unwrap();
+        a.timestamp = chrono::Utc.timestamp_opt(2_000, 0).unwrap();
+        c.timestamp = chrono::Utc.timestamp_opt(3_000, 0).unwrap();
+        // Insert scrambled; list() must be timestamp-ordered regardless of
+        // insertion or HashMap-iteration order.
+        store.insert(a.clone()).unwrap();
+        store.insert(c.clone()).unwrap();
+        store.insert(b.clone()).unwrap();
+        let ids: Vec<String> = store.list().iter().map(|m| m.id.clone()).collect();
+        assert_eq!(ids, vec![b.id.clone(), a.id.clone(), c.id.clone()]);
+    }
+
+    #[test]
+    fn delete_reports_success_when_file_already_removed() {
+        let (mut store, _dir) = test_store();
+        let id = store.insert(make_finding("gone", Severity::Low)).unwrap();
+        // Remove the backing file out-of-band; delete() must still succeed since
+        // a NotFound on removal means the finding is already off disk.
+        std::fs::remove_file(store.finding_path(&id)).unwrap();
+        assert!(store.delete(&id));
+        assert!(store.get(&id).is_none());
     }
 
     #[test]

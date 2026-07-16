@@ -4,12 +4,8 @@
 //! Uses `-A` (all simple enumeration) by default and supports authenticated
 //! enumeration with optional SMB credentials.
 
-use raven_core::{config::RavenConfig, executor, safety};
-use rmcp::{
-    Peer, RoleServer,
-    model::{CallToolResult, Content},
-    schemars,
-};
+use raven_core::{config::RavenConfig, safety};
+use rmcp::{Peer, RoleServer, model::CallToolResult, schemars};
 
 /// MCP request schema for `run_enum4linux_ng`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -51,21 +47,10 @@ pub async fn run(
     args.push(req.target);
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let result = executor::run(config, "enum4linux-ng", &arg_refs, req.timeout_secs)
-        .await
-        .map_err(crate::error::to_mcp)?;
-
-    let output = if result.success {
-        let mut out = parse_enum4linux_output(&result.stdout, result_limit)
-            .unwrap_or_else(|| result.stdout.clone());
-        if let Some(ref warning) = result.warning {
-            out.push_str(&format!("\n\n⚠ {warning}"));
-        }
-        out
-    } else {
-        crate::error::format_result("enum4linux-ng", &result)
-    };
-    Ok(CallToolResult::success(vec![Content::text(output)]))
+    super::run_and_format(config, "enum4linux-ng", &arg_refs, req.timeout_secs, |s| {
+        parse_enum4linux_output(s, result_limit)
+    })
+    .await
 }
 
 /// Section kinds recognised in enum4linux-ng text output.

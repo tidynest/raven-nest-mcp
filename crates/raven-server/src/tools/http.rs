@@ -94,10 +94,30 @@ pub async fn run(
 
     let timeout = Duration::from_secs(req.timeout_secs.unwrap_or(30).min(120));
 
-    let redirect_policy = if req.follow_redirects.unwrap_or(true) {
-        reqwest::redirect::Policy::limited(10)
-    } else {
+    let redirect_policy = if !req.follow_redirects.unwrap_or(true) {
         reqwest::redirect::Policy::none()
+    } else if config.scope.enabled {
+        // The initial host is scope-checked above, but reqwest would otherwise
+        // follow redirects to ANY host - a 302 to an internal or cloud-metadata
+        // address escapes the scope gate (SSRF). Re-validate each hop's host and
+        // stop (returning the 3xx) at the first out-of-scope one, so the caller
+        // can see where it tried to redirect.
+        let scope = config.scope.clone();
+        reqwest::redirect::Policy::custom(move |attempt| {
+            if attempt.previous().len() >= 10 {
+                attempt.error("too many redirects")
+            } else if attempt
+                .url()
+                .host_str()
+                .is_some_and(|h| raven_core::safety::check_scope(h, &scope).is_ok())
+            {
+                attempt.follow()
+            } else {
+                attempt.stop()
+            }
+        })
+    } else {
+        reqwest::redirect::Policy::limited(10)
     };
 
     // Build client with proxy support and shared cookie jar
@@ -135,7 +155,7 @@ pub async fn run(
         .parse()
         .map_err(|_| rmcp::ErrorData::invalid_params("invalid HTTP method", None))?;
 
-    let mut request = client.request(method, &req.url);
+    let mut request = client.request(method.clone(), &req.url);
 
     if let Some(headers) = &req.headers {
         for (k, v) in headers.iter() {
@@ -189,6 +209,23 @@ pub async fn run(
         .await
         .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
 
+    // Record to the audit trail. http_request bypasses the executor, so without
+    // this it would be the only tool with no accountability entry. Secrets
+    // (auth_token, headers, cookies) are deliberately excluded from `args`.
+    raven_core::audit::record(
+        config,
+        &raven_core::audit::AuditEntry {
+            tool: "http_request",
+            args: &[method.as_str(), req.url.as_str()],
+            exit_code: Some(status.as_u16() as i32),
+            success: status.is_success(),
+            duration_ms: elapsed.as_millis(),
+            sudo: false,
+            bytes_out: body_bytes.len(),
+            quality: "Complete",
+        },
+    );
+
     // Convert body to text, stripping HTML if applicable
     let is_html = content_type.contains("text/html");
     let raw_body = String::from_utf8_lossy(&body_bytes);
@@ -199,16 +236,11 @@ pub async fn run(
     };
 
     // Truncate after processing
+    // Reuse the char-safe truncator: byte-slicing `body_text[..max_body]` panics
+    // when the cap lands mid-multibyte-char, and an HTTP response body is
+    // arbitrary UTF-8. truncate_output is boundary-safe and keeps head + tail.
     let max_body = config.safety.effective_max_response_body();
-    let body = if body_text.len() > max_body {
-        format!(
-            "{}\n\n--- truncated at {} chars ---",
-            &body_text[..max_body],
-            max_body
-        )
-    } else {
-        body_text
-    };
+    let body = raven_core::safety::truncate_output(&body_text, max_body);
 
     // Surface session cookies from the jar so models can pass them to subprocess tools
     let cookies_line = cookie_jar

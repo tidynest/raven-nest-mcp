@@ -10,6 +10,67 @@
 //! Additionally, [`scans`] handles background scan launch/poll/cancel, and
 //! [`findings`] manages finding persistence and report generation.
 
+use raven_core::{config::RavenConfig, executor};
+use rmcp::model::{CallToolResult, Content};
+
+/// Run a subprocess tool and format the MCP response.
+///
+/// Collapses the ~12-line skeleton every `run_*` handler repeated: execute via
+/// [`executor::run`], and on success apply `parse` (falling back to raw stdout)
+/// and append any quality warning; on failure defer to [`error::format_result`](crate::error::format_result).
+///
+/// `parse` is a closure so callers can capture context (e.g. a budget-scaled
+/// result cap) or pass `|_| None` for tools with no structured parser. A
+/// [`ProgressTicker`](crate::progress::ProgressTicker) held in the caller stays
+/// alive across the `.await` here, so long-running handlers keep ticking.
+pub(crate) async fn run_and_format(
+    config: &RavenConfig,
+    tool: &str,
+    args: &[&str],
+    timeout: Option<u64>,
+    parse: impl FnOnce(&str) -> Option<String>,
+) -> Result<CallToolResult, rmcp::ErrorData> {
+    let result = executor::run(config, tool, args, timeout)
+        .await
+        .map_err(crate::error::to_mcp)?;
+    Ok(CallToolResult::success(vec![Content::text(format_output(
+        tool, &result, parse,
+    ))]))
+}
+
+/// Format a completed tool run into user-facing text.
+///
+/// On success, apply `parse` (falling back to raw stdout) and append any quality
+/// warning; on failure defer to [`error::format_result`](crate::error::format_result).
+/// Shared by [`run_and_format`] and the auto-save scanner handlers, which build
+/// the same string but also return extracted findings.
+pub(crate) fn format_output(
+    tool: &str,
+    result: &executor::CommandResult,
+    parse: impl FnOnce(&str) -> Option<String>,
+) -> String {
+    if result.success {
+        let mut out = parse(&result.stdout).unwrap_or_else(|| result.stdout.clone());
+        if let Some(ref warning) = result.warning {
+            out.push_str(&format!("\n\n⚠ {warning}"));
+        }
+        out
+    } else {
+        crate::error::format_result(tool, result)
+    }
+}
+
+/// First `n` characters of `s`, on a char boundary.
+///
+/// Byte-slicing `&s[..n]` panics when `n` splits a multibyte UTF-8 char; this
+/// returns the whole string when it has fewer than `n` characters.
+pub(crate) fn char_prefix(s: &str, n: usize) -> &str {
+    match s.char_indices().nth(n) {
+        Some((byte_idx, _)) => &s[..byte_idx],
+        None => s,
+    }
+}
+
 /// Detect whether a target URL points to localhost.
 ///
 /// Used by [`feroxbuster`] and [`ffuf`] to reduce default thread counts for
@@ -145,6 +206,15 @@ mod tests {
         assert!(!is_localhost("https://10.0.0.1:443"));
         assert!(!is_localhost("remote.example.com"));
     }
+
+    #[test]
+    fn char_prefix_is_boundary_safe() {
+        assert_eq!(super::char_prefix("hello", 3), "hel");
+        assert_eq!(super::char_prefix("hi", 10), "hi"); // fewer chars than n
+        assert_eq!(super::char_prefix("", 5), "");
+        // Byte-slicing &s[..2] here would panic mid-char (each 🔥 is 4 bytes).
+        assert_eq!(super::char_prefix("🔥🔥🔥", 2), "🔥🔥");
+    }
 }
 
 #[cfg(test)]
@@ -278,6 +348,7 @@ pub mod nikto;
 pub mod nmap;
 pub mod nuclei;
 pub mod ping;
+pub mod resources;
 pub mod scans;
 pub mod sqlmap;
 pub mod subfinder;

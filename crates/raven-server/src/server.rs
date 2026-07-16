@@ -50,7 +50,11 @@ use crate::tools::{
 use rmcp::{
     Peer, RoleServer, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolResult, Content, RawContent, ServerCapabilities, ServerInfo},
+    model::{
+        CallToolResult, Content, ListResourcesResult, PaginatedRequestParams, RawContent,
+        ReadResourceRequestParams, ReadResourceResult, ServerCapabilities, ServerInfo,
+    },
+    service::RequestContext,
     tool, tool_handler, tool_router,
 };
 
@@ -950,6 +954,7 @@ impl ServerHandler for RavenServer {
         info.capabilities = ServerCapabilities::builder()
             .enable_tools()
             .enable_logging()
+            .enable_resources()
             .build();
         // Advertise the product identity (not the rmcp SDK default) so clients
         // read the real raven-nest name/version from the handshake.
@@ -957,6 +962,25 @@ impl ServerHandler for RavenServer {
         info.server_info.version = env!("CARGO_PKG_VERSION").into();
         info.instructions = Some(SERVER_INSTRUCTIONS.into());
         info
+    }
+
+    async fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParams>,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ListResourcesResult, rmcp::ErrorData> {
+        Ok(crate::tools::resources::list(
+            &self.finding_store,
+            &self.scan_manager,
+        ))
+    }
+
+    async fn read_resource(
+        &self,
+        request: ReadResourceRequestParams,
+        _context: RequestContext<RoleServer>,
+    ) -> Result<ReadResourceResult, rmcp::ErrorData> {
+        crate::tools::resources::read(&request.uri, &self.finding_store, &self.scan_manager)
     }
 }
 

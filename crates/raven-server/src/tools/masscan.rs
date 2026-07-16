@@ -10,11 +10,8 @@
 //! This is a fast tool (1-5s for small ranges) and doesn't use a
 //! [`ProgressTicker`](crate::progress::ProgressTicker).
 
-use raven_core::{config::RavenConfig, executor, safety};
-use rmcp::{
-    model::{CallToolResult, Content},
-    schemars,
-};
+use raven_core::{config::RavenConfig, safety};
+use rmcp::{model::CallToolResult, schemars};
 
 /// MCP request schema for `run_masscan`.
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
@@ -66,21 +63,10 @@ pub async fn run(
     ];
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let result = executor::run(config, "masscan", &arg_refs, None)
-        .await
-        .map_err(crate::error::to_mcp)?;
-
-    let output = if result.success {
-        let mut out = parse_masscan_output(&result.stdout, result_limit)
-            .unwrap_or_else(|| result.stdout.clone());
-        if let Some(ref warning) = result.warning {
-            out.push_str(&format!("\n\n⚠ {warning}"));
-        }
-        out
-    } else {
-        crate::error::format_result("masscan", &result)
-    };
-    Ok(CallToolResult::success(vec![Content::text(output)]))
+    super::run_and_format(config, "masscan", &arg_refs, None, |s| {
+        parse_masscan_output(s, result_limit)
+    })
+    .await
 }
 
 /// Parse masscan output, extracting discovered open ports.
