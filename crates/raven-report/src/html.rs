@@ -15,7 +15,7 @@
 //! requested format is `html`.
 
 use crate::finding::{Finding, Severity};
-use crate::summary::{count_by_severity, overall_risk, unique_tools};
+use crate::summary::{count_by_severity, overall_risk, time_range, unique_targets, unique_tools};
 
 /// Escape the five HTML-significant characters so user text can never break
 /// out of its element or attribute context.
@@ -144,6 +144,36 @@ pub fn generate_report(findings: &[&Finding], title: &str) -> String {
         }
         body.push_str("</ul>\n");
     }
+
+    // Scope & Timeline - assessed targets and engagement window from the findings.
+    body.push_str("<h2>Scope &amp; Timeline</h2>\n");
+    let targets = unique_targets(findings);
+    body.push_str(&format!(
+        "<p><b>Targets assessed:</b> {}</p>\n",
+        targets.len()
+    ));
+    if !targets.is_empty() {
+        body.push_str("<ul class=\"tools\">\n");
+        for t in &targets {
+            body.push_str(&format!("<li>{}</li>\n", html_escape(t)));
+        }
+        body.push_str("</ul>\n");
+    }
+    if let Some((first, last)) = time_range(findings) {
+        body.push_str(&format!(
+            "<p><b>Engagement window:</b> {} to {}</p>\n",
+            first.to_rfc3339(),
+            last.to_rfc3339()
+        ));
+    }
+
+    // Methodology - parity with the markdown report.
+    body.push_str(
+        "<h2>Methodology</h2>\n\
+         <p>This assessment followed the Penetration Testing Execution Standard \
+         (PTES): pre-engagement, intelligence gathering, vulnerability analysis, \
+         exploitation, post-exploitation, and reporting.</p>\n",
+    );
 
     // Findings
     body.push_str(&format!("<h2>Findings ({})</h2>\n", findings.len()));
@@ -288,5 +318,18 @@ mod tests {
         let out = generate_report(&findings, "</title><script>alert(3)</script>");
         assert!(!out.contains("<script>alert(3)</script>"));
         assert!(out.contains("&lt;script&gt;alert(3)&lt;/script&gt;"));
+    }
+
+    #[test]
+    fn report_has_scope_and_methodology() {
+        let mut f = make("XSS", Severity::High);
+        f.target = "app.example.com".into();
+        let findings = vec![&f];
+        let out = generate_report(&findings, "Scope");
+        assert!(out.contains("Scope &amp; Timeline"));
+        assert!(out.contains("Targets assessed:"));
+        assert!(out.contains("app.example.com"));
+        assert!(out.contains("<h2>Methodology</h2>"));
+        assert!(out.contains("PTES"));
     }
 }
