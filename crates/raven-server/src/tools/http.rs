@@ -155,7 +155,7 @@ pub async fn run(
         .parse()
         .map_err(|_| rmcp::ErrorData::invalid_params("invalid HTTP method", None))?;
 
-    let mut request = client.request(method, &req.url);
+    let mut request = client.request(method.clone(), &req.url);
 
     if let Some(headers) = &req.headers {
         for (k, v) in headers.iter() {
@@ -208,6 +208,23 @@ pub async fn run(
         .bytes()
         .await
         .map_err(|e| rmcp::ErrorData::internal_error(e.to_string(), None))?;
+
+    // Record to the audit trail. http_request bypasses the executor, so without
+    // this it would be the only tool with no accountability entry. Secrets
+    // (auth_token, headers, cookies) are deliberately excluded from `args`.
+    raven_core::audit::record(
+        config,
+        &raven_core::audit::AuditEntry {
+            tool: "http_request",
+            args: &[method.as_str(), req.url.as_str()],
+            exit_code: Some(status.as_u16() as i32),
+            success: status.is_success(),
+            duration_ms: elapsed.as_millis(),
+            sudo: false,
+            bytes_out: body_bytes.len(),
+            quality: "Complete",
+        },
+    );
 
     // Convert body to text, stripping HTML if applicable
     let is_html = content_type.contains("text/html");

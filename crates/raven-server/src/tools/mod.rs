@@ -46,6 +46,17 @@ pub(crate) async fn run_and_format(
     Ok(CallToolResult::success(vec![Content::text(output)]))
 }
 
+/// First `n` characters of `s`, on a char boundary.
+///
+/// Byte-slicing `&s[..n]` panics when `n` splits a multibyte UTF-8 char; this
+/// returns the whole string when it has fewer than `n` characters.
+pub(crate) fn char_prefix(s: &str, n: usize) -> &str {
+    match s.char_indices().nth(n) {
+        Some((byte_idx, _)) => &s[..byte_idx],
+        None => s,
+    }
+}
+
 /// Detect whether a target URL points to localhost.
 ///
 /// Used by [`feroxbuster`] and [`ffuf`] to reduce default thread counts for
@@ -180,6 +191,15 @@ mod tests {
         assert!(!is_localhost("http://example.com"));
         assert!(!is_localhost("https://10.0.0.1:443"));
         assert!(!is_localhost("remote.example.com"));
+    }
+
+    #[test]
+    fn char_prefix_is_boundary_safe() {
+        assert_eq!(super::char_prefix("hello", 3), "hel");
+        assert_eq!(super::char_prefix("hi", 10), "hi"); // fewer chars than n
+        assert_eq!(super::char_prefix("", 5), "");
+        // Byte-slicing &s[..2] here would panic mid-char (each 🔥 is 4 bytes).
+        assert_eq!(super::char_prefix("🔥🔥🔥", 2), "🔥🔥");
     }
 }
 

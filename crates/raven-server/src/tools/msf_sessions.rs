@@ -67,7 +67,7 @@ pub async fn run(
                 .and_then(|v| v.as_str())
                 .unwrap_or("(no output)");
             let truncated = if data.len() > 4096 {
-                format!("{}--- truncated ---", &data[..4096])
+                format!("{}--- truncated ---", super::char_prefix(data, 4096))
             } else {
                 data.to_string()
             };
