@@ -291,7 +291,7 @@ tests/
 - [docs/METASPLOIT.md](docs/METASPLOIT.md) -- Metasploit Framework integration setup and safety model
 - [docs/DATA_FLOW.md](docs/DATA_FLOW.md) -- data flow and sources of truth: which module owns each piece of state
 - [raven-nest-client](https://github.com/tidynest/raven-nest-client) -- companion TypeScript REPL client (versioned in lockstep with the server)
-- [CHANGELOG.md](CHANGELOG.md) -- release history (current: v0.2.7)
+- [CHANGELOG.md](CHANGELOG.md) -- release history (current: v0.2.8)
 
 ## License
 
