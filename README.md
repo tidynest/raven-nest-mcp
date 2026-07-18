@@ -5,6 +5,7 @@
 [![Release](https://img.shields.io/github/v/release/tidynest/raven-nest-mcp?sort=semver)](https://github.com/tidynest/raven-nest-mcp/releases)
 [![MCP tools: 43](https://img.shields.io/badge/MCP%20tools-43-5A45FF.svg)](https://github.com/tidynest/raven-nest-mcp)
 [![MCP](https://img.shields.io/badge/Model%20Context%20Protocol-server-1f6feb.svg)](https://modelcontextprotocol.io)
+[![Canopii Trust Score](https://index.canopii.dev/api/badge/io.github.tidynest/raven-nest-mcp)](https://index.canopii.dev/server/io.github.tidynest/raven-nest-mcp)
 
 A pentesting toolkit that runs as an [MCP](https://modelcontextprotocol.io/) server, giving AI assistants structured access to industry-standard security tools through a safety-hardened interface.
 
