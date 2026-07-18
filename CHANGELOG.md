@@ -5,7 +5,14 @@ on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (pre-1.0:
 minor versions may carry feature additions and refinements).
 
-## [Unreleased]
+## [0.2.8] - 2026-07-18
+
+### Added
+- **NetExec output parser.** `run_netexec` now structures `nxc` output: it
+  strips terminal colour, hoists the authentication verdict (including
+  privileged `Pwn3d!` access) to the top, and keeps the per-host banner and
+  enumeration rows without duplicates, falling back to raw output when
+  unrecognized. Completes structured-output parser coverage across all 22 tools.
 
 ### Changed
 - **Server identity matches the registry name.** The MCP handshake now
