@@ -957,8 +957,9 @@ impl ServerHandler for RavenServer {
             .enable_resources()
             .build();
         // Advertise the product identity (not the rmcp SDK default) so clients
-        // read the real raven-nest name/version from the handshake.
-        info.server_info.name = "raven-nest".into();
+        // read the real name/version from the handshake. Matches the MCP
+        // registry name in server.json so external scanners can correlate.
+        info.server_info.name = "io.github.tidynest/raven-nest-mcp".into();
         info.server_info.version = env!("CARGO_PKG_VERSION").into();
         info.instructions = Some(SERVER_INSTRUCTIONS.into());
         info
