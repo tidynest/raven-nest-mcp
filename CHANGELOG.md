@@ -5,6 +5,14 @@ on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (pre-1.0:
 minor versions may carry feature additions and refinements).
 
+## [Unreleased]
+
+### Changed
+- **Server identity matches the registry name.** The MCP handshake now
+  advertises `serverInfo.name` as `io.github.tidynest/raven-nest-mcp` (was
+  `raven-nest`), matching `server.json` so external indexers and scanners can
+  correlate the running server with its registry entry.
+
 ## [0.2.7] - 2026-07-16
 
 Security and correctness hardening, report improvements, and MCP resources.
