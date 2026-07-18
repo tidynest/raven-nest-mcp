@@ -237,6 +237,7 @@ Every security tool has a structured output parser that extracts key data from r
 - **subfinder/dnsrecon/dnsx** -- subdomain and DNS record extraction
 - **httpx/katana** -- HTTP fingerprint and crawled-endpoint extraction
 - **dalfox/wpscan/enum4linux-ng/john** -- structured finding extraction
+- **netexec** -- authentication verdict and per-host enumeration extraction
 
 All parsers return `Option<String>` and fall back to raw output when parsing fails. Result limits scale dynamically based on the active budget mode.
 

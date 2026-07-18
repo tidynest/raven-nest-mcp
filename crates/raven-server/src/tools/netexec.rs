@@ -182,11 +182,68 @@ pub async fn run(
 
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
     super::run_and_format(config, "nxc", &arg_refs, None, |s| {
-        s.trim()
-            .is_empty()
-            .then(|| "NetExec completed with no output.".to_string())
+        if s.trim().is_empty() {
+            Some("NetExec completed with no output.".to_string())
+        } else {
+            parse_netexec_output(s)
+        }
     })
     .await
+}
+
+/// A NetExec output line begins with a known protocol token (`SMB`, `LDAP`,
+/// `SSH`, ...); everything else (tracebacks, connection errors) is not.
+fn is_nxc_line(l: &str) -> bool {
+    l.split_whitespace()
+        .next()
+        .is_some_and(|tok| PROTOCOLS.contains(&tok.to_ascii_lowercase().as_str()))
+}
+
+/// Structure NetExec (`nxc`) output: strip terminal colour, hoist the
+/// authentication verdict to the top, and keep the per-host result lines
+/// (banner, enumerated shares/users/etc.) in order without duplicates.
+///
+/// NetExec prefixes every line with `PROTO  IP  PORT  HOST` and marks status
+/// with `[*]` (info), `[+]` (success), `[-]` (failure); `(Pwn3d!)` flags
+/// privileged access. Returns `None` when no line is NetExec-shaped, so the
+/// caller falls back to raw stdout.
+pub fn parse_netexec_output(raw: &str) -> Option<String> {
+    let clean = super::strip_ansi(raw);
+    let lines: Vec<&str> = clean
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect();
+
+    if !lines.iter().any(|l| is_nxc_line(l)) {
+        return None;
+    }
+
+    let verdict = if lines.iter().any(|l| l.contains("(Pwn3d!)")) {
+        Some("[+] Authentication succeeded - privileged/admin access (Pwn3d!)")
+    } else if lines.iter().any(|l| l.contains("[+]")) {
+        Some("[+] Authentication succeeded")
+    } else if lines.iter().any(|l| l.contains("[-]")) {
+        Some("[-] Authentication failed")
+    } else {
+        None
+    };
+
+    let mut seen = std::collections::HashSet::new();
+    let body: Vec<&str> = lines
+        .iter()
+        .filter(|l| is_nxc_line(l))
+        .filter(|l| seen.insert(**l))
+        .copied()
+        .collect();
+
+    let mut out = String::new();
+    if let Some(v) = verdict {
+        out.push_str(v);
+        out.push_str("\n\n");
+    }
+    out.push_str(&body.join("\n"));
+    Some(out)
 }
 
 #[cfg(test)]
@@ -228,6 +285,42 @@ mod tests {
     fn protocols_are_curated() {
         assert!(PROTOCOLS.contains(&"smb"));
         assert!(!PROTOCOLS.contains(&"raw"));
+    }
+
+    #[test]
+    fn parse_netexec_hoists_pwned_verdict_and_strips_ansi() {
+        let raw = "SMB  10.10.10.5  445  DC01  [*] Windows Server 2019 (domain:CORP) (signing:True)\n\
+                   \x1b[1m\x1b[32mSMB  10.10.10.5  445  DC01  [+] CORP\\administrator:Passw0rd! (Pwn3d!)\x1b[0m";
+        let out = parse_netexec_output(raw).unwrap();
+        assert!(out.starts_with("[+] Authentication succeeded - privileged/admin access (Pwn3d!)"));
+        assert!(out.contains("(domain:CORP)")); // banner kept
+        assert!(out.contains("administrator:Passw0rd!"));
+        assert!(!out.contains('\x1b')); // colour stripped
+    }
+
+    #[test]
+    fn parse_netexec_reports_failure_and_dedups() {
+        let line = "SMB  10.10.10.5  445  DC01  [-] CORP\\bob:wrongpass STATUS_LOGON_FAILURE";
+        let raw = format!("{line}\n{line}"); // duplicate line
+        let out = parse_netexec_output(&raw).unwrap();
+        assert!(out.starts_with("[-] Authentication failed"));
+        assert_eq!(out.matches("STATUS_LOGON_FAILURE").count(), 1); // deduped
+    }
+
+    #[test]
+    fn parse_netexec_keeps_enumeration_without_verdict() {
+        let raw = "SMB  10.10.10.5  445  DC01  [*] Enumerated shares\n\
+                   SMB  10.10.10.5  445  DC01  ADMIN$          READ,WRITE      Remote Admin";
+        let out = parse_netexec_output(raw).unwrap();
+        assert!(!out.starts_with("[+]") && !out.starts_with("[-]")); // no auth verdict
+        assert!(out.contains("ADMIN$"));
+    }
+
+    #[test]
+    fn parse_netexec_non_nxc_output_falls_back() {
+        assert!(parse_netexec_output("").is_none());
+        assert!(parse_netexec_output("[-] Connection error: host unreachable").is_none());
+        assert!(parse_netexec_output("Traceback (most recent call last):").is_none());
     }
 
     #[test]
