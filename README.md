@@ -1,7 +1,7 @@
 # Raven Nest MCP
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![CI](https://img.shields.io/github/actions/workflow/status/tidynest/raven-nest-mcp/ci.yml?branch=main)](https://github.com/tidynest/raven-nest-mcp/actions)
+[![CI](https://github.com/tidynest/raven-nest-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tidynest/raven-nest-mcp/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/tidynest/raven-nest-mcp?sort=semver)](https://github.com/tidynest/raven-nest-mcp/releases)
 [![MCP tools: 43](https://img.shields.io/badge/MCP%20tools-43-5A45FF.svg)](https://github.com/tidynest/raven-nest-mcp)
 [![MCP](https://img.shields.io/badge/Model%20Context%20Protocol-server-1f6feb.svg)](https://modelcontextprotocol.io)
