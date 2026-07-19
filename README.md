@@ -2,7 +2,7 @@
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![CI](https://github.com/tidynest/raven-nest-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tidynest/raven-nest-mcp/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/tidynest/raven-nest-mcp?sort=semver)](https://github.com/tidynest/raven-nest-mcp/releases)
+[![Release](https://img.shields.io/badge/release-v0.2.8-blue.svg)](https://github.com/tidynest/raven-nest-mcp/releases)
 [![MCP tools: 43](https://img.shields.io/badge/MCP%20tools-43-5A45FF.svg)](https://github.com/tidynest/raven-nest-mcp)
 [![MCP](https://img.shields.io/badge/Model%20Context%20Protocol-server-1f6feb.svg)](https://modelcontextprotocol.io)
 [![Canopii Trust Score](https://index.canopii.dev/api/badge/io.github.tidynest/raven-nest-mcp)](https://index.canopii.dev/server/io.github.tidynest/raven-nest-mcp)
