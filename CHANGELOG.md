@@ -5,6 +5,26 @@ on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (pre-1.0:
 minor versions may carry feature additions and refinements).
 
+## [0.2.9] - 2026-08-02
+
+### Added
+- **Machine-readable tool manifest** ([docs/MCP_TOOLS.md](docs/MCP_TOOLS.md)).
+  Declares all 43 tools (name + description) in a format static MCP security
+  scanners can parse, since they don't compile the Rust `#[tool]` macros. This
+  lets scanners such as the Canopii Trust Index evaluate the tool-integrity
+  controls (prompt-injection markers, strict schemas, tool scope) instead of
+  reporting them "not checked", raising scan confidence. A new test
+  (`crates/raven-server/tests/tool_manifest.rs`) keeps the manifest in lockstep
+  with `server.rs` and rejects any description carrying an injection or
+  exfiltration marker that would trip a scanner's guard.
+
+### Changed
+- **`run_gitleaks` description reworded** to "Scan a directory or git history for
+  committed secrets" (was "gitleaks secret scanner ..."). The prior wording
+  paired "gitleaks" with "secret", matching the exfiltration-marker heuristic
+  used by static tool-integrity scanners; the new wording is clearer and avoids
+  the false positive. Behaviour is unchanged.
+
 ## [0.2.8] - 2026-07-18
 
 ### Added

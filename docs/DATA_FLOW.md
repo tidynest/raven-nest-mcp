@@ -54,6 +54,7 @@ Background scans take a parallel path: `launch_scan` hands the command to the
 | **Context budget** | `self.budget` - used at e.g. [server.rs:241](../crates/raven-server/src/server.rs#L241) | Scales per-tool result caps (`scale_cap`) so output shrinks as the budget tightens. |
 | **Reports** | `generate_report`, rendered from `FindingStore` | Reports are a *view* of findings, never a store. Formats: Markdown (default), JSON, SARIF, HTML. |
 | **MCP resources** | `resources::list` / `resources::read` - [tools/resources.rs](../crates/raven-server/src/tools/resources.rs) | Read-only `raven://` view over findings, reports, and scans, served from the same `FindingStore` and `ScanManager` the tools use. A view like Reports, never a store. |
+| **Tool names + descriptions** | `#[tool(...)]` attributes in [server.rs](../crates/raven-server/src/server.rs) | The MCP handshake derives the tool schema from these. [docs/MCP_TOOLS.md](MCP_TOOLS.md) mirrors them verbatim so static scanners that don't compile Rust can still read the surface; drift is caught by `crates/raven-server/tests/tool_manifest.rs`. The doc is a view, never a second source. |
 
 ## Auto-saved findings
 
