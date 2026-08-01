@@ -1,6 +1,6 @@
 # Raven-Nest-MCP Unit & Integration Test Results
 
-**Date:** 2026-06-22
+**Date:** 2026-08-02
 **Toolchain:** Rust stable
 **Command:** `cargo test --workspace`
 
@@ -8,19 +8,21 @@
 
 | Crate | Tests | Pass | Fail |
 |-------|------:|-----:|-----:|
-| raven-core | 88 | 88 | 0 |
-| raven-report | 54 | 54 | 0 |
-| raven-server | 162 | 162 | 0 |
-| integration | 10 | 10 | 0 |
-| **Total** | **314** | **314** | **0** |
+| raven-core | 104 | 104 | 0 |
+| raven-report | 64 | 64 | 0 |
+| raven-server | 170 | 170 | 0 |
+| integration | 13 | 13 | 0 |
+| **Total** | **351** | **351** | **0** |
 
-**Result:** All 314 tests pass (as of v0.2.0).
+**Result:** All 351 tests pass (as of v0.2.9). The integration count includes
+the tool-manifest guard (`crates/raven-server/tests/tool_manifest.rs`).
 
 > The per-module enumeration below is the 2026-03-29 baseline (179 tests). The
-> +135 tests added since (recon tools, engagement, scope, audit, report formats,
+> +172 tests added since (recon tools, engagement, scope, audit, report formats,
 > auto-extract across 8 scanners, secret scanning [gitleaks/trufflehog], ffuf
-> match-code default, proactive launch cooldown) are counted in the summary above
-> but not itemized here - regenerate with `cargo test --workspace -- --list`.
+> match-code default, proactive launch cooldown, netexec parser, tool-manifest
+> guard) are counted in the summary above but not itemized here - regenerate with
+> `cargo test --workspace -- --list`.
 
 ---
 

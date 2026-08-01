@@ -2,7 +2,7 @@
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![CI](https://github.com/tidynest/raven-nest-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tidynest/raven-nest-mcp/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v0.2.8-blue.svg)](https://github.com/tidynest/raven-nest-mcp/releases)
+[![Release](https://img.shields.io/badge/release-v0.2.9-blue.svg)](https://github.com/tidynest/raven-nest-mcp/releases)
 [![MCP tools: 43](https://img.shields.io/badge/MCP%20tools-43-5A45FF.svg)](https://github.com/tidynest/raven-nest-mcp)
 [![MCP](https://img.shields.io/badge/Model%20Context%20Protocol-server-1f6feb.svg)](https://modelcontextprotocol.io)
 [![Canopii Trust Score](https://index.canopii.dev/api/badge/io.github.tidynest/raven-nest-mcp)](https://index.canopii.dev/server/io.github.tidynest/raven-nest-mcp)
@@ -247,7 +247,7 @@ The `http_request` tool maintains a shared cookie jar that persists within a ses
 
 ## Testing
 
-344 unit and integration tests across 3 crates:
+351 unit and integration tests across 3 crates:
 
 ```bash
 cargo test --workspace
@@ -257,8 +257,8 @@ cargo test --workspace
 |-------|-------|
 | raven-core | 104 |
 | raven-report | 64 |
-| raven-server | 166 |
-| Integration | 10 |
+| raven-server | 170 |
+| Integration | 13 |
 
 A Python-based MCP integration test harness is also available:
 
@@ -287,11 +287,12 @@ tests/
 ## Documentation
 
 - [docs/USAGE.md](docs/USAGE.md) -- tool installation, configuration reference, full parameter docs
+- [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) -- machine-readable manifest of all 43 tools (name + description)
 - [docs/LOCAL_AI_INTEGRATION.md](docs/LOCAL_AI_INTEGRATION.md) -- using Raven Nest with local models (Ollama, LM Studio)
 - [docs/METASPLOIT.md](docs/METASPLOIT.md) -- Metasploit Framework integration setup and safety model
 - [docs/DATA_FLOW.md](docs/DATA_FLOW.md) -- data flow and sources of truth: which module owns each piece of state
 - [raven-nest-client](https://github.com/tidynest/raven-nest-client) -- companion TypeScript REPL client (versioned in lockstep with the server)
-- [CHANGELOG.md](CHANGELOG.md) -- release history (current: v0.2.8)
+- [CHANGELOG.md](CHANGELOG.md) -- release history (current: v0.2.9)
 
 ## License
 

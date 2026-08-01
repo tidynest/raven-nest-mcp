@@ -45,6 +45,7 @@ COPY --from=build /src/target/release/raven-server /usr/local/bin/raven-server
 #     /usr/share/doc/raven-nest-mcp/USAGE.md
 COPY README.md LICENSE CHANGELOG.md SECURITY.md \
      docs/USAGE.md docs/METASPLOIT.md docs/LOCAL_AI_INTEGRATION.md docs/DATA_FLOW.md \
+     docs/MCP_TOOLS.md \
      config/default.toml \
      /usr/share/doc/raven-nest-mcp/
 

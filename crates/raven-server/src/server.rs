@@ -538,7 +538,7 @@ impl RavenServer {
     }
 
     #[tool(
-        description = "gitleaks secret scanner (dir or git-history)",
+        description = "Scan a directory or git history for committed secrets",
         annotations(destructive_hint = false, open_world_hint = false)
     )]
     async fn run_gitleaks(
