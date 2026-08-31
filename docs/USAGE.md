@@ -441,7 +441,7 @@ binary on `PATH` (or set `[safety.tool_paths].nxc`).
 
 ## Tools Reference
 
-The server exposes all 43 tools regardless of configuration. The 6 Metasploit
+The server exposes all 46 tools regardless of configuration. The 6 Metasploit
 tools and `run_netexec` are always listed, but they are gated at call time:
 each returns a clear "disabled" error unless enabled (`[metasploit] enabled = true`
 or `[netexec] enabled = true`), rather than being hidden from the tool list.
@@ -1047,14 +1047,15 @@ summary (finding count by severity) instead of the full report to conserve conte
 
 ### Engagement
 
-Engagements scope findings and reports to a per-client/per-target subdirectory,
-so separate jobs don't co-mingle. Switching is filesystem-backed - the active
-engagement's findings live under `{output_dir}/engagements/{name}/findings/` and
-its reports alongside.
+Engagements scope findings, discovery data, and reports to a
+per-client/per-target subdirectory, so separate jobs don't co-mingle. Switching
+is filesystem-backed - the active engagement's findings live under
+`{output_dir}/engagements/{name}/findings/`, its tracked hosts under
+`{output_dir}/engagements/{name}/targets/`, and its reports alongside.
 
 #### `set_engagement`
 Switch the active engagement, creating it on first use. Subsequent
-`save_finding` / `generate_report` calls scope to it.
+`save_finding` / `generate_report` / discovery-tracking calls scope to it.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -1062,6 +1063,58 @@ Switch the active engagement, creating it on first use. Subsequent
 
 #### `list_engagements`
 List all engagements and show which is active. No parameters.
+
+### Target Discovery Tracking
+
+nmap results (both `run_nmap` and background nmap scans via `launch_scan`)
+accumulate per host: ports, states, services, versions, and OS guesses, with
+first/last-seen timestamps. Re-scanning merges into the existing record (new
+ports are added, changed versions updated, `last_seen` bumped) rather than
+overwriting it, so the record builds a picture of the target over time.
+
+Records are stored as `{output_dir}/targets/{host}.json` (or under the active
+engagement) and survive restarts.
+
+#### `list_targets`
+One line per tracked host (open/tracked service counts, last seen). No
+parameters. Also returns the summaries as `structured_content`.
+
+#### `get_target_info`
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `host` | string | yes | Host IP or hostname (as reported by the scanner) |
+
+Returns the full record: every service with state/name/version and timestamps,
+plus technologies. The complete record is also returned as `structured_content`.
+
+#### `diff_scans`
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `scan_id_a` | string | yes | Baseline scan ID (the "before" scan) |
+| `scan_id_b` | string | yes | Comparison scan ID (the "after" scan) |
+
+Compares two **completed nmap background scans** (IDs from `launch_scan`):
+hosts that appeared/disappeared, ports that appeared/disappeared, and ports
+whose state, service, or version changed. Non-nmap scans or still-running scans
+are rejected with a clear error. The diff is returned as text and as
+`structured_content`.
+
+## Structured Outputs
+
+`run_nmap` and `run_nuclei` attach a machine-readable `structured_content`
+object alongside their text output (uncapped by the context budget), so clients
+can filter, sort, or persist results without re-parsing prose:
+
+- `run_nmap`: `{ args?, hosts: [{ ip, status, hostnames?, os?, ports: [{ proto,
+  port, state, service, version?, cves? }] }], stats? }`
+- `run_nuclei`: `{ total, shown, findings: [{ template, severity, name,
+  matched_at, type }] }`
+
+Several management tools (`save_finding`, `launch_scan`, `get_scan_status`,
+`list_findings`, `generate_report`, the target tools) also return
+`structured_content` with their key fields.
 
 ## MCP Resources
 

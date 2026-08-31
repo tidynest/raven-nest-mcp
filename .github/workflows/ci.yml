@@ -34,3 +34,20 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: taiki-e/install-action@cargo-audit
       - run: cargo audit
+      # Policy checks per deny.toml: advisories, license allowlist, banned
+      # duplicates, and crate sources. cargo audit covers advisories only.
+      - uses: taiki-e/install-action@cargo-deny
+      - run: cargo deny check
+
+  msrv:
+    name: MSRV 1.93
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      # rust-version in Cargo.toml is 1.93.0 - keep this pin in lockstep.
+      # dtolnay/rust-toolchain@<version> overrides rust-toolchain.toml.
+      - uses: dtolnay/rust-toolchain@1.93.0
+      - uses: Swatinem/rust-cache@v2
+      # Check only: the full test suite runs on stable in the check job.
+      # --locked also fails if Cargo.lock can't be honored on the MSRV.
+      - run: cargo check --workspace --locked

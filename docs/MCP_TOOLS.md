@@ -14,12 +14,13 @@ descriptive error rather than silently ignored, which both catches LLM
 parameter hallucination and prevents unexpected arguments from being smuggled
 into a tool call.
 
-The 43 endpoints break down as: 22 wrapped security tools, 6 Metasploit tools
+The 46 endpoints break down as: 22 wrapped security tools, 6 Metasploit tools
 (gated), `ping_target` + `http_request`, 5 scan-management tools, 6
-finding/report tools, and 2 engagement tools.
+finding/report tools, 2 engagement tools, and 3 target-discovery tools
+(`get_target_info`, `list_targets`, `diff_scans`).
 
 ```ts
-// Raven Nest MCP declared tool surface (43 tools).
+// Raven Nest MCP declared tool surface (46 tools).
 // Every tool input schema is strict: additionalProperties: false.
 const tools = [
   { name: "ping_target", description: "Ping target for connectivity check" },
@@ -64,6 +65,9 @@ const tools = [
   { name: "generate_report", description: "Generate pentest report" },
   { name: "set_engagement", description: "Switch the active engagement (separate findings + report scope per client/target); creates it on first use" },
   { name: "list_engagements", description: "List engagements and show which is active" },
+  { name: "get_target_info", description: "Get discovered services and technologies for a tracked host" },
+  { name: "list_targets", description: "List hosts discovered across scans" },
+  { name: "diff_scans", description: "Compare two completed nmap scans (added/removed hosts, ports, service changes)" },
   { name: "run_netexec", description: "NetExec: authenticate + read-only enumerate a single host (gated, off by default). Single scalar credential; no command/module execution." },
 ];
 ```

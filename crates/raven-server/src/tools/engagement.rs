@@ -1,17 +1,20 @@
-//! Engagement scoping - switch the active findings store between per-engagement
-//! subdirectories so findings and reports for different clients/targets stay
-//! separated.
+//! Engagement scoping - switch the active findings store (and target store)
+//! between per-engagement subdirectories so findings, discovery data, and
+//! reports for different clients/targets stay separated.
 //!
 //! An engagement is just a namespace: `{output_dir}/engagements/{name}/`. Its
-//! `findings/` subdirectory backs a [`FindingStore`]; switching swaps the
-//! server's active store to point there, and report generation follows via
-//! [`FindingStore::base_dir`]. The filesystem is the source of truth - there is
-//! no in-memory engagement registry, and the "active" engagement is derived from
-//! the store's current path rather than tracked separately.
+//! `findings/` subdirectory backs a [`FindingStore`] and its `targets/`
+//! subdirectory backs a [`TargetStore`](raven_report::targets::TargetStore);
+//! switching swaps the server's active stores to point there, and report
+//! generation follows via [`FindingStore::base_dir`]. The filesystem is the
+//! source of truth - there is no in-memory engagement registry, and the
+//! "active" engagement is derived from the store's current path rather than
+//! tracked separately.
 
 use crate::tools::findings::success_with;
 use raven_core::{config::RavenConfig, safety};
 use raven_report::store::FindingStore;
+use raven_report::targets::TargetStore;
 use rmcp::{model::CallToolResult, schemars};
 use std::path::PathBuf;
 use std::sync::RwLock;
@@ -50,11 +53,12 @@ fn sanitize(name: &str) -> Result<&str, rmcp::ErrorData> {
     }
 }
 
-/// Switch the active findings store to `{output_dir}/engagements/{name}/findings`,
-/// creating it (0700) on first use. Subsequent saved/auto-extracted findings and
-/// generated reports scope to this engagement.
+/// Switch the active stores to `{output_dir}/engagements/{name}/{findings,
+/// targets}`, creating them (0700) on first use. Subsequent saved/auto-extracted
+/// findings, discovery data, and generated reports scope to this engagement.
 pub fn set_engagement(
     store: &RwLock<FindingStore>,
+    targets: &RwLock<TargetStore>,
     config: &RavenConfig,
     req: SetEngagementRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
@@ -65,13 +69,22 @@ pub fn set_engagement(
     })?;
     let new_store = FindingStore::new(dir.join("findings"))
         .map_err(|e| rmcp::ErrorData::internal_error(e, None))?;
+    let new_targets = TargetStore::new(dir.join("targets"))
+        .map_err(|e| rmcp::ErrorData::internal_error(e, None))?;
     let count = new_store.list().len();
+    let target_count = new_targets.list().len();
     *store
         .write()
         .map_err(|_| rmcp::ErrorData::internal_error("store lock poisoned", None))? = new_store;
+    *targets
+        .write()
+        .map_err(|_| rmcp::ErrorData::internal_error("target store lock poisoned", None))? =
+        new_targets;
     Ok(success_with(
-        format!("Switched to engagement '{name}' ({count} existing finding(s))."),
-        serde_json::json!({ "engagement": name, "findings": count }),
+        format!(
+            "Switched to engagement '{name}' ({count} existing finding(s), {target_count} tracked host(s))."
+        ),
+        serde_json::json!({ "engagement": name, "findings": count, "targets": target_count }),
     ))
 }
 
@@ -125,14 +138,22 @@ mod tests {
     use super::*;
     use std::sync::Arc;
 
-    fn setup() -> (Arc<RwLock<FindingStore>>, RavenConfig, tempfile::TempDir) {
+    fn setup() -> (
+        Arc<RwLock<FindingStore>>,
+        Arc<RwLock<TargetStore>>,
+        RavenConfig,
+        tempfile::TempDir,
+    ) {
         let dir = tempfile::tempdir().unwrap();
         let mut config = RavenConfig::default();
         config.execution.output_dir = dir.path().to_string_lossy().into_owned();
         let store = Arc::new(RwLock::new(
             FindingStore::new(dir.path().join("findings")).unwrap(),
         ));
-        (store, config, dir)
+        let targets = Arc::new(RwLock::new(
+            TargetStore::new(dir.path().join("targets")).unwrap(),
+        ));
+        (store, targets, config, dir)
     }
 
     #[test]
@@ -148,9 +169,10 @@ mod tests {
 
     #[test]
     fn set_engagement_switches_store_base() {
-        let (store, config, dir) = setup();
+        let (store, targets, config, dir) = setup();
         set_engagement(
             &store,
+            &targets,
             &config,
             SetEngagementRequest {
                 name: "acme".into(),
@@ -159,13 +181,20 @@ mod tests {
         .unwrap();
         let expected = dir.path().join("engagements").join("acme");
         assert_eq!(store.read().unwrap().base_dir(), expected);
+        assert_eq!(targets.read().unwrap().base_dir(), expected.join("targets"));
     }
 
     #[test]
     fn list_marks_active_engagement() {
-        let (store, config, _dir) = setup();
+        let (store, targets, config, _dir) = setup();
         for name in ["beta", "alpha"] {
-            set_engagement(&store, &config, SetEngagementRequest { name: name.into() }).unwrap();
+            set_engagement(
+                &store,
+                &targets,
+                &config,
+                SetEngagementRequest { name: name.into() },
+            )
+            .unwrap();
         }
         // Active is the last switched-to engagement (alpha).
         let res = list_engagements(&store, &config).unwrap();

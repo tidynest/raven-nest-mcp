@@ -110,6 +110,15 @@ pub async fn run(
     args.extend(["-mc".into(), codes.to_string()]);
 
     if let Some(ref size) = req.filter_size {
+        // Sizes are digits, optionally comma-separated (ffuf accepts a list).
+        // Same rationale as match_codes: reject flag-shaped values before ffuf
+        // parses them.
+        if size.is_empty() || !size.chars().all(|c| c.is_ascii_digit() || c == ',') {
+            return Err(rmcp::ErrorData::invalid_params(
+                "filter_size must be digits separated by commas (e.g. '1234' or '1234,5678')",
+                None,
+            ));
+        }
         args.extend(["-fs".into(), size.clone()]);
     }
     if let Some(ref cookie) = req.cookie {

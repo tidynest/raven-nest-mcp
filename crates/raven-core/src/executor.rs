@@ -89,8 +89,9 @@ pub struct CommandResult {
 const MIN_OUTPUT_LEN: usize = 50;
 
 /// Substrings that suggest the target is rate-limiting or blocking requests.
+/// The HTTP 429 status is matched separately (as a complete number) so digits
+/// embedded in larger numbers don't trigger a false positive.
 const RATE_LIMIT_INDICATORS: &[&str] = &[
-    "429",
     "rate limit",
     "too many requests",
     "blocked",
@@ -100,12 +101,33 @@ const RATE_LIMIT_INDICATORS: &[&str] = &[
     "firewall",
 ];
 
+/// True if `status` (an HTTP status like "429") appears in `text` as a complete
+/// digit run - not as a substring of a longer number (port 4290, byte counts,
+/// timings must not match).
+fn contains_http_status(text: &str, status: &str) -> bool {
+    let mut rest = text;
+    while let Some(i) = rest.find(status) {
+        let before_ok = rest[..i]
+            .chars()
+            .next_back()
+            .is_none_or(|c| !c.is_ascii_digit());
+        let after = &rest[i + status.len()..];
+        let after_ok = after.chars().next().is_none_or(|c| !c.is_ascii_digit());
+        if before_ok && after_ok {
+            return true;
+        }
+        rest = after;
+    }
+    false
+}
+
 /// Check for rate-limiting or WAF indicators in combined output.
 fn detect_rate_limit(stdout: &str, stderr: &str) -> bool {
     let combined = format!("{stdout}\n{stderr}").to_lowercase();
     RATE_LIMIT_INDICATORS
         .iter()
         .any(|ind| combined.contains(ind))
+        || contains_http_status(&combined, "429")
 }
 
 /// Assess output quality after a successful command execution.
@@ -113,12 +135,12 @@ fn detect_rate_limit(stdout: &str, stderr: &str) -> bool {
 /// Uses tool-specific heuristics (e.g. nmap should contain "Nmap done") to
 /// detect partial scans that exit 0 but produced incomplete results.
 fn assess_quality(tool: &str, stdout: &str, stderr: &str) -> (OutputQuality, Option<String>) {
-    if stdout.len() < MIN_OUTPUT_LEN {
+    if stdout.chars().count() < MIN_OUTPUT_LEN {
         return (
             OutputQuality::Empty,
             Some(format!(
                 "{tool} returned minimal output ({} chars) - scan may have failed silently",
-                stdout.len()
+                stdout.chars().count()
             )),
         );
     }
@@ -283,7 +305,7 @@ async fn run_inner(
     // empty output are flagged so tool handlers can surface the failure.
     let (quality, warning) = if output.status.success() {
         assess_quality(tool, &stdout, &stderr)
-    } else if stdout.len() < MIN_OUTPUT_LEN {
+    } else if stdout.chars().count() < MIN_OUTPUT_LEN {
         (
             OutputQuality::Empty,
             Some(format!(
@@ -322,6 +344,26 @@ async fn run_inner(
 #[cfg(test)]
 mod tests {
     use std::time::{Duration, Instant};
+
+    #[test]
+    fn rate_limit_matches_real_429_not_embedded_digits() {
+        use super::{contains_http_status, detect_rate_limit};
+        // Genuine rate limiting / blocking indicators.
+        assert!(detect_rate_limit("HTTP/1.1 429 Too Many Requests", ""));
+        assert!(detect_rate_limit("", "error: got 429 from host"));
+        assert!(detect_rate_limit("rate limit exceeded", ""));
+        assert!(detect_rate_limit("request blocked by waf", ""));
+        // Digits embedded in larger numbers must NOT trigger (port numbers,
+        // byte counts, timings are common in scanner output).
+        assert!(!detect_rate_limit("4290/tcp open  http", ""));
+        assert!(!detect_rate_limit("Sent 1429 packets in 42918ms", ""));
+        assert!(!contains_http_status("4290 abc", "429"));
+        assert!(!contains_http_status("a1429", "429"));
+        // Boundary cases: the status as a complete number matches.
+        assert!(contains_http_status("a 429 b", "429"));
+        assert!(contains_http_status("code=429,", "429"));
+        assert!(contains_http_status("429", "429"));
+    }
 
     #[tokio::test]
     async fn launch_gap_spaces_consecutive_calls() {
