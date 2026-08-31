@@ -33,11 +33,11 @@ Ordered by impact. Unchecked = not started.
   Detect same title + target + tool before saving. Warn or merge. Keeps reports clean during iterative scanning.
   *Affected crates:* `raven-report` (store)
 
-- [ ] **Target discovery tracking**
+- [x] **Target discovery tracking** - *shipped: `raven-report::targets::TargetStore` (file-per-host, merge-on-rescan, engagement-scoped) fed from nmap scans; new tools `get_target_info` + `list_targets`.*
   Persist discovered hosts, ports, services, technologies across scans. Structure: `target -> [{port, service, version, source_scan}]`. New tools: `get_target_info`, `list_targets`.
   *Affected crates:* `raven-core` or new crate
 
-- [ ] **Scan diffing**
+- [x] **Scan diffing** - *shipped: `diff_scans` compares two completed nmap background scans (added/removed hosts and ports, state/service/version changes), text + `structured_content`.*
   Compare two scans of the same target. Return added/removed ports, services, vulnerabilities. New tool: `diff_scans`.
   *Affected crates:* `raven-core` (scan manager)
 
@@ -45,7 +45,7 @@ Ordered by impact. Unchecked = not started.
   Serialize scan state to disk. On restart, recover completed scan outputs (not re-run, but preserve results). Currently all scan state is in-process memory.
   *Affected crates:* `raven-core` (scan manager)
 
-- [ ] **Structured scan results**
+- [x] **Structured scan results** - *shipped for nmap + nuclei via MCP `structured_content` (hosts/ports/CVEs; findings list), uncapped by the context budget. Other parsers can follow the same pattern.*
   Return parsed results as JSON alongside human-readable text. Client can filter/sort without re-parsing. e.g. nmap returns `{hosts: [{ip, ports: [{port, state, service}]}]}` plus the text output.
   *Affected crates:* `raven-core` (parsers, tool handlers)
 
