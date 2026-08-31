@@ -36,6 +36,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && ln -sf /usr/bin/httpx-toolkit /usr/local/bin/httpx \
     && rm -rf /var/lib/apt/lists/*
 
+# Dedicated non-root runtime user (fixed uid, no --system: 10001 is outside the
+# SYS_UID_MAX range so --system would warn on every build). The server needs no
+# privilege for its own state (it creates its output dir 0700 on startup).
+# Raw-socket tools (masscan, nmap -O) still work for this user when the
+# container is run with --cap-add=NET_RAW/--cap-add=NET_ADMIN: the runtime
+# grants capabilities to the container process directly, independent of its
+# uid. The server's built-in config defaults keep sudo_tools empty, so nothing
+# tries to escalate in-image.
+RUN useradd --uid 10001 --create-home --home-dir /var/lib/raven-nest raven
+
 COPY --from=gobuild /go/bin/katana /go/bin/dalfox /usr/local/bin/
 COPY --from=build /src/target/release/raven-server /usr/local/bin/raven-server
 
@@ -59,5 +69,9 @@ LABEL org.opencontainers.image.source="https://github.com/tidynest/raven-nest-mc
       org.opencontainers.image.documentation="https://github.com/tidynest/raven-nest-mcp/blob/main/docs/USAGE.md" \
       org.opencontainers.image.licenses="Apache-2.0" \
       io.modelcontextprotocol.server.name="io.github.tidynest/raven-nest-mcp"
+
+# Run as the dedicated non-root user. Override with `-u 0` if a workflow truly
+# needs root; prefer --cap-add=NET_RAW/NET_ADMIN for raw sockets instead.
+USER raven
 
 ENTRYPOINT ["raven-server"]
