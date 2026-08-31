@@ -5,6 +5,68 @@ on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (pre-1.0:
 minor versions may carry feature additions and refinements).
 
+## [Unreleased]
+
+### Added
+- **Target discovery tracking.** nmap results (both `run_nmap` and completed
+  background nmap scans) accumulate into per-host records - ports, states,
+  services, versions, OS guesses, first/last-seen - persisted as
+  `{output_dir}/targets/{host}.json` (engagement-scoped, restart-safe). Re-scans
+  merge rather than overwrite. New tools: `list_targets`, `get_target_info`.
+  Host keys are strictly sanitized before use as filenames (scan output is
+  target-controlled).
+- **Scan diffing.** New tool `diff_scans` compares two completed nmap background
+  scans: added/removed hosts and ports, plus per-port state/service/version
+  changes, as text and `structured_content`.
+- **Structured scan results.** `run_nmap` and `run_nuclei` attach
+  machine-readable `structured_content` alongside their text output (hosts,
+  ports, CVEs; findings list), uncapped by the context budget, so clients can
+  process results without parsing prose.
+- **CI: cargo-deny** now runs alongside cargo-audit (advisories, license
+  allowlist, bans, sources per `deny.toml`), and an **MSRV 1.93** check job
+  verifies the declared `rust-version` on every push.
+
+### Changed
+- **Docker image runs as a dedicated non-root user** (`raven`, uid 10001).
+  Raw-socket tools (masscan, `nmap -O`) keep working when the container is
+  granted `--cap-add=NET_RAW`/`--cap-add=NET_ADMIN` - capabilities are held by
+  the container process, not derived from uid.
+- `set_engagement` now also swaps the target-discovery store, so discovery data
+  is engagement-scoped like findings; its response includes the tracked-host
+  count.
+- Tool descriptions and docs updated for the 46-endpoint surface
+  (`docs/MCP_TOOLS.md` regenerated; README badge and tables).
+
+### Fixed
+- **Budget-exhaustion dead end.** When the context budget ran out, *every* tool
+  was refused - including `save_finding` and `generate_report`, the exact
+  actions the exhaustion message told the model to take. Scan-execution tools
+  are still refused (running another scan would overflow the context window),
+  but findings/report/engagement/scan-status tools now always work, and the
+  refusal message names what remains available. Reachable with the default
+  `context_budget = 65536`.
+- **Hydra positional-argument flag injection.** `service` and `form_params` were
+  passed to hydra as unvalidated positional arguments, so a value like `-R`
+  would be parsed by hydra as a flag. `service` is now restricted to the
+  lowercase/digit/hyphen charset real service names use; `form_params` must not
+  start with `-` or contain control characters; `form_params` on a non-form
+  service is rejected. sqlmap `technique` (subset of `BEUSTQ`) and ffuf
+  `filter_size` (digits/commas) got the same class of guard.
+- **Rate-limit false positives.** The quality assessment matched the bare
+  substring `"429"`, so any output containing port 4290 or byte counts like
+  1429 was flagged "target may be rate-limiting". HTTP 429 is now matched only
+  as a complete number.
+- **Unbounded `get_scan_results` limit.** A client-supplied limit (up to
+  `usize::MAX`) was honored as-is and the whole spilled output was materialised
+  as `Vec<char>` before slicing. The limit is now clamped to 100,000 chars
+  (default 10,000) and slicing walks char boundaries without the intermediate
+  allocation.
+- **Dependency advisory:** h2 updated to 0.4.19 in `Cargo.lock`
+  (RUSTSEC-2026-0258, unbounded empty DATA frames; fixed in 0.4.16).
+- Minor accounting: the context-budget tracker records characters (not bytes)
+  consistently with its caps, and `MIN_OUTPUT_LEN` compares characters as
+  documented.
+
 ## [0.2.9] - 2026-08-02
 
 ### Added

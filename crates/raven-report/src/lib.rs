@@ -9,6 +9,8 @@
 //!   [`FindingMeta`](finding::FindingMeta), [`Severity`](finding::Severity).
 //! - [`store`] - File-per-finding persistence with an in-memory index.
 //!   Handles legacy migration from the old single-file format.
+//! - [`targets`] - Host/service discovery tracking across scans
+//!   (file-per-host, merged on re-scan).
 //! - [`markdown`], [`json`], [`sarif`], [`html`] - Report generators, one per
 //!   output format. Each exposes `generate_report(&[&Finding], title) -> String`.
 //! - [`summary`] - Shared severity-count / overall-risk / tool-list helpers used
@@ -24,3 +26,4 @@ pub mod report;
 pub mod sarif;
 pub mod store;
 pub(crate) mod summary;
+pub mod targets;

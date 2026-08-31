@@ -35,6 +35,46 @@ pub struct HydraRequest {
     pub form_params: Option<String>,
 }
 
+/// Validate a hydra service name.
+///
+/// The service is passed as a *positional* argument after the target, so a
+/// value like `-R` would be parsed by hydra as a flag - the same flag-injection
+/// class [`safety::validate_target`](raven_core::safety::validate_target)
+/// rejects for targets. Real hydra service names are lowercase alphanumeric
+/// with hyphens (`ssh`, `http-post-form`, `oracle-listener`), so this charset
+/// is both tight and complete.
+fn validate_service(service: &str) -> Result<(), rmcp::ErrorData> {
+    let ok = !service.is_empty()
+        && !service.starts_with('-')
+        && service
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+    if ok {
+        Ok(())
+    } else {
+        Err(rmcp::ErrorData::invalid_params(
+            "service must use only lowercase letters, digits, and hyphens (e.g. 'ssh', 'http-post-form') and must not start with '-'",
+            None,
+        ))
+    }
+}
+
+/// Validate a form-attack string (`/login:user=^USER^&pass=^PASS^:F=incorrect`).
+///
+/// Also positional, so it must not start with '-' (flag injection); control
+/// characters (newlines in particular) are rejected because hydra splits the
+/// string on `:` internally. Everything else - `/ : = ^ &` spaces, symbols -
+/// is legitimate in a form definition and allowed.
+fn validate_form_params(params: &str) -> Result<(), rmcp::ErrorData> {
+    if params.is_empty() || params.starts_with('-') || params.chars().any(char::is_control) {
+        return Err(rmcp::ErrorData::invalid_params(
+            "form_params must be non-empty, must not start with '-', and must not contain control characters",
+            None,
+        ));
+    }
+    Ok(())
+}
+
 /// Execute hydra with safety-capped parallelism and form-service validation.
 pub async fn run(
     config: &RavenConfig,
@@ -46,6 +86,12 @@ pub async fn run(
     // Validate wordlist paths - prevent reading arbitrary files
     super::validate_file_path(&req.userlist, &config.execution.output_dir)?;
     super::validate_file_path(&req.passlist, &config.execution.output_dir)?;
+
+    // Both are positional args downstream - guard against flag injection.
+    validate_service(&req.service)?;
+    if let Some(ref form_params) = req.form_params {
+        validate_form_params(form_params)?;
+    }
 
     let _ticker =
         peer.map(|p| crate::progress::ProgressTicker::start(p, "hydra".into(), req.target.clone()));
@@ -62,6 +108,14 @@ pub async fn run(
         return Err(rmcp::ErrorData::invalid_params(
             "form_params is required for http-post-form/http-get-form \
              (e.g. '/login:user=^USER^&pass=^PASS^:F=incorrect')",
+            None,
+        ));
+    }
+    // Conversely: a non-form service must not carry a form string - hydra would
+    // take it as an extra positional argument.
+    if !is_form_service && req.form_params.is_some() {
+        return Err(rmcp::ErrorData::invalid_params(
+            "form_params is only valid for http-post-form/http-get-form services",
             None,
         ));
     }
@@ -132,6 +186,50 @@ pub fn parse_hydra_output(raw: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validate_service_accepts_real_service_names() {
+        for s in [
+            "ssh",
+            "ftp",
+            "http-post-form",
+            "http-get-form",
+            "smb",
+            "rdp",
+            "oracle-listener",
+        ] {
+            assert!(validate_service(s).is_ok(), "should accept: {s}");
+        }
+    }
+
+    #[test]
+    fn validate_service_rejects_flag_injection_and_bad_charset() {
+        for s in [
+            "-R",          // flag injection (positional arg)
+            "--restore",   // flag injection, long form
+            "",            // empty
+            "ssh -oProxy", // space (would split into hydra options)
+            "HTTP",        // uppercase not used by hydra service names
+            "ssh\nrm",     // control character
+            "ssh;id",      // metacharacter
+        ] {
+            assert!(validate_service(s).is_err(), "should reject: {s:?}");
+        }
+    }
+
+    #[test]
+    fn validate_form_params_allows_legitimate_form_strings() {
+        assert!(validate_form_params("/login:user=^USER^&pass=^PASS^:F=incorrect").is_ok());
+        assert!(validate_form_params("/login.php:username=^USER^&password=^PASS^:fail").is_ok());
+    }
+
+    #[test]
+    fn validate_form_params_rejects_flag_and_control_chars() {
+        assert!(validate_form_params("-R").is_err()); // flag injection
+        assert!(validate_form_params("").is_err()); // empty
+        assert!(validate_form_params("/login:a=b:F=x\nsecond-command").is_err()); // newline
+        assert!(validate_form_params("/login:a=b:F=x\ttab").is_err()); // control char
+    }
 
     #[test]
     fn parse_hydra_extracts_credentials() {

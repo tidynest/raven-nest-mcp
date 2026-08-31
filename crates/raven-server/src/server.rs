@@ -1,8 +1,9 @@
 //! MCP server implementation - tool registration and request routing.
 //!
 //! [`RavenServer`] is the central struct that:
-//! - Holds shared state (`Arc<RavenConfig>`, `ScanManager`, `FindingStore`, cookie jar).
-//! - Registers all 43 MCP tools via the `#[tool_router]` macro (Metasploit and
+//! - Holds shared state (`Arc<RavenConfig>`, `ScanManager`, `FindingStore`,
+//!   `TargetStore`, cookie jar).
+//! - Registers all 46 MCP tools via the `#[tool_router]` macro (Metasploit and
 //!   NetExec tools are always registered but gated at call time when disabled).
 //! - Implements `ServerHandler` to provide server info and capabilities.
 //!
@@ -11,7 +12,9 @@
 //! a `Peer<RoleServer>` for progress notifications via [`ProgressTicker`](crate::progress::ProgressTicker).
 
 use crate::budget::SessionBudget;
+use crate::tools::diff::DiffScansRequest;
 use crate::tools::scans::{LaunchScanRequest, ScanIdRequest, ScanResultsRequest};
+use crate::tools::targets::TargetInfoRequest;
 use crate::tools::{
     dalfox::DalfoxRequest,
     dnsrecon::DnsreconRequest,
@@ -58,6 +61,12 @@ use rmcp::{
     tool, tool_handler, tool_router,
 };
 
+/// Number of MCP tools registered by the `#[tool_router]`. Single source of
+/// truth: `RavenServer::new` derives the budget overhead from it, the manifest
+/// drift test (`tests/tool_manifest.rs`) asserts against it, and the README
+/// badge mirrors it.
+pub const TOOL_COUNT: usize = 46;
+
 /// Central MCP server that owns all shared state and routes tool calls.
 ///
 /// Cloned per-connection by rmcp - all inner state is behind `Arc`/`RwLock`.
@@ -68,6 +77,12 @@ pub struct RavenServer {
     tool_router: ToolRouter<Self>,
     pub scan_manager: raven_core::scan_manager::ScanManager,
     finding_store: std::sync::Arc<std::sync::RwLock<raven_report::store::FindingStore>>,
+    /// Host/service discovery tracker, fed from nmap scans. Swapped alongside
+    /// the finding store when the engagement changes.
+    target_store: std::sync::Arc<std::sync::RwLock<raven_report::targets::TargetStore>>,
+    /// Background scan IDs already fed into the target store (dedup across
+    /// repeated status polls; reset on restart, where re-recording is harmless).
+    recorded_scans: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
     /// Shared cookie jar for `http_request` - persists cookies across requests within a session.
     cookie_jar: std::sync::Arc<reqwest::cookie::Jar>,
     /// Session-aware output budget tracker - dynamically adjusts per-tool caps.
@@ -94,6 +109,14 @@ impl RavenServer {
             raven_report::store::FindingStore::new(findings_dir)
                 .expect("failed to create findings directory"),
         ));
+        let target_store = std::sync::Arc::new(std::sync::RwLock::new(
+            raven_report::targets::TargetStore::new(
+                std::path::PathBuf::from(&config.execution.output_dir).join("targets"),
+            )
+            .expect("failed to create targets directory"),
+        ));
+        let recorded_scans =
+            std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
         let cookie_jar = std::sync::Arc::new(reqwest::cookie::Jar::default());
 
         // Restore session cookies from disk (survives context clears)
@@ -110,11 +133,9 @@ impl RavenServer {
             tracing::info!("restored session cookies from disk");
         }
 
-        // Tool count: 22 security + 6 MSF + ping + http + 5 scan mgmt + 6 findings + 2 engagement = 43
-        let tool_count = 43;
         let budget = std::sync::Arc::new(SessionBudget::new(
             config.safety.context_budget,
-            tool_count,
+            TOOL_COUNT,
             config.safety.expected_tool_calls,
         ));
 
@@ -131,6 +152,8 @@ impl RavenServer {
             scan_manager,
             tool_router: Self::tool_router(),
             finding_store,
+            target_store,
+            recorded_scans,
             cookie_jar,
             budget,
             msf_client,
@@ -151,16 +174,44 @@ impl RavenServer {
     }
 
     /// Apply budget enforcement to a tool result: measure, truncate, append status, record.
+    ///
+    /// Scan-execution tools are **refused** once the budget is exhausted - running
+    /// another scan would overflow the context window. Management tools (findings,
+    /// reports, scan polling) use [`wrap_result_ungated`] instead: their outputs
+    /// are small, and saving findings / generating the report is exactly what the
+    /// exhaustion message tells the model to do next - gating those too would
+    /// dead-end the session with nothing persistable.
     fn wrap_result(
         &self,
         result: Result<CallToolResult, rmcp::ErrorData>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         if self.budget.is_exhausted() && result.is_ok() {
             return Ok(CallToolResult::success(vec![Content::text(
-                "Context budget exhausted. Save findings and generate report.",
+                "Context budget exhausted for scan tools - stop scanning. save_finding, generate_report, and the scan-status tools remain available.",
             )]));
         }
+        self.wrap_result_inner(result)
+    }
 
+    /// Like [`wrap_result`] but never refused on budget exhaustion.
+    ///
+    /// Findings/report/engagement/scan-status handlers route through here so they
+    /// stay usable when the budget is exhausted. Their text is still capped by the
+    /// normal allocate/truncate path, and `structured_content` passes through
+    /// uncapped, so full finding/report data remains reachable.
+    fn wrap_result_ungated(
+        &self,
+        result: Result<CallToolResult, rmcp::ErrorData>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result_inner(result)
+    }
+
+    /// Shared tail of both wrap paths: strip ANSI, truncate to the allocated cap,
+    /// append the budget status line, and record usage.
+    fn wrap_result_inner(
+        &self,
+        result: Result<CallToolResult, rmcp::ErrorData>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
         let mut call_result = result?;
         let cap = self.budget.allocate();
 
@@ -175,7 +226,7 @@ impl RavenServer {
                 if text_len > cap.max_chars {
                     tc.text = SessionBudget::truncate_to_cap(&tc.text, cap.max_chars);
                 }
-                total_chars += tc.text.len();
+                total_chars += tc.text.chars().count();
             }
         }
 
@@ -282,9 +333,14 @@ impl RavenServer {
         Parameters(req): Parameters<NmapRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let target = req.target.clone();
-        let (result, findings) =
-            crate::tools::nmap::run(&self.config, req, Some(peer), self.budget.scale_cap(10))
-                .await?;
+        let (result, findings) = crate::tools::nmap::run(
+            &self.config,
+            req,
+            Some(peer),
+            self.budget.scale_cap(10),
+            Some(&self.target_store),
+        )
+        .await?;
         crate::tools::extract::auto_save(
             &self.finding_store,
             &self.config,
@@ -755,7 +811,15 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<ScanIdRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::scans::status(&self.scan_manager, req))
+        // Feed completed background nmap scans into the target store (no-op for
+        // other tools / still-running scans / already-recorded scans).
+        crate::tools::targets::record_completed_nmap(
+            &self.target_store,
+            &self.recorded_scans,
+            &self.scan_manager,
+            &req.scan_id,
+        );
+        self.wrap_result_ungated(crate::tools::scans::status(&self.scan_manager, req))
     }
 
     #[tool(
@@ -770,7 +834,7 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<ScanResultsRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::scans::results(&self.scan_manager, req))
+        self.wrap_result_ungated(crate::tools::scans::results(&self.scan_manager, req))
     }
 
     #[tool(
@@ -781,7 +845,7 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<ScanIdRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::scans::cancel(&self.scan_manager, req))
+        self.wrap_result_ungated(crate::tools::scans::cancel(&self.scan_manager, req))
     }
 
     #[tool(
@@ -793,7 +857,7 @@ impl RavenServer {
         )
     )]
     fn list_scans(&self) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::scans::list_scans(&self.scan_manager))
+        self.wrap_result_ungated(crate::tools::scans::list_scans(&self.scan_manager))
     }
 
     // ── Findings management ──────────────────────────────────────────
@@ -806,7 +870,7 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<SaveFindingRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::findings::save_finding(
+        self.wrap_result_ungated(crate::tools::findings::save_finding(
             &self.finding_store,
             req,
         ))
@@ -824,7 +888,7 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<FindingIdRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::findings::get_finding(
+        self.wrap_result_ungated(crate::tools::findings::get_finding(
             &self.finding_store,
             req,
         ))
@@ -839,7 +903,7 @@ impl RavenServer {
         )
     )]
     fn list_findings(&self) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::findings::list_findings(&self.finding_store))
+        self.wrap_result_ungated(crate::tools::findings::list_findings(&self.finding_store))
     }
 
     #[tool(
@@ -854,7 +918,7 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<ListByScanRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::findings::list_findings_by_scan(
+        self.wrap_result_ungated(crate::tools::findings::list_findings_by_scan(
             &self.finding_store,
             req,
         ))
@@ -868,7 +932,7 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<FindingIdRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::findings::delete_finding(
+        self.wrap_result_ungated(crate::tools::findings::delete_finding(
             &self.finding_store,
             req,
         ))
@@ -886,7 +950,7 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<GenerateReportRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::findings::generate_report(
+        self.wrap_result_ungated(crate::tools::findings::generate_report(
             &self.finding_store,
             req,
         ))
@@ -906,8 +970,9 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<SetEngagementRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::engagement::set_engagement(
+        self.wrap_result_ungated(crate::tools::engagement::set_engagement(
             &self.finding_store,
+            &self.target_store,
             &self.config,
             req,
         ))
@@ -922,10 +987,57 @@ impl RavenServer {
         )
     )]
     fn list_engagements(&self) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::engagement::list_engagements(
+        self.wrap_result_ungated(crate::tools::engagement::list_engagements(
             &self.finding_store,
             &self.config,
         ))
+    }
+
+    // ── Target discovery tracking + scan diffing ────────────────────
+
+    #[tool(
+        description = "Get discovered services and technologies for a tracked host",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    fn get_target_info(
+        &self,
+        Parameters(req): Parameters<TargetInfoRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result_ungated(crate::tools::targets::get_target_info(
+            &self.target_store,
+            req,
+        ))
+    }
+
+    #[tool(
+        description = "List hosts discovered across scans",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    fn list_targets(&self) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result_ungated(crate::tools::targets::list_targets(&self.target_store))
+    }
+
+    #[tool(
+        description = "Compare two completed nmap scans (added/removed hosts, ports, service changes)",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    fn diff_scans(
+        &self,
+        Parameters(req): Parameters<DiffScansRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result_ungated(crate::tools::diff::diff_scans(&self.scan_manager, req))
     }
 
     // ── NetExec (gated, credentialed) ────────────────────────────────
@@ -999,6 +1111,7 @@ Raven Nest - pentesting toolkit.
 6. Targets: bare hostnames/IPs for nmap/ping/masscan; full URLs for web tools.
 7. Start with less aggressive scans. Check output for empty/rate-limited results.
 8. save_finding for each vuln (pass scan_id to link it to a launched scan; list_findings_by_scan recalls them), then generate_report.
+9. Discovery: nmap results accumulate per host - list_targets / get_target_info recall ports, services, versions. diff_scans compares two completed nmap scans (launch_scan + get_scan_status) for changes.
 
 ## Tool Timing
 - Fast (1-5s): ping_target, run_whatweb, http_request, run_ffuf, run_masscan, run_subfinder, run_httpx, run_dnsx, run_dalfox
@@ -1010,3 +1123,98 @@ Watch the [budget: ...] line in responses. When mode switches to compact/minimal
 
 ## Authenticated Scanning
 http_request cookie jar persists within a session. Subprocess tools (sqlmap, nikto, etc.) do NOT share it - pass cookies via each tool's `cookie` parameter.";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::tools::findings::SaveFindingRequest;
+
+    fn server_with_budget(dir: &std::path::Path, context_budget: usize) -> RavenServer {
+        let mut config = raven_core::config::RavenConfig::default();
+        config.execution.output_dir = dir.to_string_lossy().into_owned();
+        config.safety.context_budget = context_budget;
+        RavenServer::new(config)
+    }
+
+    fn text_of(result: &CallToolResult) -> String {
+        result
+            .content
+            .first()
+            .and_then(|c| c.as_text())
+            .map(|t| t.text.clone())
+            .unwrap_or_default()
+    }
+
+    /// The exhaustion gate must refuse scan output but NOT the management tools
+    /// the refusal message points at - previously every tool (including
+    /// save_finding / generate_report) was blocked, dead-ending the session.
+    #[test]
+    fn exhaustion_gate_refuses_scans_but_not_management() {
+        let dir = tempfile::tempdir().unwrap();
+        // 100K leaves ~69K usable after the 43-tool schema + reasoning overhead.
+        let server = server_with_budget(dir.path(), 100_000);
+        assert!(!server.budget.is_exhausted());
+
+        // Burn the whole budget in one recorded call.
+        server.budget.record(1_000_000);
+        assert!(server.budget.is_exhausted());
+
+        // Gated path (scan tools): refused, and the refusal names the tools
+        // that remain available.
+        let gated = server
+            .wrap_result(Ok(CallToolResult::success(vec![Content::text(
+                "nmap output",
+            )])))
+            .unwrap();
+        let gated_text = text_of(&gated);
+        assert!(
+            gated_text.contains("exhausted"),
+            "gated result should be the refusal: {gated_text}"
+        );
+        assert!(
+            gated_text.contains("save_finding"),
+            "refusal should point at the still-available tools: {gated_text}"
+        );
+
+        // Ungated path (findings/report/scan-status): real content passes through.
+        let ungated = server
+            .wrap_result_ungated(Ok(CallToolResult::success(vec![Content::text(
+                "Finding saved. ID: x",
+            )])))
+            .unwrap();
+        let ungated_text = text_of(&ungated);
+        assert!(
+            ungated_text.contains("Finding saved"),
+            "ungated result should carry content: {ungated_text}"
+        );
+    }
+
+    /// End-to-end through the real handler: save_finding must succeed when the
+    /// budget is exhausted (it routes through wrap_result_ungated).
+    #[test]
+    fn save_finding_works_when_budget_exhausted() {
+        let dir = tempfile::tempdir().unwrap();
+        let server = server_with_budget(dir.path(), 100_000);
+        server.budget.record(1_000_000);
+
+        let req = SaveFindingRequest {
+            title: "XSS".into(),
+            severity: "high".into(),
+            description: "test".into(),
+            target: "192.168.1.1".into(),
+            tool: "nmap".into(),
+            evidence: None,
+            remediation: None,
+            cvss: None,
+            cve: None,
+            owasp_category: None,
+            scan_id: None,
+        };
+        let result = server.save_finding(Parameters(req)).unwrap();
+        let text = text_of(&result);
+        assert!(
+            text.contains("Finding saved"),
+            "save_finding must survive budget exhaustion: {text}"
+        );
+    }
+}

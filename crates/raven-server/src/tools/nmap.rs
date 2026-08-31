@@ -31,11 +31,16 @@ pub struct NmapRequest {
 }
 
 /// Execute an nmap scan, parse XML output, and return structured results.
+///
+/// When `targets` is provided, a successful XML parse is also merged into the
+/// target store (host/port/service discovery tracking) - best-effort, never
+/// fails the tool response.
 pub async fn run(
     config: &RavenConfig,
     req: NmapRequest,
     peer: Option<Peer<RoleServer>>,
     result_limit: usize,
+    targets: Option<&std::sync::RwLock<raven_report::targets::TargetStore>>,
 ) -> Result<(CallToolResult, Vec<crate::tools::extract::ExtractedFinding>), rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
@@ -98,10 +103,19 @@ pub async fn run(
         None => crate::error::format_result("nmap", &result),
     };
 
-    Ok((
-        CallToolResult::success(vec![Content::text(output)]),
-        findings,
-    ))
+    // Machine-readable form for MCP clients (and the target store / scan diff):
+    // same XML walk as the text parser, exposed as `structured_content`.
+    let mut call_result = CallToolResult::success(vec![Content::text(output)]);
+    if let Some(scan) = parse_nmap_xml_structured(&result.stdout) {
+        if let Some(targets) = targets {
+            super::targets::record_from_scan(targets, &scan);
+        }
+        if let Ok(value) = serde_json::to_value(&scan) {
+            call_result.structured_content = Some(value);
+        }
+    }
+
+    Ok((call_result, findings))
 }
 
 /// Compress multi-line script output to a single line with "+N more" suffix.
@@ -158,21 +172,31 @@ fn vulners_pairs(script: &roxmltree::Node) -> Vec<(String, f32)> {
     cves
 }
 
+/// Strip anything before the XML declaration / root element (nmap warnings,
+/// banners) so the document parses leniently.
+fn strip_xml_prefix(xml: &str) -> &str {
+    xml.find("<?xml")
+        .or_else(|| xml.find("<nmaprun"))
+        .map(|i| &xml[i..])
+        .unwrap_or(xml)
+}
+
+/// Parse nmap XML into a document, tolerating a non-XML prefix and the DOCTYPE
+/// nmap emits. `None` when the input isn't parseable nmap XML.
+fn parse_doc(xml: &str) -> Option<roxmltree::Document<'_>> {
+    let opts = roxmltree::ParsingOptions {
+        allow_dtd: true,
+        ..Default::default()
+    };
+    roxmltree::Document::parse_with_options(strip_xml_prefix(xml), opts).ok()
+}
+
 /// Collect `(CVE, CVSS)` pairs from every `vulners` script in nmap XML output.
 ///
 /// Strips any non-XML prefix and parses leniently (same as [`parse_nmap_xml`]);
 /// returns an empty vec if the XML doesn't parse. Used by auto-extraction.
 pub fn collect_vulners(xml: &str) -> Vec<(String, f32)> {
-    let xml = xml
-        .find("<?xml")
-        .or_else(|| xml.find("<nmaprun"))
-        .map(|i| &xml[i..])
-        .unwrap_or(xml);
-    let opts = roxmltree::ParsingOptions {
-        allow_dtd: true,
-        ..Default::default()
-    };
-    let Ok(doc) = roxmltree::Document::parse_with_options(xml, opts) else {
+    let Some(doc) = parse_doc(xml) else {
         return Vec::new();
     };
     doc.root_element()
@@ -180,6 +204,204 @@ pub fn collect_vulners(xml: &str) -> Vec<(String, f32)> {
         .filter(|n| n.tag_name().name() == "script" && n.attribute("id") == Some("vulners"))
         .flat_map(|s| vulners_pairs(&s))
         .collect()
+}
+
+/// Structured nmap scan result, exposed as `structured_content` on the
+/// `run_nmap` response and reused by the target store and `diff_scans`.
+#[derive(Debug, serde::Serialize)]
+pub struct NmapScan {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub args: Option<String>,
+    pub hosts: Vec<NmapHost>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stats: Option<NmapStats>,
+}
+
+/// One scanned host: address, liveness, hostnames, OS guesses, and ports.
+#[derive(Debug, serde::Serialize)]
+pub struct NmapHost {
+    pub ip: String,
+    pub status: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hostnames: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub os: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ports: Vec<NmapPort>,
+}
+
+/// One port entry. All states are kept (consumers filter on `state`).
+#[derive(Debug, serde::Serialize)]
+pub struct NmapPort {
+    pub proto: String,
+    pub port: u16,
+    pub state: String,
+    pub service: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub version: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cves: Vec<NmapCve>,
+}
+
+/// A `vulners` NSE result: CVE id with its CVSS score.
+#[derive(Debug, serde::Serialize)]
+pub struct NmapCve {
+    pub id: String,
+    pub cvss: f32,
+}
+
+/// Run statistics from `<runstats>`.
+#[derive(Debug, serde::Serialize)]
+pub struct NmapStats {
+    pub elapsed_secs: Option<f64>,
+    pub hosts_up: Option<u32>,
+    pub hosts_down: Option<u32>,
+}
+
+/// Parse nmap XML output into a machine-readable [`NmapScan`].
+///
+/// Mirrors [`parse_nmap_xml`] but keeps the data structured instead of
+/// formatting it as text: hosts with ports/services/versions, `vulners` CVEs,
+/// hostnames, top OS guesses, and run statistics. Returns `None` when the
+/// input isn't valid nmap XML (the caller falls back to raw output).
+pub fn parse_nmap_xml_structured(xml: &str) -> Option<NmapScan> {
+    let doc = parse_doc(xml)?;
+    let root = doc.root_element();
+    if root.tag_name().name() != "nmaprun" {
+        return None;
+    }
+
+    let mut hosts = Vec::new();
+    for host in root.children().filter(|n| n.tag_name().name() == "host") {
+        let ip = host
+            .children()
+            .find(|n| n.tag_name().name() == "address")
+            .and_then(|a| a.attribute("addr"))
+            .unwrap_or("unknown")
+            .to_string();
+        let status = host
+            .children()
+            .find(|n| n.tag_name().name() == "status")
+            .and_then(|s| s.attribute("state"))
+            .unwrap_or("unknown")
+            .to_string();
+
+        let hostnames: Vec<String> = host
+            .children()
+            .find(|n| n.tag_name().name() == "hostnames")
+            .into_iter()
+            .flat_map(|hn| hn.children().filter(|n| n.tag_name().name() == "hostname"))
+            .filter_map(|h| h.attribute("name").map(str::to_string))
+            .collect();
+
+        let os: Vec<String> = host
+            .children()
+            .find(|n| n.tag_name().name() == "os")
+            .into_iter()
+            .flat_map(|os| os.children().filter(|n| n.tag_name().name() == "osmatch"))
+            .take(3)
+            .map(|m| {
+                format!(
+                    "{} ({}%)",
+                    m.attribute("name").unwrap_or("?"),
+                    m.attribute("accuracy").unwrap_or("?")
+                )
+            })
+            .collect();
+
+        let mut ports = Vec::new();
+        if let Some(ports_node) = host.children().find(|n| n.tag_name().name() == "ports") {
+            for port in ports_node
+                .children()
+                .filter(|n| n.tag_name().name() == "port")
+            {
+                let state = port
+                    .children()
+                    .find(|n| n.tag_name().name() == "state")
+                    .and_then(|s| s.attribute("state"))
+                    .unwrap_or("?")
+                    .to_string();
+                let (service, version) = port
+                    .children()
+                    .find(|n| n.tag_name().name() == "service")
+                    .map(|svc| {
+                        let name = svc.attribute("name").unwrap_or("").to_string();
+                        let product = svc.attribute("product").unwrap_or("");
+                        let ver = svc.attribute("version").unwrap_or("");
+                        let version = [product, ver]
+                            .iter()
+                            .filter(|s| !s.is_empty())
+                            .copied()
+                            .collect::<Vec<_>>()
+                            .join(" ");
+                        (name, version)
+                    })
+                    .unwrap_or_default();
+                let cves = port
+                    .children()
+                    .filter(|n| {
+                        n.tag_name().name() == "script" && n.attribute("id") == Some("vulners")
+                    })
+                    .flat_map(|s| vulners_pairs(&s))
+                    .map(|(id, cvss)| NmapCve { id, cvss })
+                    .collect();
+                ports.push(NmapPort {
+                    proto: port.attribute("protocol").unwrap_or("?").to_string(),
+                    port: port
+                        .attribute("portid")
+                        .and_then(|p| p.parse().ok())
+                        .unwrap_or(0),
+                    state,
+                    service,
+                    version,
+                    cves,
+                });
+            }
+        }
+
+        hosts.push(NmapHost {
+            ip,
+            status,
+            hostnames,
+            os,
+            ports,
+        });
+    }
+
+    let stats = root
+        .children()
+        .find(|n| n.tag_name().name() == "runstats")
+        .map(|rs| {
+            let elapsed_secs = rs
+                .children()
+                .find(|n| n.tag_name().name() == "finished")
+                .and_then(|f| f.attribute("elapsed"))
+                .and_then(|e| e.parse().ok());
+            let (hosts_up, hosts_down) = rs
+                .children()
+                .find(|n| n.tag_name().name() == "hosts")
+                .map(|h| {
+                    (
+                        h.attribute("up").and_then(|v| v.parse().ok()),
+                        h.attribute("down").and_then(|v| v.parse().ok()),
+                    )
+                })
+                .unwrap_or((None, None));
+            NmapStats {
+                elapsed_secs,
+                hosts_up,
+                hosts_down,
+            }
+        });
+
+    if hosts.is_empty() && stats.is_none() {
+        return None;
+    }
+    Some(NmapScan {
+        args: root.attribute("args").map(str::to_string),
+        hosts,
+        stats,
+    })
 }
 
 /// Format an NSE `<script>` element into a compact one- or few-line summary.
@@ -246,17 +468,7 @@ fn collect_scripts(parent: &roxmltree::Node) -> Vec<String> {
 /// Returns `None` if the input isn't valid nmap XML.
 pub fn parse_nmap_xml(xml: &str, max_hosts: usize) -> Option<String> {
     // Strip any non-XML prefix (nmap warnings, etc.)
-    let xml = xml
-        .find("<?xml")
-        .or_else(|| xml.find("<nmaprun"))
-        .map(|i| &xml[i..])
-        .unwrap_or(xml);
-
-    let opts = roxmltree::ParsingOptions {
-        allow_dtd: true,
-        ..Default::default()
-    };
-    let doc = roxmltree::Document::parse_with_options(xml, opts).ok()?;
+    let doc = parse_doc(xml)?;
     let root = doc.root_element();
 
     if root.tag_name().name() != "nmaprun" {
@@ -632,5 +844,109 @@ mod tests {
         let summary = summarize_script_output(output, 300);
         assert!(summary.contains("Line one"));
         assert!(summary.contains("+3 more lines"));
+    }
+
+    #[test]
+    fn structured_parses_hosts_ports_os_and_stats() {
+        let xml = r#"<?xml version="1.0"?>
+<nmaprun args="nmap -sV 10.0.0.1">
+  <host>
+    <address addr="10.0.0.1" addrtype="ipv4"/>
+    <status state="up"/>
+    <hostnames><hostname name="web01.example.com" type="PTR"/></hostnames>
+    <ports>
+      <port protocol="tcp" portid="22">
+        <state state="open"/>
+        <service name="ssh" product="OpenSSH" version="8.9"/>
+      </port>
+      <port protocol="tcp" portid="8081">
+        <state state="closed"/>
+      </port>
+    </ports>
+    <os><osmatch name="Linux 5.4" accuracy="95"/></os>
+  </host>
+  <runstats>
+    <finished elapsed="1.23"/>
+    <hosts up="1" down="0"/>
+  </runstats>
+</nmaprun>"#;
+        let scan = parse_nmap_xml_structured(xml).unwrap();
+        assert_eq!(scan.args.as_deref(), Some("nmap -sV 10.0.0.1"));
+        assert_eq!(scan.hosts.len(), 1);
+        let host = &scan.hosts[0];
+        assert_eq!(host.ip, "10.0.0.1");
+        assert_eq!(host.status, "up");
+        assert_eq!(host.hostnames, vec!["web01.example.com"]);
+        assert_eq!(host.os, vec!["Linux 5.4 (95%)"]);
+        assert_eq!(host.ports.len(), 2);
+        assert_eq!(host.ports[0].port, 22);
+        assert_eq!(host.ports[0].proto, "tcp");
+        assert_eq!(host.ports[0].state, "open");
+        assert_eq!(host.ports[0].service, "ssh");
+        assert_eq!(host.ports[0].version, "OpenSSH 8.9");
+        // All port states kept - consumers filter.
+        assert_eq!(host.ports[1].port, 8081);
+        assert_eq!(host.ports[1].state, "closed");
+        let stats = scan.stats.as_ref().unwrap();
+        assert_eq!(stats.elapsed_secs, Some(1.23));
+        assert_eq!(stats.hosts_up, Some(1));
+        assert_eq!(stats.hosts_down, Some(0));
+    }
+
+    #[test]
+    fn structured_extracts_vulners_cves_per_port() {
+        let xml = r#"<?xml version="1.0"?>
+<nmaprun>
+  <host>
+    <address addr="10.0.0.1" addrtype="ipv4"/>
+    <ports>
+      <port protocol="tcp" portid="80">
+        <state state="open"/>
+        <service name="http" product="Apache" version="2.4.25"/>
+        <script id="vulners" output="...">
+          <table key="cpe:/a:apache:http_server:2.4.25">
+            <table>
+              <elem key="id">CVE-2021-44790</elem>
+              <elem key="cvss">9.8</elem>
+            </table>
+            <table>
+              <elem key="id">CVE-2019-0211</elem>
+              <elem key="cvss">7.8</elem>
+            </table>
+          </table>
+        </script>
+      </port>
+    </ports>
+  </host>
+</nmaprun>"#;
+        let scan = parse_nmap_xml_structured(xml).unwrap();
+        let cves = &scan.hosts[0].ports[0].cves;
+        assert_eq!(cves.len(), 2);
+        assert_eq!(cves[0].id, "CVE-2021-44790");
+        assert_eq!(cves[0].cvss, 9.8);
+        assert_eq!(cves[1].id, "CVE-2019-0211");
+    }
+
+    #[test]
+    fn structured_rejects_non_nmap_xml() {
+        assert!(parse_nmap_xml_structured("not xml").is_none());
+        assert!(parse_nmap_xml_structured("<?xml version=\"1.0\"?><other/>").is_none());
+        // Empty nmaprun (no hosts, no stats) has nothing to report.
+        assert!(parse_nmap_xml_structured("<?xml version=\"1.0\"?><nmaprun/>").is_none());
+    }
+
+    #[test]
+    fn structured_serialises_to_json_with_expected_fields() {
+        let xml = r#"<?xml version="1.0"?>
+<nmaprun><host><address addr="10.0.0.1" addrtype="ipv4"/><status state="up"/>
+<ports><port protocol="tcp" portid="443"><state state="open"/><service name="https"/></port></ports>
+</host></nmaprun>"#;
+        let value = serde_json::to_value(parse_nmap_xml_structured(xml).unwrap()).unwrap();
+        assert_eq!(value["hosts"][0]["ip"], "10.0.0.1");
+        assert_eq!(value["hosts"][0]["ports"][0]["port"], 443);
+        assert_eq!(value["hosts"][0]["ports"][0]["service"], "https");
+        // Empty optional collections are skipped, not serialised as [].
+        assert!(value["hosts"][0].get("os").is_none());
+        assert!(value["hosts"][0].get("hostnames").is_none());
     }
 }

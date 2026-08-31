@@ -3,7 +3,7 @@
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![CI](https://github.com/tidynest/raven-nest-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tidynest/raven-nest-mcp/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/badge/release-v0.2.9-blue.svg)](https://github.com/tidynest/raven-nest-mcp/releases)
-[![MCP tools: 43](https://img.shields.io/badge/MCP%20tools-43-5A45FF.svg)](https://github.com/tidynest/raven-nest-mcp)
+[![MCP tools: 46](https://img.shields.io/badge/MCP%20tools-46-5A45FF.svg)](https://github.com/tidynest/raven-nest-mcp)
 [![MCP](https://img.shields.io/badge/Model%20Context%20Protocol-server-1f6feb.svg)](https://modelcontextprotocol.io)
 [![Canopii Trust Score](https://index.canopii.dev/api/badge/io.github.tidynest/raven-nest-mcp)](https://index.canopii.dev/server/io.github.tidynest/raven-nest-mcp)
 
@@ -29,7 +29,7 @@ Real MCP traffic to the tools - no LLM in the loop, fully deterministic. Targets
 
 ## What It Does
 
-Raven Nest wraps 22 security tools plus Metasploit Framework behind an MCP interface with input validation, output quality assessment, session-aware context budgeting, and configurable safety limits. It handles tool execution, background scan management, vulnerability finding persistence, and multi-format report generation (Markdown, JSON, SARIF, HTML). Findings, reports, and scans are also exposed as MCP resources for browsing. 43 MCP endpoints total.
+Raven Nest wraps 22 security tools plus Metasploit Framework behind an MCP interface with input validation, output quality assessment, session-aware context budgeting, and configurable safety limits. It handles tool execution, background scan management, vulnerability finding persistence, target discovery tracking, scan diffing, and multi-format report generation (Markdown, JSON, SARIF, HTML). Findings, reports, and scans are also exposed as MCP resources for browsing. 46 MCP endpoints total.
 
 ### Supported Tools
 
@@ -50,6 +50,7 @@ Raven Nest wraps 22 security tools plus Metasploit Framework behind an MCP inter
 | Scan management | launch\_scan, get\_scan\_status, get\_scan\_results, list\_scans, cancel\_scan |
 | Findings | save\_finding, get\_finding, list\_findings, list\_findings\_by\_scan, delete\_finding, generate\_report |
 | Engagement | set\_engagement, list\_engagements |
+| Discovery tracking | get\_target\_info, list\_targets, diff\_scans |
 
 ## How It Fits Together
 
@@ -85,8 +86,10 @@ base, so you don't have to install them yourself. Point your MCP client at it
 ```
 
 `masscan` and `nmap -O` need raw sockets - append `--cap-add=NET_RAW` and
-`--cap-add=NET_ADMIN` to `args` if you use them. The server is also listed on the
-[MCP Registry](https://registry.modelcontextprotocol.io) as
+`--cap-add=NET_ADMIN` to `args` if you use them (the container runs as a
+dedicated non-root user; the runtime grants those capabilities to the container
+process directly, so they keep working without root). The server is also listed
+on the [MCP Registry](https://registry.modelcontextprotocol.io) as
 `io.github.tidynest/raven-nest-mcp`.
 
 ### Prerequisites
@@ -175,6 +178,7 @@ Additional hardening:
 
 - **Config validation at startup** -- safety limits (sqlmap level/risk, hydra tasks, masscan rate) are range-checked; the server refuses to start with out-of-range values or default MSF credentials
 - **Wordlist path validation** -- hydra, john, feroxbuster, and ffuf only accept wordlists under `/usr/share/`, `/usr/lib/`, or the configured `output_dir`; path traversal (`..`) is rejected
+- **Positional-argument guards** -- free-text values passed to tools as positional arguments are charset-checked so they can't be re-parsed as flags: hydra `service` (lowercase/digits/hyphens) and `form_params` (no leading `-`, no control chars), sqlmap `technique` (subset of `BEUSTQ`), ffuf `filter_size` (digits/commas). Targets get the same treatment (`-oN/tmp/evil` is rejected as flag-like)
 - **Port spec validation** -- nmap and masscan port parameters accept only digits, commas, and hyphens
 - **File permissions** -- cookie files and scan spill files are created with `0o600` (owner-only)
 - **Markdown escaping** -- report generation escapes user-supplied finding fields to prevent markdown injection
@@ -198,6 +202,25 @@ A session-aware **context budget tracker** dynamically adjusts per-tool output c
 Parser result caps scale dynamically via `scale_cap()` -- each tool's output parser adjusts its result limit based on the active budget mode. All tool output passes through centralised ANSI stripping and budget-aware truncation in `wrap_result()`.
 
 When the budget is exhausted, the server returns a message directing the AI to save findings and generate a report rather than running additional scans.
+
+## Target Discovery Tracking and Scan Diffing
+
+Every nmap result (`run_nmap` and background nmap scans) accumulates into a
+per-host discovery record: ports, states, services, versions, and OS guesses,
+with first/last-seen timestamps. Re-scanning merges rather than overwrites, so
+the record shows how the target evolved.
+
+- **`list_targets` / `get_target_info`** recall the tracked hosts and full
+  per-host service tables without re-scanning.
+- **`diff_scans`** compares two completed nmap scans: added/removed hosts and
+  ports, plus per-port state/service/version changes (`open (ssh OpenSSH 8.9) →
+  open (ssh OpenSSH 9.0)`).
+- Discovery data is engagement-scoped like findings (`{engagement}/targets/`)
+  and persists across restarts.
+
+`run_nmap` and `run_nuclei` also attach machine-readable `structured_content`
+to their responses (hosts/ports/CVEs; findings list), uncapped by the context
+budget, so clients can process results without parsing prose.
 
 ## Report Generation
 
@@ -247,7 +270,7 @@ The `http_request` tool maintains a shared cookie jar that persists within a ses
 
 ## Testing
 
-351 unit and integration tests across 3 crates:
+381 unit and integration tests across 3 crates:
 
 ```bash
 cargo test --workspace
@@ -255,9 +278,9 @@ cargo test --workspace
 
 | Crate | Tests |
 |-------|-------|
-| raven-core | 104 |
-| raven-report | 64 |
-| raven-server | 170 |
+| raven-core | 106 |
+| raven-report | 71 |
+| raven-server | 191 |
 | Integration | 13 |
 
 A Python-based MCP integration test harness is also available:
@@ -274,9 +297,11 @@ crates/
   raven-core/     # Safety validation, subprocess execution, config (TOML),
                   # scan manager (background scans with disk spill), audit log
   raven-report/   # Finding types (with OWASP categories), file-per-finding
-                  # persistence, multi-format report generators (md/json/sarif/html)
+                  # persistence, host/service discovery store (targets),
+                  # multi-format report generators (md/json/sarif/html)
   raven-server/   # MCP server (rmcp), tool handlers (one module per tool),
-                  # context budget tracker, output parsers, progress ticker
+                  # context budget tracker, output parsers, progress ticker,
+                  # structured scan results, scan diffing
 config/
   default.toml    # Default configuration
   sudoers-raven-nest  # Sudoers drop-in for privilege escalation
@@ -287,7 +312,7 @@ tests/
 ## Documentation
 
 - [docs/USAGE.md](docs/USAGE.md) -- tool installation, configuration reference, full parameter docs
-- [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) -- machine-readable manifest of all 43 tools (name + description)
+- [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) -- machine-readable manifest of all 46 tools (name + description)
 - [docs/LOCAL_AI_INTEGRATION.md](docs/LOCAL_AI_INTEGRATION.md) -- using Raven Nest with local models (Ollama, LM Studio)
 - [docs/METASPLOIT.md](docs/METASPLOIT.md) -- Metasploit Framework integration setup and safety model
 - [docs/DATA_FLOW.md](docs/DATA_FLOW.md) -- data flow and sources of truth: which module owns each piece of state

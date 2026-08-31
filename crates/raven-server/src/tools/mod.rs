@@ -322,6 +322,7 @@ mod port_validation_tests {
 pub mod lenient;
 
 pub mod dalfox;
+pub mod diff;
 pub mod dnsrecon;
 pub mod dnsx;
 pub mod engagement;
@@ -352,6 +353,7 @@ pub mod resources;
 pub mod scans;
 pub mod sqlmap;
 pub mod subfinder;
+pub mod targets;
 pub mod testssl;
 pub mod trufflehog;
 pub mod whatweb;
