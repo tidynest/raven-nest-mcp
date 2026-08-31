@@ -422,12 +422,16 @@ impl ScanManager {
             }
         };
 
-        let chars: Vec<char> = content.chars().collect();
-        if offset >= chars.len() {
-            return Ok(Some(String::new()));
-        }
-        let end = chars.len().min(offset + limit);
-        Ok(Some(chars[offset..end].iter().collect()))
+        // Char-boundary slicing without materialising the whole output as a
+        // Vec<char> (a large spill would double its size in memory otherwise).
+        let Some((start, _)) = content.char_indices().nth(offset) else {
+            return Ok(Some(String::new())); // offset at/past the end
+        };
+        let end = content[start..]
+            .char_indices()
+            .nth(limit)
+            .map_or(content.len(), |(i, _)| start + i);
+        Ok(Some(content[start..end].to_string()))
     }
 
     /// Cancel a running scan by aborting its tokio task.
@@ -533,6 +537,45 @@ mod tests {
             output_chars: None,
         };
         assert!(info.output_chars.is_none());
+    }
+
+    #[test]
+    fn results_slices_on_char_boundaries_without_panicking() {
+        let mgr = ScanManager::new(Arc::new(RavenConfig::default()));
+        // 40 chars of mixed-width UTF-8 (1/2/3/4 bytes per char).
+        let content = "aé中🔥".repeat(10);
+        mgr.scans.lock().unwrap().insert(
+            "t".into(),
+            ScanEntry {
+                tool: "nmap".into(),
+                target: "10.0.0.1".into(),
+                status: ScanStatus::Completed,
+                output: Some(ScanOutput::Memory(content.clone())),
+                handle: None,
+                started_at: Instant::now(),
+                terminal_at: Some(Instant::now()),
+            },
+        );
+
+        // Partial page: exactly `limit` chars, cut on char boundaries.
+        let page = mgr.results("t", 0, 15).unwrap().unwrap();
+        assert_eq!(page.chars().count(), 15);
+        assert_eq!(page, content.chars().take(15).collect::<String>());
+
+        // Offset + limit spanning the middle of the output.
+        let mid = mgr.results("t", 7, 10).unwrap().unwrap();
+        assert_eq!(mid, content.chars().skip(7).take(10).collect::<String>());
+
+        // Offset at/past the end → empty string, not a panic.
+        assert_eq!(mgr.results("t", 40, 10).unwrap().unwrap(), "");
+        assert_eq!(mgr.results("t", 1_000, 10).unwrap().unwrap(), "");
+
+        // Limit beyond the end → the rest of the output.
+        assert_eq!(mgr.results("t", 0, 40).unwrap().unwrap(), content);
+        assert_eq!(mgr.results("t", 0, usize::MAX).unwrap().unwrap(), content);
+
+        // Unknown scan → None.
+        assert!(mgr.results("missing", 0, 10).unwrap().is_none());
     }
 
     fn entry(status: ScanStatus, terminal_at: Option<Instant>) -> ScanEntry {
