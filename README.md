@@ -2,7 +2,7 @@
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![CI](https://github.com/tidynest/raven-nest-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tidynest/raven-nest-mcp/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/badge/release-v0.2.9-blue.svg)](https://github.com/tidynest/raven-nest-mcp/releases)
+[![Release](https://img.shields.io/badge/release-v0.3.0-blue.svg)](https://github.com/tidynest/raven-nest-mcp/releases)
 [![MCP tools: 46](https://img.shields.io/badge/MCP%20tools-46-5A45FF.svg)](https://github.com/tidynest/raven-nest-mcp)
 [![MCP](https://img.shields.io/badge/Model%20Context%20Protocol-server-1f6feb.svg)](https://modelcontextprotocol.io)
 [![Canopii Trust Score](https://index.canopii.dev/api/badge/io.github.tidynest/raven-nest-mcp)](https://index.canopii.dev/server/io.github.tidynest/raven-nest-mcp)
@@ -317,7 +317,7 @@ tests/
 - [docs/METASPLOIT.md](docs/METASPLOIT.md) -- Metasploit Framework integration setup and safety model
 - [docs/DATA_FLOW.md](docs/DATA_FLOW.md) -- data flow and sources of truth: which module owns each piece of state
 - [raven-nest-client](https://github.com/tidynest/raven-nest-client) -- companion TypeScript REPL client (versioned in lockstep with the server)
-- [CHANGELOG.md](CHANGELOG.md) -- release history (current: v0.2.9)
+- [CHANGELOG.md](CHANGELOG.md) -- release history (current: v0.3.0)
 
 ## License
 
