@@ -15,6 +15,20 @@ use rmcp::{
 /// Outputs smaller than this are included directly in the status response.
 const AUTO_INLINE_LIMIT: usize = 10_000;
 
+/// Default characters returned per `get_scan_results` page.
+const DEFAULT_RESULTS_LIMIT: usize = 10_000;
+
+/// Hard cap on characters per `get_scan_results` page, regardless of what the
+/// client asks for. Bounds slicing work and response size on large spills.
+const MAX_RESULTS_LIMIT: usize = 100_000;
+
+/// Resolve the client-supplied page limit to the effective value.
+fn clamped_limit(limit: Option<usize>) -> usize {
+    limit
+        .unwrap_or(DEFAULT_RESULTS_LIMIT)
+        .min(MAX_RESULTS_LIMIT)
+}
+
 /// Build a success result carrying human text + machine-readable `structured_content`
 /// (so clients read `scan_id`/`status` as fields instead of parsing prose).
 fn success_with(text: impl Into<String>, structured: serde_json::Value) -> CallToolResult {
@@ -53,7 +67,7 @@ pub struct ScanResultsRequest {
     #[schemars(description = "Character offset to start reading from (default 0)")]
     #[serde(default, deserialize_with = "super::lenient::option_number")]
     pub offset: Option<usize>,
-    #[schemars(description = "Max characters to return (default 10000)")]
+    #[schemars(description = "Max characters to return (default 10000, capped at 100000)")]
     #[serde(default, deserialize_with = "super::lenient::option_number")]
     pub limit: Option<usize>,
 }
@@ -146,7 +160,9 @@ pub fn results(
     req: ScanResultsRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     let offset = req.offset.unwrap_or(0);
-    let limit = req.limit.unwrap_or(10_000);
+    // Clamp the client-supplied limit: spilled outputs can be hundreds of MB,
+    // and an unbounded limit would materialise the whole thing before slicing.
+    let limit = clamped_limit(req.limit);
 
     let output = manager
         .results(&req.scan_id, offset, limit)
@@ -200,4 +216,17 @@ pub fn list_scans(manager: &ScanManager) -> Result<CallToolResult, rmcp::ErrorDa
     Ok(CallToolResult::success(vec![Content::text(
         lines.join("\n"),
     )]))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn results_limit_default_and_clamp() {
+        assert_eq!(clamped_limit(None), 10_000);
+        assert_eq!(clamped_limit(Some(5_000)), 5_000); // under the cap unchanged
+        assert_eq!(clamped_limit(Some(10_000)), 10_000); // exactly the default
+        assert_eq!(clamped_limit(Some(usize::MAX)), MAX_RESULTS_LIMIT); // clamped
+    }
 }

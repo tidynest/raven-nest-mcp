@@ -74,6 +74,15 @@ pub async fn run(
     }
 
     if let Some(ref technique) = req.technique {
+        // `--technique` takes the next token as its value, but restricting to the
+        // documented technique letters also rejects malformed input before sqlmap
+        // sees it (defense-in-depth against flag-shaped values).
+        if technique.is_empty() || !technique.chars().all(|c| "BEUSTQbeustq".contains(c)) {
+            return Err(rmcp::ErrorData::invalid_params(
+                "technique must be a subset of 'BEUSTQ' (Boolean, Error, Union, Stacked, Time-based, Query-based)",
+                None,
+            ));
+        }
         args.extend(["--technique".into(), technique.clone()]);
     }
 
