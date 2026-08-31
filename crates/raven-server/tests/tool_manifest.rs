@@ -14,7 +14,9 @@
 
 const SERVER_RS: &str = include_str!("../src/server.rs");
 const MANIFEST: &str = include_str!("../../../docs/MCP_TOOLS.md");
-const TOOL_COUNT: usize = 43;
+// Single source of truth - kept in lockstep with the `#[tool]` methods by the
+// count assertion below.
+use raven_server::server::TOOL_COUNT;
 
 /// Extract every `description = "..."` string literal from the `#[tool]` macros.
 /// Tool descriptions carry no escaped quotes, so a scan to the next `"` is enough.

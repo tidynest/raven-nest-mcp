@@ -1,8 +1,9 @@
 //! MCP server implementation - tool registration and request routing.
 //!
 //! [`RavenServer`] is the central struct that:
-//! - Holds shared state (`Arc<RavenConfig>`, `ScanManager`, `FindingStore`, cookie jar).
-//! - Registers all 43 MCP tools via the `#[tool_router]` macro (Metasploit and
+//! - Holds shared state (`Arc<RavenConfig>`, `ScanManager`, `FindingStore`,
+//!   `TargetStore`, cookie jar).
+//! - Registers all 46 MCP tools via the `#[tool_router]` macro (Metasploit and
 //!   NetExec tools are always registered but gated at call time when disabled).
 //! - Implements `ServerHandler` to provide server info and capabilities.
 //!
@@ -11,7 +12,9 @@
 //! a `Peer<RoleServer>` for progress notifications via [`ProgressTicker`](crate::progress::ProgressTicker).
 
 use crate::budget::SessionBudget;
+use crate::tools::diff::DiffScansRequest;
 use crate::tools::scans::{LaunchScanRequest, ScanIdRequest, ScanResultsRequest};
+use crate::tools::targets::TargetInfoRequest;
 use crate::tools::{
     dalfox::DalfoxRequest,
     dnsrecon::DnsreconRequest,
@@ -58,6 +61,12 @@ use rmcp::{
     tool, tool_handler, tool_router,
 };
 
+/// Number of MCP tools registered by the `#[tool_router]`. Single source of
+/// truth: `RavenServer::new` derives the budget overhead from it, the manifest
+/// drift test (`tests/tool_manifest.rs`) asserts against it, and the README
+/// badge mirrors it.
+pub const TOOL_COUNT: usize = 46;
+
 /// Central MCP server that owns all shared state and routes tool calls.
 ///
 /// Cloned per-connection by rmcp - all inner state is behind `Arc`/`RwLock`.
@@ -68,6 +77,12 @@ pub struct RavenServer {
     tool_router: ToolRouter<Self>,
     pub scan_manager: raven_core::scan_manager::ScanManager,
     finding_store: std::sync::Arc<std::sync::RwLock<raven_report::store::FindingStore>>,
+    /// Host/service discovery tracker, fed from nmap scans. Swapped alongside
+    /// the finding store when the engagement changes.
+    target_store: std::sync::Arc<std::sync::RwLock<raven_report::targets::TargetStore>>,
+    /// Background scan IDs already fed into the target store (dedup across
+    /// repeated status polls; reset on restart, where re-recording is harmless).
+    recorded_scans: std::sync::Arc<std::sync::Mutex<std::collections::HashSet<String>>>,
     /// Shared cookie jar for `http_request` - persists cookies across requests within a session.
     cookie_jar: std::sync::Arc<reqwest::cookie::Jar>,
     /// Session-aware output budget tracker - dynamically adjusts per-tool caps.
@@ -94,6 +109,14 @@ impl RavenServer {
             raven_report::store::FindingStore::new(findings_dir)
                 .expect("failed to create findings directory"),
         ));
+        let target_store = std::sync::Arc::new(std::sync::RwLock::new(
+            raven_report::targets::TargetStore::new(
+                std::path::PathBuf::from(&config.execution.output_dir).join("targets"),
+            )
+            .expect("failed to create targets directory"),
+        ));
+        let recorded_scans =
+            std::sync::Arc::new(std::sync::Mutex::new(std::collections::HashSet::new()));
         let cookie_jar = std::sync::Arc::new(reqwest::cookie::Jar::default());
 
         // Restore session cookies from disk (survives context clears)
@@ -110,11 +133,9 @@ impl RavenServer {
             tracing::info!("restored session cookies from disk");
         }
 
-        // Tool count: 22 security + 6 MSF + ping + http + 5 scan mgmt + 6 findings + 2 engagement = 43
-        let tool_count = 43;
         let budget = std::sync::Arc::new(SessionBudget::new(
             config.safety.context_budget,
-            tool_count,
+            TOOL_COUNT,
             config.safety.expected_tool_calls,
         ));
 
@@ -131,6 +152,8 @@ impl RavenServer {
             scan_manager,
             tool_router: Self::tool_router(),
             finding_store,
+            target_store,
+            recorded_scans,
             cookie_jar,
             budget,
             msf_client,
@@ -310,9 +333,14 @@ impl RavenServer {
         Parameters(req): Parameters<NmapRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let target = req.target.clone();
-        let (result, findings) =
-            crate::tools::nmap::run(&self.config, req, Some(peer), self.budget.scale_cap(10))
-                .await?;
+        let (result, findings) = crate::tools::nmap::run(
+            &self.config,
+            req,
+            Some(peer),
+            self.budget.scale_cap(10),
+            Some(&self.target_store),
+        )
+        .await?;
         crate::tools::extract::auto_save(
             &self.finding_store,
             &self.config,
@@ -783,6 +811,14 @@ impl RavenServer {
         &self,
         Parameters(req): Parameters<ScanIdRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
+        // Feed completed background nmap scans into the target store (no-op for
+        // other tools / still-running scans / already-recorded scans).
+        crate::tools::targets::record_completed_nmap(
+            &self.target_store,
+            &self.recorded_scans,
+            &self.scan_manager,
+            &req.scan_id,
+        );
         self.wrap_result_ungated(crate::tools::scans::status(&self.scan_manager, req))
     }
 
@@ -936,6 +972,7 @@ impl RavenServer {
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.wrap_result_ungated(crate::tools::engagement::set_engagement(
             &self.finding_store,
+            &self.target_store,
             &self.config,
             req,
         ))
@@ -954,6 +991,53 @@ impl RavenServer {
             &self.finding_store,
             &self.config,
         ))
+    }
+
+    // ── Target discovery tracking + scan diffing ────────────────────
+
+    #[tool(
+        description = "Get discovered services and technologies for a tracked host",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    fn get_target_info(
+        &self,
+        Parameters(req): Parameters<TargetInfoRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result_ungated(crate::tools::targets::get_target_info(
+            &self.target_store,
+            req,
+        ))
+    }
+
+    #[tool(
+        description = "List hosts discovered across scans",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    fn list_targets(&self) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result_ungated(crate::tools::targets::list_targets(&self.target_store))
+    }
+
+    #[tool(
+        description = "Compare two completed nmap scans (added/removed hosts, ports, service changes)",
+        annotations(
+            read_only_hint = true,
+            destructive_hint = false,
+            open_world_hint = false
+        )
+    )]
+    fn diff_scans(
+        &self,
+        Parameters(req): Parameters<DiffScansRequest>,
+    ) -> Result<CallToolResult, rmcp::ErrorData> {
+        self.wrap_result_ungated(crate::tools::diff::diff_scans(&self.scan_manager, req))
     }
 
     // ── NetExec (gated, credentialed) ────────────────────────────────
@@ -1027,6 +1111,7 @@ Raven Nest - pentesting toolkit.
 6. Targets: bare hostnames/IPs for nmap/ping/masscan; full URLs for web tools.
 7. Start with less aggressive scans. Check output for empty/rate-limited results.
 8. save_finding for each vuln (pass scan_id to link it to a launched scan; list_findings_by_scan recalls them), then generate_report.
+9. Discovery: nmap results accumulate per host - list_targets / get_target_info recall ports, services, versions. diff_scans compares two completed nmap scans (launch_scan + get_scan_status) for changes.
 
 ## Tool Timing
 - Fast (1-5s): ping_target, run_whatweb, http_request, run_ffuf, run_masscan, run_subfinder, run_httpx, run_dnsx, run_dalfox
