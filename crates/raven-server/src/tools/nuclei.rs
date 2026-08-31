@@ -67,26 +67,39 @@ pub async fn run(
         Vec::new()
     };
     let output = super::format_output("nuclei", &result, |s| parse_nuclei_jsonl(s, result_limit));
-    Ok((
-        CallToolResult::success(vec![Content::text(output)]),
-        findings,
-    ))
+
+    // Machine-readable form for MCP clients, exposed as `structured_content`.
+    let mut call_result = CallToolResult::success(vec![Content::text(output)]);
+    if let Some(value) = structured_nuclei(&result.stdout, result_limit) {
+        call_result.structured_content = Some(value);
+    }
+
+    Ok((call_result, findings))
 }
 
-/// Parse nuclei JSONL output into a compact findings summary.
-///
-/// Each JSONL line becomes: `[SEVERITY] template-id - name @ matched-url (type)`
-/// Reduces raw JSON noise to an actionable table of findings.
-pub fn parse_nuclei_jsonl(raw: &str, max_results: usize) -> Option<String> {
-    let mut findings = Vec::new();
+/// One nuclei JSONL hit in the fields shared by the text summary and the
+/// structured output.
+#[derive(Debug, serde::Serialize)]
+pub struct NucleiHit {
+    pub template: String,
+    pub severity: String,
+    pub name: String,
+    pub matched_at: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+}
 
+/// Parse every valid JSONL hit from nuclei output into [`NucleiHit`]s.
+///
+/// Tolerates non-JSON noise lines and salvages a final line truncated mid-object
+/// (output truncation can cut the last hit) by closing the brace.
+fn parse_nuclei_hits(raw: &str) -> Vec<NucleiHit> {
+    let mut hits = Vec::new();
     for line in raw.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() || !trimmed.starts_with('{') {
             continue;
         }
-
-        // Try parsing as JSON. If truncation broke the line, try adding a closing brace.
         let v = serde_json::from_str::<serde_json::Value>(trimmed)
             .or_else(|_| {
                 // Truncated JSON - try to salvage by closing the object
@@ -94,49 +107,82 @@ pub fn parse_nuclei_jsonl(raw: &str, max_results: usize) -> Option<String> {
                 serde_json::from_str::<serde_json::Value>(&salvaged)
             })
             .ok();
+        let Some(v) = v else { continue };
 
-        if let Some(v) = v {
-            let template = v
-                .get("template-id")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
-            let severity = v
-                .get("info")
-                .and_then(|i| i.get("severity"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown");
-            let name = v
-                .get("info")
-                .and_then(|i| i.get("name"))
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-            let matched = v.get("matched-at").and_then(|v| v.as_str()).unwrap_or("");
-            let kind = v.get("type").and_then(|v| v.as_str()).unwrap_or("");
+        let template = v
+            .get("template-id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        let severity = v
+            .get("info")
+            .and_then(|i| i.get("severity"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        let name = v
+            .get("info")
+            .and_then(|i| i.get("name"))
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let matched_at = v.get("matched-at").and_then(|v| v.as_str()).unwrap_or("");
+        let kind = v.get("type").and_then(|v| v.as_str()).unwrap_or("");
 
-            // Skip if we couldn't extract the essential fields
-            if template == "unknown" && name.is_empty() {
-                continue;
-            }
-
-            findings.push(format!(
-                "[{severity}] {template} - {name} @ {matched} ({kind})"
-            ));
+        // Skip if we couldn't extract the essential fields
+        if template == "unknown" && name.is_empty() {
+            continue;
         }
+        hits.push(NucleiHit {
+            template: template.to_string(),
+            severity: severity.to_string(),
+            name: name.to_string(),
+            matched_at: matched_at.to_string(),
+            kind: kind.to_string(),
+        });
     }
+    hits
+}
 
-    if findings.is_empty() {
-        None
-    } else {
-        let total = findings.len();
-        let cap = max_results;
-        let shown: Vec<_> = findings.into_iter().take(cap).collect();
-        let extra = if total > cap {
-            format!("\n+{} more finding(s)", total - cap)
-        } else {
-            String::new()
-        };
-        Some(format!("{total} finding(s):\n{}{extra}", shown.join("\n")))
+/// Parse nuclei JSONL output into a compact findings summary.
+///
+/// Each JSONL line becomes: `[SEVERITY] template-id - name @ matched-url (type)`
+/// Reduces raw JSON noise to an actionable table of findings.
+pub fn parse_nuclei_jsonl(raw: &str, max_results: usize) -> Option<String> {
+    let hits = parse_nuclei_hits(raw);
+    if hits.is_empty() {
+        return None;
     }
+    let lines: Vec<String> = hits
+        .iter()
+        .map(|h| {
+            format!(
+                "[{}] {} - {} @ {} ({})",
+                h.severity, h.template, h.name, h.matched_at, h.kind
+            )
+        })
+        .collect();
+    let total = lines.len();
+    let shown: Vec<_> = lines.into_iter().take(max_results).collect();
+    let extra = if total > max_results {
+        format!("\n+{} more finding(s)", total - max_results)
+    } else {
+        String::new()
+    };
+    Some(format!("{total} finding(s):\n{}{extra}", shown.join("\n")))
+}
+
+/// Structured nuclei result for `structured_content`: the full hit list capped
+/// at `max_results`, with the true total. `None` when there are no hits.
+pub fn structured_nuclei(raw: &str, max_results: usize) -> Option<serde_json::Value> {
+    let hits = parse_nuclei_hits(raw);
+    if hits.is_empty() {
+        return None;
+    }
+    let total = hits.len();
+    let shown: Vec<&NucleiHit> = hits.iter().take(max_results).collect();
+    Some(serde_json::json!({
+        "total": total,
+        "shown": shown.len(),
+        "findings": shown,
+    }))
 }
 
 #[cfg(test)]
@@ -166,5 +212,33 @@ mod tests {
     fn parse_nuclei_empty_returns_none() {
         assert!(parse_nuclei_jsonl("", 25).is_none());
         assert!(parse_nuclei_jsonl("no json here", 25).is_none());
+        assert!(structured_nuclei("", 25).is_none());
+    }
+
+    #[test]
+    fn structured_nuclei_lists_hits_with_total() {
+        let jsonl = r#"{"template-id":"tech-detect","info":{"name":"Wappalyzer","severity":"info"},"type":"http","matched-at":"http://example.com/"}
+{"template-id":"cve-2021-44228","info":{"name":"Log4Shell","severity":"critical"},"type":"http","matched-at":"http://example.com/api"}
+{"template-id":"cve-2022-22965","info":{"name":"Spring4Shell","severity":"critical"},"type":"http","matched-at":"http://example.com/actuator"}"#;
+        let value = structured_nuclei(jsonl, 2).unwrap();
+        assert_eq!(value["total"], 3);
+        assert_eq!(value["shown"], 2);
+        let findings = value["findings"].as_array().unwrap();
+        assert_eq!(findings.len(), 2); // capped at max_results
+        assert_eq!(findings[0]["template"], "tech-detect");
+        assert_eq!(findings[0]["type"], "http");
+        assert_eq!(findings[1]["severity"], "critical");
+        assert_eq!(findings[1]["matched_at"], "http://example.com/api");
+    }
+
+    #[test]
+    fn structured_nuclei_salvages_truncated_last_line() {
+        // Truncated after the last value's closing quote but before the final
+        // brace - appending `}` makes the object valid again.
+        let raw = "{\"template-id\":\"t\",\"info\":{\"name\":\"N\",\"severity\":\"high\"},\"type\":\"http\",\"matched-at\":\"http://x\"";
+        let value = structured_nuclei(raw, 25).unwrap();
+        assert_eq!(value["total"], 1);
+        assert_eq!(value["findings"][0]["template"], "t");
+        assert_eq!(value["findings"][0]["matched_at"], "http://x");
     }
 }
