@@ -39,7 +39,7 @@ pub async fn run(
     let _ticker = peer
         .map(|p| crate::progress::ProgressTicker::start(p, "nuclei".into(), req.target.clone()));
 
-    let mut args = vec!["-u".to_string(), req.target, "-jsonl".to_string()];
+    let mut args = vec!["-u".to_string(), req.target.clone(), "-jsonl".to_string()];
 
     // Only apply severity filter if it's a valid nuclei severity value
     if let Some(sev) = &req.severity {
@@ -57,7 +57,7 @@ pub async fn run(
     }
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let result = executor::run(config, "nuclei", &arg_refs, None)
+    let result = executor::run(config, "nuclei", Some(req.target.as_str()), &arg_refs, None)
         .await
         .map_err(crate::error::to_mcp)?;
 

@@ -57,7 +57,7 @@ pub async fn run(
 
     let mut args = vec![
         "-u".to_string(),
-        req.url,
+        req.url.clone(),
         "--batch".into(), // non-interactive mode
         "--level".into(),
         level.to_string(),
@@ -87,7 +87,7 @@ pub async fn run(
     }
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let result = executor::run(config, "sqlmap", &arg_refs, None)
+    let result = executor::run(config, "sqlmap", Some(req.url.as_str()), &arg_refs, None)
         .await
         .map_err(crate::error::to_mcp)?;
 

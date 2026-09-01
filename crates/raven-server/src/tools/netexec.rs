@@ -181,13 +181,20 @@ pub async fn run(
     args.extend(flags.iter().map(|s| s.to_string()));
 
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    super::run_and_format(config, "nxc", &arg_refs, None, |s| {
-        if s.trim().is_empty() {
-            Some("NetExec completed with no output.".to_string())
-        } else {
-            parse_netexec_output(s)
-        }
-    })
+    super::run_and_format(
+        config,
+        "nxc",
+        Some(req.target.as_str()),
+        &arg_refs,
+        None,
+        |s| {
+            if s.trim().is_empty() {
+                Some("NetExec completed with no output.".to_string())
+            } else {
+                parse_netexec_output(s)
+            }
+        },
+    )
     .await
 }
 

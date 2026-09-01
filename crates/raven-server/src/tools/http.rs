@@ -92,6 +92,10 @@ pub async fn run(
         raven_core::safety::validate_target(host).map_err(crate::error::to_mcp)?;
     }
 
+    // Same proactive pacing as subprocess tools: http_request hits a target
+    // just like a scanner, so it shares the global + per-host cooldown state.
+    raven_core::executor::enforce_launch_pacing(config, parsed.host_str()).await;
+
     let timeout = Duration::from_secs(req.timeout_secs.unwrap_or(30).min(120));
 
     let redirect_policy = if !req.follow_redirects.unwrap_or(true) {

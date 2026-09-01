@@ -55,7 +55,7 @@ pub async fn run(
     let _ticker = peer
         .map(|p| crate::progress::ProgressTicker::start(p, "trufflehog".into(), req.path.clone()));
 
-    let result = executor::run(config, "trufflehog", &args, Some(300))
+    let result = executor::run(config, "trufflehog", None, &args, Some(300))
         .await
         .map_err(crate::error::to_mcp)?;
 

@@ -66,7 +66,7 @@ pub async fn run(
     let _ticker = peer
         .map(|p| crate::progress::ProgressTicker::start(p, "gitleaks".into(), req.path.clone()));
 
-    let result = executor::run(config, "gitleaks", &args, Some(300))
+    let result = executor::run(config, "gitleaks", None, &args, Some(300))
         .await
         .map_err(crate::error::to_mcp)?;
 

@@ -44,12 +44,17 @@ pub async fn run(
         args.extend(["-p".into(), pass.clone()]);
     }
 
-    args.push(req.target);
+    args.push(req.target.clone());
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    super::run_and_format(config, "enum4linux-ng", &arg_refs, req.timeout_secs, |s| {
-        parse_enum4linux_output(s, result_limit)
-    })
+    super::run_and_format(
+        config,
+        "enum4linux-ng",
+        Some(req.target.as_str()),
+        &arg_refs,
+        req.timeout_secs,
+        |s| parse_enum4linux_output(s, result_limit),
+    )
     .await
 }
 

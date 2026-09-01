@@ -33,7 +33,7 @@ pub async fn run(
 
     let mut args = vec![
         "-u".to_string(),
-        req.target,
+        req.target.clone(),
         "-json".into(),
         "-silent".into(),
         "-no-color".into(),
@@ -55,9 +55,14 @@ pub async fn run(
     }
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    super::run_and_format(config, "httpx", &arg_refs, req.timeout_secs, |s| {
-        parse_httpx_jsonl(s, result_limit)
-    })
+    super::run_and_format(
+        config,
+        "httpx",
+        Some(req.target.as_str()),
+        &arg_refs,
+        req.timeout_secs,
+        |s| parse_httpx_jsonl(s, result_limit),
+    )
     .await
 }
 
