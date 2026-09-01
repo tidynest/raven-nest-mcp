@@ -361,7 +361,7 @@ output_dir = "/tmp/raven-nest"
 | `output_dir` | string | `/tmp/raven-nest` | Base directory for reports, findings, and scan output. Created automatically on startup. |
 | `timeouts` | table | empty | Per-tool timeout overrides in seconds. Falls back to `default_timeout_secs` for tools not listed. |
 | `max_concurrent_execs` | integer | 4 | Cap on concurrent synchronous tool executions (`run_*`). Separate from `max_concurrent_scans`; bounds parallel subprocesses an agent can spawn. |
-| `scan_retention_secs` | integer | 3600 | Seconds to retain a finished background scan (and its spilled output) before eviction from the registry. |
+| `scan_retention_secs` | integer | 3600 | Seconds to retain a finished background scan (and its output + metadata files) before eviction from the registry. Also applies to scans recovered after a restart. |
 | `min_exec_gap_ms` | integer | 0 | Proactive cooldown: minimum milliseconds between consecutive tool launches (process-wide). Spaces out back-to-back aggressive tools so they don't trip a target's WAF/rate-limiter. 0 disables; max 60000. Complements the reactive WAF detection. |
 
 **When to change timeouts:** Vulnerability scans (`nuclei`, `nikto`, `testssl.sh`)
@@ -1333,15 +1333,31 @@ whatweb, wpscan, dalfox) run as separate processes and do **not** share the
 cookie jar. Pass cookies explicitly via each tool's `cookie` parameter for
 authenticated scanning.
 
-### Scan Spill-to-Disk
+### Scan Persistence and Restart Recovery
 
-Background scans (`launch_scan`) keep output in memory by default. When a
-scan's output exceeds **1 MB** (1,048,576 bytes), it is automatically spilled
-to disk at `{output_dir}/scans/{scan_id}.txt` with `0o600` permissions
-(owner-only read/write). This prevents memory exhaustion from large scan
-outputs (e.g. full nuclei runs) while keeping small outputs fast. The
-`get_scan_results` tool reads from disk transparently when needed, supporting
-the same pagination interface.
+Every background scan (`launch_scan`) is persisted under `{output_dir}/scans/`:
+
+- `{scan_id}.txt` - the scan's terminal output (always written, not just large
+  ones), with `0o600` owner-only permissions.
+- `{scan_id}.json` - metadata (tool, target, status, start/terminal epoch
+  timestamps), written atomically at launch, on every terminal transition,
+  and on cancel.
+
+On server restart, `ScanManager` recovers state from these files:
+
+- **Completed scans come back as-is** with their output attached. Results are
+  never re-run; `get_scan_status`, `get_scan_results`, and `list_scans` work
+  immediately after a restart.
+- **Scans that were running when the server stopped** surface as
+  `failed: "interrupted by server restart"` instead of vanishing - a client
+  polling them gets a definitive answer rather than `scan not found`.
+- **Expired, corrupt, and orphaned files are cleaned up**: scans past
+  `scan_retention_secs` are not resurrected (files deleted), unreadable
+  metadata and crash leftovers (`.json.tmp`) are removed, and outputs without
+  metadata are dropped.
+
+The retention TTL still applies after recovery: an old completed scan ages out
+exactly like one that finished in the current process.
 
 ### Auto-Inline Small Outputs
 

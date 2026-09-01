@@ -29,7 +29,7 @@ Real MCP traffic to the tools - no LLM in the loop, fully deterministic. Targets
 
 ## What It Does
 
-Raven Nest wraps 22 security tools plus Metasploit Framework behind an MCP interface with input validation, output quality assessment, session-aware context budgeting, and configurable safety limits. It handles tool execution, background scan management, vulnerability finding persistence, target discovery tracking, scan diffing, and multi-format report generation (Markdown, JSON, SARIF, HTML). Findings, reports, and scans are also exposed as MCP resources for browsing. 46 MCP endpoints total.
+Raven Nest wraps 22 security tools plus Metasploit Framework behind an MCP interface with input validation, output quality assessment, session-aware context budgeting, and configurable safety limits. It handles tool execution, restart-safe background scans (completed results survive a server restart; interrupted ones surface as failed), vulnerability finding persistence, target discovery tracking, scan diffing, and multi-format report generation (Markdown, JSON, SARIF, HTML). Findings, reports, and scans are also exposed as MCP resources for browsing. 46 MCP endpoints total.
 
 ### Supported Tools
 

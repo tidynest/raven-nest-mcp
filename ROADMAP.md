@@ -41,7 +41,7 @@ Ordered by impact. Unchecked = not started.
   Compare two scans of the same target. Return added/removed ports, services, vulnerabilities. New tool: `diff_scans`.
   *Affected crates:* `raven-core` (scan manager)
 
-- [ ] **Background scan persistence**
+- [x] **Background scan persistence** - *shipped: terminal scans write `{output_dir}/scans/{id}.txt` + `{id}.json` metadata (0o600, atomic); on restart, completed outputs are recovered as-is (never re-run), running scans surface as `failed: interrupted by server restart`, and TTL-expired/corrupt/orphan files are cleaned up.*
   Serialize scan state to disk. On restart, recover completed scan outputs (not re-run, but preserve results). Currently all scan state is in-process memory.
   *Affected crates:* `raven-core` (scan manager)
 

@@ -9,8 +9,8 @@
 //!   and output quality assessment.
 //! - [`safety`] - Input validation (allowlisting, target sanitisation, output
 //!   truncation) that prevents shell injection and resource abuse.
-//! - [`scan_manager`] - Background scan orchestration with concurrency limits
-//!   and memory-spill-to-disk for large outputs.
+//! - [`scan_manager`] - Background scan orchestration with concurrency limits,
+//!   disk-persisted outputs, and restart recovery.
 
 pub mod audit;
 pub mod config;

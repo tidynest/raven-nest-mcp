@@ -5,6 +5,25 @@ on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html) (pre-1.0:
 minor versions may carry feature additions and refinements).
 
+## [Unreleased]
+
+### Added
+- **Background scan persistence.** Terminal background scans now write
+  `{output_dir}/scans/{id}.txt` (output, 0o600) and `{id}.json` metadata
+  (atomic tmp+rename) at launch, on completion/failure, and on cancel. On
+  restart, completed scans are recovered with their output (never re-run),
+  scans interrupted mid-flight surface as `failed: interrupted by server
+  restart`, and TTL-expired, corrupt, and orphaned files are cleaned up.
+  Previously all scan state was in-process memory and lost on restart.
+
+### Changed
+- All terminal scan outputs are written to disk (previously only outputs over
+  1 MB spilled), so results survive restarts; small outputs are still served
+  from RAM in-process and memory fallback remains if the disk write fails.
+- `launch_scan` now registers the scan entry under the same lock as the
+  concurrency-cap check, closing races where a fast tool could complete into
+  an unregistered entry or two launches could both pass the cap.
+
 ## [0.3.0] - 2026-08-31
 
 ### Added
