@@ -66,8 +66,14 @@ max_concurrent_scans = 3
 # (process-wide). Stops back-to-back aggressive tools from tripping a target's
 # WAF/rate-limiter. Default 0 (off). Max 60000. Complements reactive WAF detection.
 # min_exec_gap_ms = 1000
-# Seconds to retain a finished scan before it (and its spilled output) is
-# evicted from the in-memory registry (default 3600 = 1h).
+# Per-target cooldown: minimum milliseconds between launches against the same
+# host, independent of the global gap above. Independent targets proceed in
+# parallel; a single host is never hit faster than this. Targets normalise to
+# their host (URL scheme/port/path dropped); tools without a network target
+# (john, gitleaks, trufflehog) are exempt. Default 0 (off). Max 60000.
+# per_target_min_gap_ms = 500
+# Seconds to retain a finished scan before it (and its output + metadata
+# files) are evicted (default 3600 = 1h).
 # scan_retention_secs = 3600
 # SECURITY: /tmp is world-writable. For production, use a restricted location
 # owned by the service user with mode 0700 (e.g. /var/lib/raven-nest).

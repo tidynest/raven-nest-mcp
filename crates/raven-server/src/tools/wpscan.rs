@@ -43,7 +43,7 @@ pub async fn run(
 
     let mut args = vec![
         "--url".to_string(),
-        req.target,
+        req.target.clone(),
         "--format".into(),
         "json".into(),
         "--no-banner".into(),
@@ -59,9 +59,14 @@ pub async fn run(
     }
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    super::run_and_format(config, "wpscan", &arg_refs, None, |s| {
-        parse_wpscan_json(s, result_limit)
-    })
+    super::run_and_format(
+        config,
+        "wpscan",
+        Some(req.target.as_str()),
+        &arg_refs,
+        None,
+        |s| parse_wpscan_json(s, result_limit),
+    )
     .await
 }
 

@@ -61,7 +61,7 @@ pub async fn run(
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     let timeout = Some(max_time + 30); // grace period beyond max-run-time
-    let result = executor::run(config, "john", &arg_refs, timeout)
+    let result = executor::run(config, "john", None, &arg_refs, timeout)
         .await
         .map_err(crate::error::to_mcp)?;
 

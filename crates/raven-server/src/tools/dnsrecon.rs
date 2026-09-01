@@ -36,7 +36,7 @@ pub async fn run(
     let target_display = req.target.clone();
     let mut args = vec![
         "-d".to_string(),
-        req.target,
+        req.target.clone(),
         "-j".into(),
         "/dev/stdout".into(),
     ];
@@ -59,9 +59,14 @@ pub async fn run(
         peer.map(|p| crate::progress::ProgressTicker::start(p, "dnsrecon".into(), target_display));
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    super::run_and_format(config, "dnsrecon", &arg_refs, req.timeout_secs, |s| {
-        parse_dnsrecon_json(s, result_limit)
-    })
+    super::run_and_format(
+        config,
+        "dnsrecon",
+        Some(req.target.as_str()),
+        &arg_refs,
+        req.timeout_secs,
+        |s| parse_dnsrecon_json(s, result_limit),
+    )
     .await
 }
 

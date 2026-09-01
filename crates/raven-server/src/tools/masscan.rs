@@ -54,7 +54,7 @@ pub async fn run(
     super::validate_port_spec(&req.ports)?;
 
     let args = [
-        req.target,
+        req.target.clone(),
         "-p".to_string(),
         req.ports,
         "--rate".into(),
@@ -63,9 +63,14 @@ pub async fn run(
     ];
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    super::run_and_format(config, "masscan", &arg_refs, None, |s| {
-        parse_masscan_output(s, result_limit)
-    })
+    super::run_and_format(
+        config,
+        "masscan",
+        Some(req.target.as_str()),
+        &arg_refs,
+        None,
+        |s| parse_masscan_output(s, result_limit),
+    )
     .await
 }
 
