@@ -129,14 +129,14 @@ pub struct ExecutionConfig {
     /// Maximum number of background scans that can run simultaneously.
     /// Enforced by [`ScanManager::launch`](crate::scan_manager::ScanManager::launch).
     pub max_concurrent_scans: usize,
-    /// Base directory for scan output files, spilled data, and reports.
+    /// Base directory for scan output files, scan metadata, and reports.
     pub output_dir: String,
     /// Per-tool timeout overrides (seconds). Falls back to `default_timeout_secs`.
     #[serde(default)]
     pub timeouts: HashMap<String, u64>,
     /// Seconds to retain a completed/failed/cancelled scan before it is evicted
-    /// (and its spilled output file deleted). Default 3600 (1h). Bounds the
-    /// otherwise unbounded in-memory scan registry on long-lived servers.
+    /// (and its output and metadata files deleted). Default 3600 (1h). Bounds the
+    /// scan registry and its on-disk footprint on long-lived servers.
     #[serde(default = "default_scan_retention_secs")]
     pub scan_retention_secs: u64,
     /// Max concurrent *synchronous* tool executions, separate from

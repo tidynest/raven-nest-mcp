@@ -5,8 +5,10 @@
 //!
 //! Key design decisions:
 //! - **Concurrency cap** - `max_concurrent_scans` prevents resource exhaustion.
-//! - **Spill-to-disk** - outputs exceeding [`SPILL_THRESHOLD`] (1 MB) are written
-//!   to `{output_dir}/scans/{id}.txt` instead of held in memory.
+//! - **Persistence** - every terminal scan writes `{output_dir}/scans/{id}.txt`
+//!   plus `{id}.json` metadata. After a restart, completed outputs are
+//!   recovered as-is (never re-run) and scans interrupted mid-flight surface
+//!   as failed; both are still evicted by the retention TTL.
 //! - **Auto-inline** - `raven-server::tools::scans::status` embeds small outputs
 //!   directly in the status response, saving an extra `get_scan_results` call.
 //!
@@ -16,16 +18,19 @@
 use crate::config::RavenConfig;
 use crate::error::PentestError;
 use crate::executor;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
+    io::Write,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
-    time::Instant,
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tokio::task::JoinHandle;
 use uuid::Uuid;
 
 /// Lifecycle state of a background scan.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ScanStatus {
     Running,
     Completed,
@@ -33,13 +38,12 @@ pub enum ScanStatus {
     Cancelled,
 }
 
-/// Outputs larger than this are spilled to disk to prevent unbounded memory growth.
-const SPILL_THRESHOLD: usize = 1_048_576; // 1 MB
-
-/// Where the scan output lives - either in-process memory or a file on disk.
+/// Where the scan output lives - on disk (`{output_dir}/scans/{id}.txt`, the
+/// normal terminal path so results survive a restart) or in-process memory
+/// (fallback when the disk write failed).
 enum ScanOutput {
     Memory(String),
-    Disk(std::path::PathBuf),
+    Disk(PathBuf),
 }
 
 impl ScanOutput {
@@ -69,6 +73,68 @@ pub struct ScanStatusInfo {
     pub output_chars: Option<usize>,
 }
 
+/// On-disk metadata for one scan (`{output_dir}/scans/{id}.json`), enabling
+/// recovery after a restart: completed outputs are preserved as-is and scans
+/// still running when the process died surface as failed instead of vanishing.
+#[derive(Debug, Serialize, Deserialize)]
+struct PersistedScan {
+    tool: String,
+    target: String,
+    status: ScanStatus,
+    /// Unix epoch seconds when the scan was launched.
+    started_epoch: u64,
+    /// Unix epoch seconds when the scan reached a terminal state.
+    terminal_epoch: Option<u64>,
+}
+
+/// Current Unix time in whole seconds (0 if the clock is before the epoch).
+fn epoch_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// Rebuild an [`Instant`] from an epoch-seconds timestamp for a recovered
+/// entry. Time elapsed before `now` is subtracted; clock skew clamps to `now`.
+fn instant_from_epoch(epoch: u64, now_epoch: u64) -> Instant {
+    Instant::now()
+        .checked_sub(Duration::from_secs(now_epoch.saturating_sub(epoch)))
+        .unwrap_or_else(Instant::now)
+}
+
+/// Write scan output to `{dir}/{id}.txt` with owner-only permissions.
+fn write_scan_output(dir: &Path, id: &str, content: &str) -> std::io::Result<PathBuf> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let _ = crate::safety::ensure_dir_secure(dir);
+    let path = dir.join(format!("{id}.txt"));
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&path)
+        .and_then(|mut f| f.write_all(content.as_bytes()))?;
+    Ok(path)
+}
+
+/// Atomically write scan metadata to `{dir}/{id}.json` (tmp + rename, 0o600).
+/// A crash mid-write leaves only the `.tmp` file, which recovery deletes.
+fn write_scan_meta(dir: &Path, id: &str, meta: &PersistedScan) -> std::io::Result<()> {
+    use std::os::unix::fs::OpenOptionsExt;
+    let _ = crate::safety::ensure_dir_secure(dir);
+    let tmp = dir.join(format!("{id}.json.tmp"));
+    let json = serde_json::to_vec(meta).map_err(std::io::Error::other)?;
+    std::fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&tmp)
+        .and_then(|mut f| f.write_all(&json))?;
+    std::fs::rename(&tmp, dir.join(format!("{id}.json")))
+}
+
 /// Internal bookkeeping for a single scan.
 struct ScanEntry {
     tool: String,
@@ -81,6 +147,9 @@ struct ScanEntry {
     /// When the scan reached a terminal state (completed/failed/cancelled).
     /// `None` while running. Drives TTL eviction in [`ScanManager::prune_expired`].
     terminal_at: Option<Instant>,
+    /// Launch time as epoch seconds, kept so terminal transitions can
+    /// re-persist metadata without recomputing it.
+    started_epoch: u64,
 }
 
 /// Thread-safe background scan manager.
@@ -105,7 +174,7 @@ impl ScanManager {
     }
 
     /// Evict terminal (completed/failed/cancelled) scans older than the retention
-    /// TTL, deleting any spilled output file. Runs lazily under the caller's lock
+    /// TTL, deleting its output and metadata files. Runs lazily under the caller's lock
     /// on launch/status/list - no background timer. Running scans are never evicted.
     fn prune_expired(&self, scans: &mut HashMap<String, ScanEntry>) {
         let retention = self.config.execution.scan_retention_secs;
@@ -118,11 +187,13 @@ impl ScanManager {
             })
             .map(|(id, _)| id.clone())
             .collect();
+        let scan_dir = self.scan_dir();
         for id in &expired {
-            if let Some(entry) = scans.remove(id)
-                && let Some(ScanOutput::Disk(path)) = entry.output
-            {
-                let _ = std::fs::remove_file(path);
+            if let Some(entry) = scans.remove(id) {
+                if let Some(ScanOutput::Disk(path)) = entry.output {
+                    let _ = std::fs::remove_file(path);
+                }
+                let _ = std::fs::remove_file(scan_dir.join(format!("{id}.json")));
             }
         }
         if !expired.is_empty() {
@@ -132,10 +203,122 @@ impl ScanManager {
 
     pub fn new(config: Arc<RavenConfig>) -> Self {
         let max_concurrent = config.execution.max_concurrent_scans;
-        Self {
+        let manager = Self {
             scans: Arc::new(Mutex::new(HashMap::new())),
             config,
             max_concurrent,
+        };
+        manager.recover();
+        manager
+    }
+
+    /// Directory holding scan outputs and metadata: `{output_dir}/scans`.
+    fn scan_dir(&self) -> PathBuf {
+        Path::new(&self.config.execution.output_dir).join("scans")
+    }
+
+    /// Write `{id}.json` metadata so the scan survives a restart. Best effort:
+    /// failures are logged, never fatal.
+    fn persist_meta(&self, id: &str, meta: &PersistedScan) {
+        if let Err(e) = write_scan_meta(&self.scan_dir(), id, meta) {
+            tracing::warn!(
+                "scan {id}: metadata write failed ({e}) - it will not survive a restart"
+            );
+        }
+    }
+
+    /// Rebuild scan state from `{output_dir}/scans/*.json` left by a previous
+    /// process. Terminal scans come back with their output file attached,
+    /// `Running` entries (whose process died) are rewritten as failed, and
+    /// files past the retention TTL, unreadable metadata, crash leftovers, and
+    /// orphaned outputs are removed.
+    fn recover(&self) {
+        let scan_dir = self.scan_dir();
+        let Ok(read_dir) = std::fs::read_dir(&scan_dir) else {
+            return; // fresh install - nothing to recover
+        };
+        let now_epoch = epoch_secs();
+        let mut scans = match self.lock_scans() {
+            Ok(guard) => guard,
+            Err(_) => return,
+        };
+        for file in read_dir.flatten() {
+            let path = file.path();
+            if !path.is_file() {
+                continue;
+            }
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            // Crash leftover from an interrupted atomic rename.
+            if name.ends_with(".json.tmp") {
+                let _ = std::fs::remove_file(&path);
+                continue;
+            }
+            if let Some(id) = name.strip_suffix(".json").map(str::to_owned) {
+                let meta = std::fs::read(&path)
+                    .ok()
+                    .and_then(|b| serde_json::from_slice::<PersistedScan>(&b).ok());
+                let Some(meta) = meta else {
+                    tracing::warn!("scan {id}: unreadable metadata - removing");
+                    let _ = std::fs::remove_file(&path);
+                    let _ = std::fs::remove_file(scan_dir.join(format!("{id}.txt")));
+                    continue;
+                };
+                // A scan still marked Running died with the previous process;
+                // it is never re-run, so surface it as failed.
+                let (status, terminal_epoch, interrupted) = match meta.status {
+                    ScanStatus::Running => (
+                        ScanStatus::Failed("interrupted by server restart".into()),
+                        now_epoch,
+                        true,
+                    ),
+                    other => (other, meta.terminal_epoch.unwrap_or(now_epoch), false),
+                };
+                // Don't resurrect scans already past the retention TTL.
+                if now_epoch.saturating_sub(terminal_epoch)
+                    >= self.config.execution.scan_retention_secs
+                {
+                    let _ = std::fs::remove_file(&path);
+                    let _ = std::fs::remove_file(scan_dir.join(format!("{id}.txt")));
+                    continue;
+                }
+                let txt = scan_dir.join(format!("{id}.txt"));
+                let output = (status == ScanStatus::Completed && txt.is_file())
+                    .then_some(ScanOutput::Disk(txt));
+                if interrupted {
+                    tracing::info!("scan {id}: recovered as failed (was running at shutdown)");
+                    self.persist_meta(
+                        &id,
+                        &PersistedScan {
+                            tool: meta.tool.clone(),
+                            target: meta.target.clone(),
+                            status: status.clone(),
+                            started_epoch: meta.started_epoch,
+                            terminal_epoch: Some(terminal_epoch),
+                        },
+                    );
+                }
+                scans.insert(
+                    id,
+                    ScanEntry {
+                        tool: meta.tool,
+                        target: meta.target,
+                        status,
+                        output,
+                        handle: None,
+                        started_at: instant_from_epoch(meta.started_epoch, now_epoch),
+                        terminal_at: Some(instant_from_epoch(terminal_epoch, now_epoch)),
+                        started_epoch: meta.started_epoch,
+                    },
+                );
+            } else if let Some(id) = name.strip_suffix(".txt")
+                && !scan_dir.join(format!("{id}.json")).is_file()
+            {
+                // Output without metadata is unreachable (pre-persistence spill
+                // or failed metadata write) - remove it.
+                let _ = std::fs::remove_file(&path);
+            }
         }
     }
 
@@ -243,7 +426,15 @@ impl ScanManager {
         crate::safety::check_allowlist(tool, &self.config.safety)?;
         crate::safety::validate_target(target)?;
 
-        // Evict expired scans, then enforce the concurrency limit
+        let mut arg_strings = Self::default_args(tool, target);
+        Self::clamp_to_caps(tool, &mut arg_strings, &self.config.safety);
+
+        let id = Uuid::new_v4().to_string();
+        let started_epoch = epoch_secs();
+
+        // Evict expired scans, enforce the concurrency limit, and register the
+        // entry under one lock hold - a concurrent launch can't squeeze past
+        // the cap, and the spawned task always finds its entry registered.
         let mut scans = self.lock_scans()?;
         self.prune_expired(&mut scans);
         let running = scans
@@ -256,93 +447,6 @@ impl ScanManager {
                 self.max_concurrent
             )));
         }
-        drop(scans);
-
-        let id = Uuid::new_v4().to_string();
-        let config = self.config.clone();
-        let tool_owned = tool.to_string();
-        let scans_for_task = self.scans.clone();
-        let scan_id = id.clone();
-
-        let mut arg_strings = Self::default_args(tool, target);
-        Self::clamp_to_caps(tool, &mut arg_strings, &self.config.safety);
-
-        // Spawn the scan as a background tokio task
-        let handle = tokio::spawn(async move {
-            let arg_refs: Vec<&str> = arg_strings.iter().map(|s| s.as_str()).collect();
-            let result =
-                executor::run_unmetered(&config, &tool_owned, &arg_refs, timeout_secs).await;
-
-            let mut scans = match scans_for_task.lock() {
-                Ok(guard) => guard,
-                Err(_) => {
-                    tracing::error!("scan state lock poisoned - scan {scan_id} result lost");
-                    return;
-                }
-            };
-            if let Some(entry) = scans.get_mut(&scan_id) {
-                // Don't overwrite a cancellation
-                if entry.status == ScanStatus::Cancelled {
-                    return;
-                }
-                match result {
-                    Ok(r) => {
-                        entry.status = ScanStatus::Completed;
-                        entry.terminal_at = Some(Instant::now());
-                        let output_str = if r.success {
-                            r.stdout
-                        } else {
-                            format!("{}\n{}", r.stdout, r.stderr)
-                        };
-
-                        // Spill large outputs to disk to prevent unbounded memory growth
-                        entry.output = Some(if output_str.len() > SPILL_THRESHOLD {
-                            let scan_dir =
-                                std::path::Path::new(&config.execution.output_dir).join("scans");
-                            let _ = crate::safety::ensure_dir_secure(&scan_dir);
-                            let path = scan_dir.join(format!("{scan_id}.txt"));
-                            let write_result = {
-                                use std::os::unix::fs::OpenOptionsExt;
-                                std::fs::OpenOptions::new()
-                                    .write(true)
-                                    .create(true)
-                                    .truncate(true)
-                                    .mode(0o600)
-                                    .open(&path)
-                                    .and_then(|mut f| {
-                                        use std::io::Write;
-                                        f.write_all(output_str.as_bytes())
-                                    })
-                            };
-                            match write_result {
-                                Ok(()) => {
-                                    tracing::info!(
-                                        "scan {scan_id}: spilled {}B to disk",
-                                        output_str.len()
-                                    );
-                                    ScanOutput::Disk(path)
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        "scan {scan_id}: disk spill failed ({e}), keeping in memory"
-                                    );
-                                    ScanOutput::Memory(output_str)
-                                }
-                            }
-                        } else {
-                            ScanOutput::Memory(output_str)
-                        });
-                    }
-                    Err(e) => {
-                        entry.status = ScanStatus::Failed(e.to_string());
-                        entry.terminal_at = Some(Instant::now());
-                    }
-                }
-            }
-        });
-
-        // Register the scan entry so it can be polled
-        let mut scans = self.lock_scans()?;
         scans.insert(
             id.clone(),
             ScanEntry {
@@ -350,11 +454,94 @@ impl ScanManager {
                 target: target.to_string(),
                 status: ScanStatus::Running,
                 output: None,
-                handle: Some(handle),
+                handle: None,
                 started_at: Instant::now(),
                 terminal_at: None,
+                started_epoch,
             },
         );
+        drop(scans);
+
+        // Persist as Running before the task exists: fast tools can complete
+        // and write terminal metadata before `launch` returns, and a stale
+        // Running copy written after that would lie to recovery.
+        self.persist_meta(
+            &id,
+            &PersistedScan {
+                tool: tool.to_string(),
+                target: target.to_string(),
+                status: ScanStatus::Running,
+                started_epoch,
+                terminal_epoch: None,
+            },
+        );
+
+        // Spawn the scan as a background tokio task
+        let manager = self.clone();
+        let scan_id = id.clone();
+        let tool_owned = tool.to_string();
+        let handle = tokio::spawn(async move {
+            let arg_refs: Vec<&str> = arg_strings.iter().map(|s| s.as_str()).collect();
+            let result =
+                executor::run_unmetered(&manager.config, &tool_owned, &arg_refs, timeout_secs)
+                    .await;
+
+            let (status, output) = match result {
+                Ok(r) => {
+                    let output_str = if r.success {
+                        r.stdout
+                    } else {
+                        format!("{}\n{}", r.stdout, r.stderr)
+                    };
+                    // Persist every terminal output to disk (not just large
+                    // spills, as before) so results survive a restart.
+                    match write_scan_output(&manager.scan_dir(), &scan_id, &output_str) {
+                        Ok(path) => (ScanStatus::Completed, Some(ScanOutput::Disk(path))),
+                        Err(e) => {
+                            tracing::warn!(
+                                "scan {scan_id}: output write failed ({e}), keeping in memory"
+                            );
+                            (ScanStatus::Completed, Some(ScanOutput::Memory(output_str)))
+                        }
+                    }
+                }
+                Err(e) => (ScanStatus::Failed(e.to_string()), None),
+            };
+
+            let mut scans = match manager.lock_scans() {
+                Ok(guard) => guard,
+                Err(_) => {
+                    tracing::error!("scan state lock poisoned - scan {scan_id} result lost");
+                    return;
+                }
+            };
+            // Don't overwrite a cancellation; take the metadata fields while
+            // the entry is locked, persist after releasing it.
+            let Some(entry) = scans.get_mut(&scan_id) else {
+                return;
+            };
+            if entry.status == ScanStatus::Cancelled {
+                return;
+            }
+            entry.status = status.clone();
+            entry.terminal_at = Some(Instant::now());
+            entry.output = output;
+            let meta = PersistedScan {
+                tool: entry.tool.clone(),
+                target: entry.target.clone(),
+                status,
+                started_epoch: entry.started_epoch,
+                terminal_epoch: Some(epoch_secs()),
+            };
+            drop(scans);
+            manager.persist_meta(&scan_id, &meta);
+        });
+
+        // Attach the handle for cancellation. The task may already have
+        // finished; cancelling a terminal entry is a no-op either way.
+        if let Some(entry) = self.lock_scans()?.get_mut(&id) {
+            entry.handle = Some(handle);
+        }
 
         Ok(id)
     }
@@ -394,7 +581,7 @@ impl ScanManager {
             Some(ScanOutput::Memory(s)) => Ok(Some(s.clone())),
             Some(ScanOutput::Disk(path)) => std::fs::read_to_string(path)
                 .map(Some)
-                .map_err(|e| PentestError::CommandFailed(format!("read spilled output: {e}"))),
+                .map_err(|e| PentestError::CommandFailed(format!("read scan output: {e}"))),
         }
     }
 
@@ -415,15 +602,15 @@ impl ScanManager {
         let content = match &entry.output {
             None => return Ok(None),
             Some(ScanOutput::Memory(s)) => std::borrow::Cow::Borrowed(s.as_str()),
-            Some(ScanOutput::Disk(path)) => {
-                std::borrow::Cow::Owned(std::fs::read_to_string(path).map_err(|e| {
-                    PentestError::CommandFailed(format!("read spilled output: {e}"))
-                })?)
-            }
+            Some(ScanOutput::Disk(path)) => std::borrow::Cow::Owned(
+                std::fs::read_to_string(path)
+                    .map_err(|e| PentestError::CommandFailed(format!("read scan output: {e}")))?,
+            ),
         };
 
         // Char-boundary slicing without materialising the whole output as a
-        // Vec<char> (a large spill would double its size in memory otherwise).
+        // Vec<char> (a large disk-backed output would double its size in memory
+        // otherwise).
         let Some((start, _)) = content.char_indices().nth(offset) else {
             return Ok(Some(String::new())); // offset at/past the end
         };
@@ -444,9 +631,18 @@ impl ScanManager {
         if entry.status == ScanStatus::Running {
             entry.status = ScanStatus::Cancelled;
             entry.terminal_at = Some(Instant::now());
+            let meta = PersistedScan {
+                tool: entry.tool.clone(),
+                target: entry.target.clone(),
+                status: ScanStatus::Cancelled,
+                started_epoch: entry.started_epoch,
+                terminal_epoch: Some(epoch_secs()),
+            };
             if let Some(handle) = entry.handle.take() {
                 handle.abort();
             }
+            drop(scans);
+            self.persist_meta(id, &meta);
         }
         Ok(())
     }
@@ -522,11 +718,6 @@ mod tests {
     }
 
     #[test]
-    fn spill_threshold_is_one_megabyte() {
-        assert_eq!(SPILL_THRESHOLD, 1_048_576);
-    }
-
-    #[test]
     fn scan_status_info_none_output_for_running() {
         let info = ScanStatusInfo {
             id: "test-id".into(),
@@ -554,6 +745,7 @@ mod tests {
                 handle: None,
                 started_at: Instant::now(),
                 terminal_at: Some(Instant::now()),
+                started_epoch: epoch_secs(),
             },
         );
 
@@ -587,6 +779,7 @@ mod tests {
             handle: None,
             started_at: Instant::now(),
             terminal_at,
+            started_epoch: epoch_secs(),
         }
     }
 
@@ -627,6 +820,32 @@ mod tests {
             scans.contains_key("fresh"),
             "recent terminal scan retained within TTL"
         );
+    }
+
+    #[test]
+    fn prune_removes_metadata_alongside_output() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut cfg = RavenConfig::default();
+        cfg.execution.scan_retention_secs = 0; // evict terminal scans immediately
+        cfg.execution.output_dir = dir.path().to_string_lossy().into_owned();
+        let mgr = ScanManager::new(Arc::new(cfg));
+        let scan_dir = dir.path().join("scans");
+        std::fs::create_dir_all(&scan_dir).unwrap();
+        let txt = scan_dir.join("t.txt");
+        std::fs::write(&txt, "out").unwrap();
+        std::fs::write(scan_dir.join("t.json"), "{}").unwrap();
+        let mut scans = mgr.scans.lock().unwrap();
+        scans.insert(
+            "t".into(),
+            ScanEntry {
+                output: Some(ScanOutput::Disk(txt)),
+                ..entry(ScanStatus::Completed, Some(Instant::now()))
+            },
+        );
+        mgr.prune_expired(&mut scans);
+        assert!(!scans.contains_key("t"));
+        assert!(!scan_dir.join("t.txt").exists(), "output file deleted");
+        assert!(!scan_dir.join("t.json").exists(), "metadata file deleted");
     }
 
     #[test]
@@ -745,6 +964,10 @@ mod tests {
         );
         let out = mgr.output(&id).unwrap().expect("completed scan has output");
         assert!(out.contains("raven-probe"), "stdout captured: {out:?}");
+        // Terminal scans persist to disk for restart recovery.
+        let scan_dir = dir.path().join("scans");
+        assert!(scan_dir.join(format!("{id}.txt")).is_file());
+        assert!(scan_dir.join(format!("{id}.json")).is_file());
     }
 
     #[tokio::test]
@@ -782,5 +1005,103 @@ mod tests {
             "second launch must hit the cap: {second:?}"
         );
         mgr.cancel(&id).unwrap(); // stop the held sleep
+    }
+
+    // --- persistence across restarts ---
+    // Dropping the manager (and its tokio task) simulates a hard stop; a fresh
+    // manager on the same output dir must rebuild state from disk alone.
+
+    #[tokio::test]
+    async fn completed_scan_survives_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = Arc::new(proc_config(dir.path(), 3));
+        let id = {
+            let mgr = ScanManager::new(Arc::clone(&cfg));
+            let id = mgr.launch("echo", "restart-probe", None).unwrap();
+            assert!(wait_status(&mgr, &id, ScanStatus::Completed).await);
+            id
+        };
+        let revived = ScanManager::new(Arc::clone(&cfg));
+        assert_eq!(revived.status(&id).unwrap(), Some(ScanStatus::Completed));
+        let out = revived
+            .output(&id)
+            .unwrap()
+            .expect("output recovered from disk");
+        assert!(out.contains("restart-probe"));
+        assert!(revived.list().unwrap().iter().any(|s| s.id == id));
+    }
+
+    #[tokio::test]
+    async fn restart_fails_scan_that_was_running() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = Arc::new(proc_config(dir.path(), 3));
+        let id = {
+            let mgr = ScanManager::new(Arc::clone(&cfg));
+            mgr.launch("sleep", "60", None).unwrap()
+        };
+        let revived = ScanManager::new(Arc::clone(&cfg));
+        match revived.status(&id).unwrap() {
+            Some(ScanStatus::Failed(m)) => assert!(m.contains("restart"), "{m}"),
+            other => panic!("expected restart failure, got {other:?}"),
+        }
+        // The rewrite is persisted: a second restart keeps it failed.
+        drop(revived);
+        let again = ScanManager::new(cfg);
+        assert!(matches!(
+            again.status(&id).unwrap(),
+            Some(ScanStatus::Failed(_))
+        ));
+    }
+
+    #[tokio::test]
+    async fn cancelled_state_survives_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = Arc::new(proc_config(dir.path(), 3));
+        let id = {
+            let mgr = ScanManager::new(Arc::clone(&cfg));
+            let id = mgr.launch("sleep", "5", None).unwrap();
+            mgr.cancel(&id).unwrap();
+            id
+        };
+        let revived = ScanManager::new(cfg);
+        assert_eq!(revived.status(&id).unwrap(), Some(ScanStatus::Cancelled));
+    }
+
+    #[test]
+    fn recovery_cleans_corrupt_and_orphaned_files() {
+        let dir = tempfile::tempdir().unwrap();
+        let scan_dir = dir.path().join("scans");
+        std::fs::create_dir_all(&scan_dir).unwrap();
+        std::fs::write(scan_dir.join("bad.json"), "{not json").unwrap();
+        std::fs::write(scan_dir.join("bad.txt"), "partial").unwrap();
+        std::fs::write(scan_dir.join("crash.json.tmp"), "{}").unwrap();
+        std::fs::write(scan_dir.join("orphan.txt"), "no metadata").unwrap();
+        let mgr = ScanManager::new(Arc::new(proc_config(dir.path(), 3)));
+        assert!(mgr.list().unwrap().is_empty(), "nothing recoverable");
+        assert!(!scan_dir.join("bad.json").exists());
+        assert!(!scan_dir.join("bad.txt").exists());
+        assert!(!scan_dir.join("crash.json.tmp").exists());
+        assert!(!scan_dir.join("orphan.txt").exists());
+    }
+
+    #[test]
+    fn recovery_skips_scans_past_retention() {
+        let dir = tempfile::tempdir().unwrap();
+        let scan_dir = dir.path().join("scans");
+        std::fs::create_dir_all(&scan_dir).unwrap();
+        let now = epoch_secs();
+        let stale = serde_json::json!({
+            "tool": "nmap", "target": "example.com", "status": "Completed",
+            "started_epoch": now - 7200, "terminal_epoch": now - 7200,
+        });
+        std::fs::write(scan_dir.join("stale.json"), stale.to_string()).unwrap();
+        std::fs::write(scan_dir.join("stale.txt"), "old output").unwrap();
+        let mgr = ScanManager::new(Arc::new(proc_config(dir.path(), 3)));
+        assert!(
+            mgr.list().unwrap().is_empty(),
+            "scan past TTL not resurrected"
+        );
+        assert!(!scan_dir.join("stale.json").exists());
+        assert!(!scan_dir.join("stale.txt").exists());
     }
 }

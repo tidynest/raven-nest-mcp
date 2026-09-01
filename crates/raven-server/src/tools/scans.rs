@@ -19,7 +19,7 @@ const AUTO_INLINE_LIMIT: usize = 10_000;
 const DEFAULT_RESULTS_LIMIT: usize = 10_000;
 
 /// Hard cap on characters per `get_scan_results` page, regardless of what the
-/// client asks for. Bounds slicing work and response size on large spills.
+/// client asks for. Bounds slicing work and response size on large outputs.
 const MAX_RESULTS_LIMIT: usize = 100_000;
 
 /// Resolve the client-supplied page limit to the effective value.
@@ -160,8 +160,8 @@ pub fn results(
     req: ScanResultsRequest,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     let offset = req.offset.unwrap_or(0);
-    // Clamp the client-supplied limit: spilled outputs can be hundreds of MB,
-    // and an unbounded limit would materialise the whole thing before slicing.
+    // Clamp the client-supplied limit: disk-backed outputs can be hundreds of
+    // MB, and an unbounded limit would materialise the whole thing before slicing.
     let limit = clamped_limit(req.limit);
 
     let output = manager
