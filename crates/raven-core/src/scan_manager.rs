@@ -480,11 +480,17 @@ impl ScanManager {
         let manager = self.clone();
         let scan_id = id.clone();
         let tool_owned = tool.to_string();
+        let target_owned = target.to_string();
         let handle = tokio::spawn(async move {
             let arg_refs: Vec<&str> = arg_strings.iter().map(|s| s.as_str()).collect();
-            let result =
-                executor::run_unmetered(&manager.config, &tool_owned, &arg_refs, timeout_secs)
-                    .await;
+            let result = executor::run_unmetered(
+                &manager.config,
+                &tool_owned,
+                Some(target_owned.as_str()),
+                &arg_refs,
+                timeout_secs,
+            )
+            .await;
 
             let (status, output) = match result {
                 Ok(r) => {

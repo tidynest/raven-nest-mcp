@@ -33,7 +33,7 @@ pub async fn run(
 
     let mut args = vec![
         "url".to_string(),
-        req.target,
+        req.target.clone(),
         "--silence".into(),
         "--format".into(),
         "json".into(),
@@ -47,9 +47,15 @@ pub async fn run(
     }
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let result = executor::run(config, "dalfox", &arg_refs, req.timeout_secs)
-        .await
-        .map_err(crate::error::to_mcp)?;
+    let result = executor::run(
+        config,
+        "dalfox",
+        Some(req.target.as_str()),
+        &arg_refs,
+        req.timeout_secs,
+    )
+    .await
+    .map_err(crate::error::to_mcp)?;
 
     let findings = if result.success {
         crate::tools::extract::extract_dalfox(&result.stdout)

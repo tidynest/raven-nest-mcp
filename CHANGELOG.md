@@ -24,6 +24,15 @@ minor versions may carry feature additions and refinements).
   concurrency-cap check, closing races where a fast tool could complete into
   an unregistered entry or two launches could both pass the cap.
 
+### Added
+- **Per-target rate limiting.** New `[execution] per_target_min_gap_ms`
+  (default 0, max 60000) spaces tool launches against the same host while
+  independent targets proceed in parallel, complementing the global
+  `min_exec_gap_ms`. Targets normalise to their bare host (URL scheme, port,
+  and path dropped); applies to all subprocess tools that take a network
+  target, background scans, and `http_request`. Tools without a network
+  target (john, gitleaks, trufflehog) are exempt.
+
 ## [0.3.0] - 2026-08-31
 
 ### Added

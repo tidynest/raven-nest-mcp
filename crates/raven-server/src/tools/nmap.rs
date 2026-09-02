@@ -81,10 +81,10 @@ pub async fn run(
         args.push(ports.clone());
     }
 
-    args.push(req.target);
+    args.push(req.target.clone());
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let result = executor::run(config, "nmap", &arg_refs, None)
+    let result = executor::run(config, "nmap", Some(req.target.as_str()), &arg_refs, None)
         .await
         .map_err(crate::error::to_mcp)?;
 

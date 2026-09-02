@@ -79,7 +79,7 @@ pub async fn run(
     let wordlist = req.wordlist.as_deref().unwrap_or(DEFAULT_WORDLIST);
     let mut args = vec![
         "-u".to_string(),
-        req.url,
+        req.url.clone(),
         "-w".into(),
         wordlist.into(),
         "-noninteractive".into(),
@@ -126,9 +126,14 @@ pub async fn run(
     }
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    super::run_and_format(config, "ffuf", &arg_refs, None, |s| {
-        parse_ffuf_output(s, result_limit)
-    })
+    super::run_and_format(
+        config,
+        "ffuf",
+        Some(req.url.as_str()),
+        &arg_refs,
+        None,
+        |s| parse_ffuf_output(s, result_limit),
+    )
     .await
 }
 

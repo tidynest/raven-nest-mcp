@@ -185,7 +185,7 @@ Additional hardening:
 - **Finding ID validation** -- finding get/delete operations require valid UUID format, preventing path traversal
 - **Engagement scope** -- an optional authorization allowlist (`[scope]`): when enabled, every target must match an allowed CIDR/domain and must not match a denied one (deny wins); loopback is allowed unless disabled. `http_request` re-validates each redirect hop against the scope, so a redirect cannot escape it. Off by default
 - **Audit logging** -- every tool execution is appended to `{output_dir}/audit.log` with the tool, target, and redacted arguments
-- **Proactive cooldown** -- an optional `min_exec_gap_ms` spaces out consecutive tool launches so back-to-back aggressive tools don't trip a target's WAF or rate-limiter; complements the reactive WAF/rate-limit detection. Off by default
+- **Proactive cooldown** -- an optional `min_exec_gap_ms` spaces out consecutive tool launches so back-to-back aggressive tools don't trip a target's WAF or rate-limiter, and `per_target_min_gap_ms` does the same per host while independent targets proceed in parallel; complements the reactive WAF/rate-limit detection. Both off by default
 
 Metasploit integration adds a 5-layer safety model: disabled by default, per-tool allowlisting, path-boundary module blocklist, exploit confirmation gate (double-call to execute), and session command filtering. Passwords are redacted from error messages, and TLS certificate bypass is restricted to localhost connections. See [docs/METASPLOIT.md](docs/METASPLOIT.md).
 

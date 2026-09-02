@@ -31,7 +31,12 @@ pub async fn run(
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
-    let mut args = vec!["-d".to_string(), req.target, "-silent".into(), "-oJ".into()];
+    let mut args = vec![
+        "-d".to_string(),
+        req.target.clone(),
+        "-silent".into(),
+        "-oJ".into(),
+    ];
 
     if let Some(ref sources) = req.sources {
         args.extend(["-sources".into(), sources.clone()]);
@@ -41,9 +46,14 @@ pub async fn run(
     }
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    super::run_and_format(config, "subfinder", &arg_refs, req.timeout_secs, |s| {
-        parse_subfinder_jsonl(s, result_limit)
-    })
+    super::run_and_format(
+        config,
+        "subfinder",
+        Some(req.target.as_str()),
+        &arg_refs,
+        req.timeout_secs,
+        |s| parse_subfinder_jsonl(s, result_limit),
+    )
     .await
 }
 

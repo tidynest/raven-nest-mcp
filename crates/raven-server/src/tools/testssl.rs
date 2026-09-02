@@ -52,12 +52,18 @@ pub async fn run(
         }
     }
 
-    args.push(req.target);
+    args.push(req.target.clone());
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let result = executor::run(config, "testssl.sh", &arg_refs, None)
-        .await
-        .map_err(crate::error::to_mcp)?;
+    let result = executor::run(
+        config,
+        "testssl.sh",
+        Some(req.target.as_str()),
+        &arg_refs,
+        None,
+    )
+    .await
+    .map_err(crate::error::to_mcp)?;
 
     let findings = if result.success {
         crate::tools::extract::extract_testssl(&result.stdout)

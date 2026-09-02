@@ -120,6 +120,9 @@ fn default_max_concurrent_execs() -> usize {
 fn default_min_exec_gap_ms() -> u64 {
     0
 }
+fn default_per_target_min_gap_ms() -> u64 {
+    0
+}
 
 /// Execution environment: timeouts, concurrency, and filesystem paths.
 #[derive(Clone, Debug, Deserialize)]
@@ -150,6 +153,14 @@ pub struct ExecutionConfig {
     /// (disabled - opt in). Complements the reactive WAF detection in the executor.
     #[serde(default = "default_min_exec_gap_ms")]
     pub min_exec_gap_ms: u64,
+    /// Minimum gap (milliseconds) between launches against the same target
+    /// host. Unlike `min_exec_gap_ms` (one global launch queue), this keys
+    /// the cooldown per host: independent targets proceed in parallel while
+    /// a single host is never hit faster than this. Targets are normalised
+    /// to their host (URL scheme/port/path dropped); tools without a network
+    /// target (john, gitleaks, trufflehog) are exempt. Default 0 (off).
+    #[serde(default = "default_per_target_min_gap_ms")]
+    pub per_target_min_gap_ms: u64,
 }
 
 /// Optional proxy configuration injected into tool subprocesses.
@@ -316,6 +327,9 @@ impl ExecutionConfig {
         }
         if self.min_exec_gap_ms > 60_000 {
             return Err("min_exec_gap_ms must be <= 60000 (60s)".into());
+        }
+        if self.per_target_min_gap_ms > 60_000 {
+            return Err("per_target_min_gap_ms must be <= 60000 (60s)".into());
         }
         Ok(())
     }
@@ -498,6 +512,7 @@ impl Default for RavenConfig {
                 scan_retention_secs: default_scan_retention_secs(),
                 max_concurrent_execs: default_max_concurrent_execs(),
                 min_exec_gap_ms: default_min_exec_gap_ms(),
+                per_target_min_gap_ms: default_per_target_min_gap_ms(),
             },
             network: NetworkConfig::default(),
             metasploit: MetasploitConfig::default(),
@@ -520,6 +535,7 @@ mod tests {
             scan_retention_secs: default_scan_retention_secs(),
             max_concurrent_execs: default_max_concurrent_execs(),
             min_exec_gap_ms: default_min_exec_gap_ms(),
+            per_target_min_gap_ms: default_per_target_min_gap_ms(),
         }
     }
 
@@ -698,6 +714,18 @@ mod tests {
         assert!(cfg.validate().is_ok());
         cfg.safety.sqlmap_max_level = 99;
         assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn execution_validate_rejects_oversized_gaps() {
+        let mut cfg = RavenConfig::default();
+        cfg.execution.per_target_min_gap_ms = 60_001;
+        assert!(cfg.validate().is_err());
+        cfg.execution.per_target_min_gap_ms = 60_000;
+        cfg.execution.min_exec_gap_ms = 60_001;
+        assert!(cfg.validate().is_err());
+        cfg.execution.min_exec_gap_ms = 60_000;
+        assert!(cfg.validate().is_ok());
     }
 
     #[test]

@@ -65,7 +65,7 @@ pub async fn run(
     let wordlist = req.wordlist.as_deref().unwrap_or(DEFAULT_WORDLIST);
     let mut args = vec![
         "-u".to_string(),
-        req.target,
+        req.target.clone(),
         "-w".into(),
         wordlist.into(),
         "--no-state".into(),
@@ -85,9 +85,15 @@ pub async fn run(
     }
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let result = executor::run(config, "feroxbuster", &arg_refs, None)
-        .await
-        .map_err(crate::error::to_mcp)?;
+    let result = executor::run(
+        config,
+        "feroxbuster",
+        Some(req.target.as_str()),
+        &arg_refs,
+        None,
+    )
+    .await
+    .map_err(crate::error::to_mcp)?;
 
     let output = if result.success {
         let mut out = parse_feroxbuster_output(&result.stdout, result_limit)
