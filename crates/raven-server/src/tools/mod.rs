@@ -26,11 +26,12 @@ use rmcp::model::{CallToolResult, Content};
 pub(crate) async fn run_and_format(
     config: &RavenConfig,
     tool: &str,
+    target: Option<&str>,
     args: &[&str],
     timeout: Option<u64>,
     parse: impl FnOnce(&str) -> Option<String>,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
-    let result = executor::run(config, tool, args, timeout)
+    let result = executor::run(config, tool, target, args, timeout)
         .await
         .map_err(crate::error::to_mcp)?;
     Ok(CallToolResult::success(vec![Content::text(format_output(

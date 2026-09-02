@@ -345,6 +345,7 @@ output_dir = "/tmp/raven-nest"
 # max_concurrent_execs = 4      # cap on parallel synchronous run_* executions
 # scan_retention_secs = 3600    # seconds a finished scan is kept before eviction
 # min_exec_gap_ms = 0           # proactive cooldown between tool launches (0 = off)
+# per_target_min_gap_ms = 0     # per-host cooldown: same-host launches spaced, independent hosts parallel (0 = off)
 
 # Per-tool timeout overrides (seconds)
 # [execution.timeouts]
@@ -363,6 +364,7 @@ output_dir = "/tmp/raven-nest"
 | `max_concurrent_execs` | integer | 4 | Cap on concurrent synchronous tool executions (`run_*`). Separate from `max_concurrent_scans`; bounds parallel subprocesses an agent can spawn. |
 | `scan_retention_secs` | integer | 3600 | Seconds to retain a finished background scan (and its output + metadata files) before eviction from the registry. Also applies to scans recovered after a restart. |
 | `min_exec_gap_ms` | integer | 0 | Proactive cooldown: minimum milliseconds between consecutive tool launches (process-wide). Spaces out back-to-back aggressive tools so they don't trip a target's WAF/rate-limiter. 0 disables; max 60000. Complements the reactive WAF detection. |
+| `per_target_min_gap_ms` | integer | 0 | Per-host cooldown: minimum milliseconds between launches against the same host, applied on top of the global gap. Independent hosts proceed in parallel. Targets normalise to their host (URL scheme/port/path dropped); tools without a network target (john, gitleaks, trufflehog) are exempt, as are Metasploit RPC tools. Applies to `http_request` too. 0 disables; max 60000. |
 
 **When to change timeouts:** Vulnerability scans (`nuclei`, `nikto`, `testssl.sh`)
 and OS detection (`nmap -O`) can take several minutes on large targets. Increase

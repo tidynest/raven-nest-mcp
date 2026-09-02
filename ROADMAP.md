@@ -75,7 +75,7 @@ Ordered by impact. Unchecked = not started.
   Push findings to Defect Dojo, Jira, GitHub/GitLab Issues via their APIs.
   *Affected crates:* new crate or `raven-report`
 
-- [ ] **Rate limiting per target** - *partial: a global proactive cooldown (`[execution] min_exec_gap_ms`) now spaces consecutive tool launches; a true per-host token bucket (independent targets in parallel) is still open.*
+- [x] **Rate limiting per target** - *shipped: `per_target_min_gap_ms` spaces launches per host (reservation-based cooldown in `executor`, shared by sync tools, background scans, and `http_request`), while independent hosts proceed in parallel. URLs normalise to their host; the earlier global `min_exec_gap_ms` remains as a process-wide floor.*
   Cap requests/second to individual targets for HTTP-based tools. masscan also has its own packet-rate cap.
   *Affected crates:* `raven-core`
 

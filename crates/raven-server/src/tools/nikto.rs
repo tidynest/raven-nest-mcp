@@ -43,7 +43,7 @@ pub async fn run(
         peer.map(|p| crate::progress::ProgressTicker::start(p, "nikto".into(), req.target.clone()));
 
     let is_url = req.target.starts_with("http://") || req.target.starts_with("https://");
-    let mut args = vec!["-h".to_string(), req.target, "-nocheck".into()];
+    let mut args = vec!["-h".to_string(), req.target.clone(), "-nocheck".into()];
 
     // nikto v2.6+ rejects -p alongside a full URI - only add it for bare hostnames
     if !is_url {
@@ -68,9 +68,15 @@ pub async fn run(
     }
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let result = executor::run(config, "nikto", &arg_refs, req.timeout_secs)
-        .await
-        .map_err(crate::error::to_mcp)?;
+    let result = executor::run(
+        config,
+        "nikto",
+        Some(req.target.as_str()),
+        &arg_refs,
+        req.timeout_secs,
+    )
+    .await
+    .map_err(crate::error::to_mcp)?;
 
     let findings = if result.success {
         crate::tools::extract::extract_nikto(&result.stdout)

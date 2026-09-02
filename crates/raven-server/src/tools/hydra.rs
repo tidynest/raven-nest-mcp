@@ -134,8 +134,8 @@ pub async fn run(
         args.extend(["-s".into(), port.to_string()]);
     }
 
-    args.push(req.target);
-    args.push(req.service);
+    args.push(req.target.clone());
+    args.push(req.service.clone());
 
     // form_params is passed as a positional arg after the service name
     if let Some(form_params) = req.form_params {
@@ -143,7 +143,15 @@ pub async fn run(
     }
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    super::run_and_format(config, "hydra", &arg_refs, None, parse_hydra_output).await
+    super::run_and_format(
+        config,
+        "hydra",
+        Some(req.target.as_str()),
+        &arg_refs,
+        None,
+        parse_hydra_output,
+    )
+    .await
 }
 
 /// Parse hydra output, extracting found credentials and the summary line.

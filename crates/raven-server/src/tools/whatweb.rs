@@ -42,13 +42,21 @@ pub async fn run(
         "-a".to_string(),
         level.into(),
         "--color=never".into(),
-        req.target,
+        req.target.clone(),
     ];
     if let Some(ref cookie) = req.cookie {
         args.extend(["--cookie".into(), cookie.clone()]);
     }
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    super::run_and_format(config, "whatweb", &arg_refs, None, parse_whatweb_output).await
+    super::run_and_format(
+        config,
+        "whatweb",
+        Some(req.target.as_str()),
+        &arg_refs,
+        None,
+        parse_whatweb_output,
+    )
+    .await
 }
 
 /// Parse whatweb output, keeping only technology identification lines.
