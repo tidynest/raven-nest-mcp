@@ -7,6 +7,8 @@ minor versions may carry feature additions and refinements).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-09-21
+
 ### Added
 - **Background scan persistence.** Terminal background scans now write
   `{output_dir}/scans/{id}.txt` (output, 0o600) and `{id}.json` metadata
@@ -15,6 +17,13 @@ minor versions may carry feature additions and refinements).
   scans interrupted mid-flight surface as `failed: interrupted by server
   restart`, and TTL-expired, corrupt, and orphaned files are cleaned up.
   Previously all scan state was in-process memory and lost on restart.
+- **Per-target rate limiting.** New `[execution] per_target_min_gap_ms`
+  (default 0, max 60000) spaces tool launches against the same host while
+  independent targets proceed in parallel, complementing the global
+  `min_exec_gap_ms`. Targets normalise to their bare host (URL scheme, port,
+  and path dropped); applies to all subprocess tools that take a network
+  target, background scans, and `http_request`. Tools without a network
+  target (john, gitleaks, trufflehog) are exempt.
 
 ### Changed
 - All terminal scan outputs are written to disk (previously only outputs over
@@ -23,15 +32,18 @@ minor versions may carry feature additions and refinements).
 - `launch_scan` now registers the scan entry under the same lock as the
   concurrency-cap check, closing races where a fast tool could complete into
   an unregistered entry or two launches could both pass the cap.
+- **Pinned `rmcp` to exactly 1.7.0.** A Dependabot bump to rmcp 2.0.0 (major,
+  breaking) had merged to main and broke the build (`Content`, `RawContent`,
+  `RawResource` removed, `ContentBlock.raw` gone); rmcp 1.8.0 additionally
+  deprecates the logging API (SEP-2577), which fails the build under
+  `-D warnings`. The exact pin restores a green build. Migration to rmcp 2.x
+  is deferred to a deliberate upgrade.
 
-### Added
-- **Per-target rate limiting.** New `[execution] per_target_min_gap_ms`
-  (default 0, max 60000) spaces tool launches against the same host while
-  independent targets proceed in parallel, complementing the global
-  `min_exec_gap_ms`. Targets normalise to their bare host (URL scheme, port,
-  and path dropped); applies to all subprocess tools that take a network
-  target, background scans, and `http_request`. Tools without a network
-  target (john, gitleaks, trufflehog) are exempt.
+### Security
+- **rustls bumped to 0.23.45** (from 0.23.38), resolving RUSTSEC-2026-0285
+  (TLS 1.3 handshake messages incorrectly accepted across encryption-level
+  boundaries). rustls is a transitive dependency via reqwest; the advisory is
+  independent of the rmcp pin above.
 
 ## [0.3.0] - 2026-08-31
 
