@@ -29,6 +29,7 @@ pub async fn run(
     config: &RavenConfig,
     req: DnsreconRequest,
     peer: Option<rmcp::Peer<rmcp::RoleServer>>,
+    progress_token: Option<rmcp::model::ProgressToken>,
     result_limit: usize,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
@@ -55,8 +56,12 @@ pub async fn run(
         }
     }
 
-    let _ticker =
-        peer.map(|p| crate::progress::ProgressTicker::start(p, "dnsrecon".into(), target_display));
+    let _ticker = crate::progress::ProgressTicker::start(
+        peer,
+        progress_token,
+        "dnsrecon".into(),
+        target_display,
+    );
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     super::run_and_format(

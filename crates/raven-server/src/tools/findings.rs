@@ -13,7 +13,7 @@ use raven_report::finding::{Finding, Severity};
 use raven_report::report::ReportFormat;
 use raven_report::store::FindingStore;
 use rmcp::{
-    model::{CallToolResult, Content},
+    model::{CallToolResult, ContentBlock},
     schemars,
 };
 use std::sync::RwLock;
@@ -98,7 +98,7 @@ pub(crate) fn success_with(
     text: impl Into<String>,
     structured: serde_json::Value,
 ) -> CallToolResult {
-    let mut result = CallToolResult::success(vec![Content::text(text.into())]);
+    let mut result = CallToolResult::success(vec![ContentBlock::text(text.into())]);
     result.structured_content = Some(structured);
     result
 }
@@ -294,7 +294,7 @@ pub fn generate_report(
         // operator still receives the report; other formats can be large and
         // machine-oriented, so surface an error instead.
         return match format {
-            ReportFormat::Markdown => Ok(CallToolResult::success(vec![Content::text(report)])),
+            ReportFormat::Markdown => Ok(CallToolResult::success(vec![ContentBlock::text(report)])),
             _ => Err(rmcp::ErrorData::internal_error(
                 format!("failed to write report to {}: {e}", path.display()),
                 None,

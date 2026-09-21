@@ -1,16 +1,28 @@
 //! Periodic progress notifications for long-running synchronous tools.
 //!
-//! `ProgressTicker` sends MCP logging notifications every `TICK_INTERVAL`
-//! seconds while a tool is executing. It uses RAII auto-cancel: when the
-//! ticker is dropped (tool handler returns), the background task stops.
+//! `ProgressTicker` sends MCP progress notifications (`notifications/progress`)
+//! every `TICK_INTERVAL` seconds while a tool is executing. It uses RAII
+//! auto-cancel: when the ticker is dropped (tool handler returns), the
+//! background task stops.
+//!
+//! The notification carries the `progressToken` the client supplied with the
+//! tool call. Without a token the client has not asked for progress updates
+//! and the protocol forbids sending them, so `start` returns `None`.
+//!
+//! Previously this rode on logging notifications, which SEP-2577 deprecates
+//! in favor of stderr/OpenTelemetry; server operational logging already goes
+//! to stderr via `tracing`.
 
-use rmcp::{Peer, RoleServer, model::LoggingMessageNotificationParam};
+use rmcp::{
+    Peer, RoleServer,
+    model::{ProgressNotificationParam, ProgressToken},
+};
 use std::time::{Duration, Instant};
 use tokio_util::sync::CancellationToken;
 
 const TICK_INTERVAL: Duration = Duration::from_secs(15);
 
-/// Sends periodic logging notifications while alive. Cancels on drop.
+/// Sends periodic progress notifications while alive. Cancels on drop.
 pub struct ProgressTicker {
     cancel: CancellationToken,
 }
@@ -19,8 +31,18 @@ impl ProgressTicker {
     /// Starts a background ticker that sends progress every 15s.
     ///
     /// `tool_name` and `target` are included in the notification message.
-    /// The ticker runs until this struct is dropped.
-    pub fn start(peer: Peer<RoleServer>, tool_name: String, target: String) -> Self {
+    /// Returns `None` when there is no peer or no client-supplied
+    /// `progressToken`, in which case there is nothing to report and no
+    /// task is spawned.
+    pub fn start(
+        peer: Option<Peer<RoleServer>>,
+        progress_token: Option<ProgressToken>,
+        tool_name: String,
+        target: String,
+    ) -> Option<Self> {
+        let peer = peer?;
+        let progress_token = progress_token?;
+
         let cancel = CancellationToken::new();
         let cancel_clone = cancel.clone();
         let started = Instant::now();
@@ -38,18 +60,19 @@ impl ProgressTicker {
                         let msg = format!(
                             "{tool_name} scanning {target}... ({elapsed}s elapsed)"
                         );
-                        let param = LoggingMessageNotificationParam::new(
-                            rmcp::model::LoggingLevel::Info,
-                            serde_json::Value::String(msg),
-                        );
-                        // Best-effort: client may not support logging
-                        let _ = peer.notify_logging_message(param).await;
+                        let param = ProgressNotificationParam::new(
+                            progress_token.clone(),
+                            elapsed as f64,
+                        )
+                        .with_message(msg);
+                        // Best-effort: client may have disconnected
+                        let _ = peer.notify_progress(param).await;
                     }
                 }
             }
         });
 
-        Self { cancel }
+        Some(Self { cancel })
     }
 }
 

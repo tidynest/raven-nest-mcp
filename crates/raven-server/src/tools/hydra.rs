@@ -80,6 +80,7 @@ pub async fn run(
     config: &RavenConfig,
     req: HydraRequest,
     peer: Option<Peer<RoleServer>>,
+    progress_token: Option<rmcp::model::ProgressToken>,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
@@ -93,8 +94,12 @@ pub async fn run(
         validate_form_params(form_params)?;
     }
 
-    let _ticker =
-        peer.map(|p| crate::progress::ProgressTicker::start(p, "hydra".into(), req.target.clone()));
+    let _ticker = crate::progress::ProgressTicker::start(
+        peer,
+        progress_token,
+        "hydra".into(),
+        req.target.clone(),
+    );
 
     // Cap parallel tasks to prevent excessive brute-force throughput
     let tasks = req

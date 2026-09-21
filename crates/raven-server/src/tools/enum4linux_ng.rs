@@ -27,13 +27,17 @@ pub async fn run(
     config: &RavenConfig,
     req: Enum4linuxRequest,
     peer: Option<Peer<RoleServer>>,
+    progress_token: Option<rmcp::model::ProgressToken>,
     result_limit: usize,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
-    let _ticker = peer.map(|p| {
-        crate::progress::ProgressTicker::start(p, "enum4linux-ng".into(), req.target.clone())
-    });
+    let _ticker = crate::progress::ProgressTicker::start(
+        peer,
+        progress_token,
+        "enum4linux-ng".into(),
+        req.target.clone(),
+    );
 
     let mut args = vec!["-A".to_string()];
 

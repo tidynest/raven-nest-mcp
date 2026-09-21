@@ -8,7 +8,7 @@
 //! so the port argument is only added for bare hostnames.
 
 use raven_core::{config::RavenConfig, executor, safety};
-use rmcp::model::{CallToolResult, Content};
+use rmcp::model::{CallToolResult, ContentBlock};
 use rmcp::schemars;
 use rmcp::{Peer, RoleServer};
 
@@ -35,12 +35,17 @@ pub async fn run(
     config: &RavenConfig,
     req: NiktoRequest,
     peer: Option<Peer<RoleServer>>,
+    progress_token: Option<rmcp::model::ProgressToken>,
     result_limit: usize,
 ) -> Result<(CallToolResult, Vec<crate::tools::extract::ExtractedFinding>), rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
-    let _ticker =
-        peer.map(|p| crate::progress::ProgressTicker::start(p, "nikto".into(), req.target.clone()));
+    let _ticker = crate::progress::ProgressTicker::start(
+        peer,
+        progress_token,
+        "nikto".into(),
+        req.target.clone(),
+    );
 
     let is_url = req.target.starts_with("http://") || req.target.starts_with("https://");
     let mut args = vec!["-h".to_string(), req.target.clone(), "-nocheck".into()];
@@ -85,7 +90,7 @@ pub async fn run(
     };
     let output = super::format_output("nikto", &result, |s| parse_nikto_output(s, result_limit));
     Ok((
-        CallToolResult::success(vec![Content::text(output)]),
+        CallToolResult::success(vec![ContentBlock::text(output)]),
         findings,
     ))
 }

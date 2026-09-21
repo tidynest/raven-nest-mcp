@@ -2,7 +2,7 @@
 
 use raven_core::msf_client::MsfClient;
 use rmcp::{
-    model::{CallToolResult, Content},
+    model::{CallToolResult, ContentBlock},
     schemars,
 };
 use std::sync::Arc;
@@ -32,7 +32,7 @@ pub async fn run(
         "list" => {
             let sessions = client.list_sessions().await.map_err(crate::error::to_mcp)?;
             let output = parse_sessions_list(&sessions);
-            Ok(CallToolResult::success(vec![Content::text(output)]))
+            Ok(CallToolResult::success(vec![ContentBlock::text(output)]))
         }
         "interact" => {
             let sid = req.session_id.ok_or_else(|| {
@@ -71,7 +71,7 @@ pub async fn run(
             } else {
                 data.to_string()
             };
-            Ok(CallToolResult::success(vec![Content::text(truncated)]))
+            Ok(CallToolResult::success(vec![ContentBlock::text(truncated)]))
         }
         "stop" => {
             let sid = req.session_id.ok_or_else(|| {
@@ -81,7 +81,7 @@ pub async fn run(
                 .stop_session(sid)
                 .await
                 .map_err(crate::error::to_mcp)?;
-            Ok(CallToolResult::success(vec![Content::text(format!(
+            Ok(CallToolResult::success(vec![ContentBlock::text(format!(
                 "Session {sid} stopped."
             ))]))
         }
@@ -103,7 +103,7 @@ pub async fn run(
             } else {
                 format!("{modules}")
             };
-            Ok(CallToolResult::success(vec![Content::text(output)]))
+            Ok(CallToolResult::success(vec![ContentBlock::text(output)]))
         }
         _ => Err(rmcp::ErrorData::invalid_params(
             "action must be: list, interact, stop, compatible_modules",

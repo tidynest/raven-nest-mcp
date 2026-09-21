@@ -10,7 +10,7 @@
 use raven_core::{config::RavenConfig, executor, safety};
 use rmcp::{
     Peer, RoleServer,
-    model::{CallToolResult, Content},
+    model::{CallToolResult, ContentBlock},
     schemars,
 };
 
@@ -39,11 +39,16 @@ pub async fn run(
     config: &RavenConfig,
     req: SqlmapRequest,
     peer: Option<Peer<RoleServer>>,
+    progress_token: Option<rmcp::model::ProgressToken>,
 ) -> Result<(CallToolResult, Vec<crate::tools::extract::ExtractedFinding>), rmcp::ErrorData> {
     safety::validate_target(&req.url).map_err(crate::error::to_mcp)?;
 
-    let _ticker =
-        peer.map(|p| crate::progress::ProgressTicker::start(p, "sqlmap".into(), req.url.clone()));
+    let _ticker = crate::progress::ProgressTicker::start(
+        peer,
+        progress_token,
+        "sqlmap".into(),
+        req.url.clone(),
+    );
 
     // Enforce config safety limits - prevents LLM from requesting dangerous levels
     let level = req
@@ -98,7 +103,7 @@ pub async fn run(
     };
     let output = super::format_output("sqlmap", &result, parse_sqlmap_output);
     Ok((
-        CallToolResult::success(vec![Content::text(output)]),
+        CallToolResult::success(vec![ContentBlock::text(output)]),
         findings,
     ))
 }
