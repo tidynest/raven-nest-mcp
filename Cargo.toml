@@ -3,7 +3,7 @@ members = ["crates/raven-core", "crates/raven-server", "crates/raven-report"]
 resolver = "2"
 
 [workspace.package]
-version = "0.4.0"
+version = "0.4.1"
 edition = "2024"
 license = "Apache-2.0"
 rust-version = "1.93.0"
@@ -12,12 +12,7 @@ publish = false
 
 [workspace.dependencies]
 # MCP SDK
-# Pinned exactly to 1.7.0, the last version CI was green on. 1.8.0 deprecates
-# the logging API (SEP-2577), which fails under `-D warnings`; 2.x is a breaking
-# API rewrite (Content/RawContent/RawResource removed, ContentBlock.raw gone).
-# Both migrations are out of scope for a CI/dependency fix; revisit as a
-# deliberate upgrade. See CHANGELOG 0.4.0.
-rmcp = { version = "=1.7.0", features = ["server", "macros", "transport-io"] }
+rmcp = { version = "2.2.0", features = ["server", "macros", "transport-io"] }
 
 # Async runtime
 tokio = { version = "1.50.0", features = ["full"] }

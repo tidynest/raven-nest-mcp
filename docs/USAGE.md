@@ -933,7 +933,9 @@ The server enforces a concurrency cap (default 3, set via
 returns an error - cancel or wait for a running scan to finish first.
 
 During execution, the server sends progress notifications every 15 seconds
-to keep the MCP client informed.
+to keep the MCP client informed. They ride on `notifications/progress` and
+require the client to pass a `progressToken` with the tool call; without one
+no updates are sent.
 
 #### `launch_scan`
 Start a scan in the background, returns a scan ID immediately. The target is

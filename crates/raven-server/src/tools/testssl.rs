@@ -10,7 +10,7 @@
 use raven_core::{config::RavenConfig, executor, safety};
 use rmcp::{
     Peer, RoleServer,
-    model::{CallToolResult, Content},
+    model::{CallToolResult, ContentBlock},
     schemars,
 };
 
@@ -31,11 +31,16 @@ pub async fn run(
     config: &RavenConfig,
     req: TestsslRequest,
     peer: Option<Peer<RoleServer>>,
+    progress_token: Option<rmcp::model::ProgressToken>,
 ) -> Result<(CallToolResult, Vec<crate::tools::extract::ExtractedFinding>), rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
-    let _ticker = peer
-        .map(|p| crate::progress::ProgressTicker::start(p, "testssl".into(), req.target.clone()));
+    let _ticker = crate::progress::ProgressTicker::start(
+        peer,
+        progress_token,
+        "testssl".into(),
+        req.target.clone(),
+    );
 
     let mut args = Vec::new();
 
@@ -72,7 +77,7 @@ pub async fn run(
     };
     let output = super::format_output("testssl.sh", &result, parse_testssl_output);
     Ok((
-        CallToolResult::success(vec![Content::text(output)]),
+        CallToolResult::success(vec![ContentBlock::text(output)]),
         findings,
     ))
 }

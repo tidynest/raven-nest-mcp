@@ -8,7 +8,7 @@
 
 use raven_core::scan_manager::{ScanManager, ScanStatus};
 use rmcp::{
-    model::{CallToolResult, Content},
+    model::{CallToolResult, ContentBlock},
     schemars,
 };
 
@@ -32,7 +32,7 @@ fn clamped_limit(limit: Option<usize>) -> usize {
 /// Build a success result carrying human text + machine-readable `structured_content`
 /// (so clients read `scan_id`/`status` as fields instead of parsing prose).
 fn success_with(text: impl Into<String>, structured: serde_json::Value) -> CallToolResult {
-    let mut result = CallToolResult::success(vec![Content::text(text.into())]);
+    let mut result = CallToolResult::success(vec![ContentBlock::text(text.into())]);
     result.structured_content = Some(structured);
     result
 }
@@ -174,7 +174,7 @@ pub fn results(
         None => "scan not found or still running".into(),
     };
 
-    Ok(CallToolResult::success(vec![Content::text(text)]))
+    Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
 }
 
 /// Cancel a running scan by aborting its background task.
@@ -184,7 +184,7 @@ pub fn cancel(
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     manager.cancel(&req.scan_id).map_err(crate::error::to_mcp)?;
 
-    Ok(CallToolResult::success(vec![Content::text(
+    Ok(CallToolResult::success(vec![ContentBlock::text(
         "scan cancelled",
     )]))
 }
@@ -194,7 +194,9 @@ pub fn list_scans(manager: &ScanManager) -> Result<CallToolResult, rmcp::ErrorDa
     let scans = manager.list().map_err(crate::error::to_mcp)?;
 
     if scans.is_empty() {
-        return Ok(CallToolResult::success(vec![Content::text("no scans")]));
+        return Ok(CallToolResult::success(vec![ContentBlock::text(
+            "no scans",
+        )]));
     }
 
     let lines: Vec<String> = scans
@@ -213,7 +215,7 @@ pub fn list_scans(manager: &ScanManager) -> Result<CallToolResult, rmcp::ErrorDa
         })
         .collect();
 
-    Ok(CallToolResult::success(vec![Content::text(
+    Ok(CallToolResult::success(vec![ContentBlock::text(
         lines.join("\n"),
     )]))
 }

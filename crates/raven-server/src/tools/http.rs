@@ -14,7 +14,7 @@
 
 use reqwest::cookie::CookieStore;
 use rmcp::{
-    model::{CallToolResult, Content},
+    model::{CallToolResult, ContentBlock},
     schemars,
 };
 use std::{collections::HashMap, time::Duration};
@@ -289,7 +289,7 @@ pub async fn run(
             });
     }
 
-    Ok(CallToolResult::success(vec![Content::text(output)]))
+    Ok(CallToolResult::success(vec![ContentBlock::text(output)]))
 }
 
 /// Strip HTML to readable plain text.

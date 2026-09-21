@@ -11,7 +11,7 @@
 //! [`findings`] manages finding persistence and report generation.
 
 use raven_core::{config::RavenConfig, executor};
-use rmcp::model::{CallToolResult, Content};
+use rmcp::model::{CallToolResult, ContentBlock};
 
 /// Run a subprocess tool and format the MCP response.
 ///
@@ -34,9 +34,9 @@ pub(crate) async fn run_and_format(
     let result = executor::run(config, tool, target, args, timeout)
         .await
         .map_err(crate::error::to_mcp)?;
-    Ok(CallToolResult::success(vec![Content::text(format_output(
-        tool, &result, parse,
-    ))]))
+    Ok(CallToolResult::success(vec![ContentBlock::text(
+        format_output(tool, &result, parse),
+    )]))
 }
 
 /// Format a completed tool run into user-facing text.

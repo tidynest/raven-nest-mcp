@@ -7,6 +7,31 @@ minor versions may carry feature additions and refinements).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-09-21
+
+### Changed
+- **Migrated to rmcp 2.2.0** (from the exact 1.7.0 pin). The 2.x API rewrite
+  replaced `Content` with the `ContentBlock` enum, reworked resource
+  construction (`RawResource`/`AnnotateAble` removed; `Resource` builders
+  carry annotations inline), and removed the `.raw` accessor on content.
+  Server capabilities no longer advertise logging: SEP-2577 deprecates MCP
+  logging in favor of stderr/OpenTelemetry, and server operational logging
+  already goes to stderr via `tracing`. The 15-second in-flight ticker now
+  sends `notifications/progress` carrying the client-supplied `progressToken`
+  instead of logging notifications; clients that do not pass a token receive
+  no updates, per the protocol. Stdio transport and all tool behavior are
+  unchanged.
+
+### Security
+- rmcp 2.2.0 clears three advisories against the 1.x line. None were
+  reachable in this build, which enables only the server, macros, and
+  transport-io features and serves over stdio; the HTTP and OAuth
+  transports were never compiled in. Cleared: GHSA-9pj6-vhgr-3mwh (high),
+  session-table leak in the Streamable HTTP server transport;
+  GHSA-33f5-2c5q-wgwj (high), missing resource-field validation in OAuth
+  metadata discovery; GHSA-9g45-5xwm-f3wc (moderate), custom HTTP headers
+  leak to cross-origin redirect targets.
+
 ## [0.4.0] - 2026-09-21
 
 ### Added

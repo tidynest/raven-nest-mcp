@@ -2,7 +2,7 @@
 
 use raven_core::msf_client::MsfClient;
 use rmcp::{
-    model::{CallToolResult, Content},
+    model::{CallToolResult, ContentBlock},
     schemars,
 };
 use std::sync::Arc;
@@ -40,7 +40,7 @@ pub async fn run(
         output.push_str(&parse_payloads(&payloads));
     }
 
-    Ok(CallToolResult::success(vec![Content::text(output)]))
+    Ok(CallToolResult::success(vec![ContentBlock::text(output)]))
 }
 
 fn parse_module_info(info: &serde_json::Value) -> String {

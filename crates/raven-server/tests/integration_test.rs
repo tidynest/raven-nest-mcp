@@ -11,7 +11,7 @@
 
 use raven_report::store::FindingStore;
 use raven_server::tools::findings::{FindingIdRequest, GenerateReportRequest, SaveFindingRequest};
-use rmcp::model::Content;
+use rmcp::model::ContentBlock;
 use std::sync::RwLock;
 use tempfile::TempDir;
 
@@ -44,7 +44,7 @@ fn save_req(title: &str, severity: &str) -> SaveFindingRequest {
 }
 
 /// Extract the text content from an MCP CallToolResult.
-fn extract_text(content: &[Content]) -> String {
+fn extract_text(content: &[ContentBlock]) -> String {
     content
         .first()
         .and_then(|c| c.as_text())

@@ -3,7 +3,7 @@
 use raven_core::msf_client::MsfClient;
 use raven_core::safety;
 use rmcp::{
-    model::{CallToolResult, Content},
+    model::{CallToolResult, ContentBlock},
     schemars,
 };
 use std::sync::Arc;
@@ -55,5 +55,5 @@ pub async fn run(
         output.chars().take(4000).collect::<String>()
     };
 
-    Ok(CallToolResult::success(vec![Content::text(output)]))
+    Ok(CallToolResult::success(vec![ContentBlock::text(output)]))
 }

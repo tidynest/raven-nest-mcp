@@ -31,12 +31,17 @@ pub async fn run(
     config: &RavenConfig,
     req: KatanaRequest,
     peer: Option<Peer<RoleServer>>,
+    progress_token: Option<rmcp::model::ProgressToken>,
     result_limit: usize,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
-    let _ticker = peer
-        .map(|p| crate::progress::ProgressTicker::start(p, "katana".into(), req.target.clone()));
+    let _ticker = crate::progress::ProgressTicker::start(
+        peer,
+        progress_token,
+        "katana".into(),
+        req.target.clone(),
+    );
 
     // Clamp crawl depth to a sane maximum to bound runtime.
     let depth = req.depth.unwrap_or(3).min(5);

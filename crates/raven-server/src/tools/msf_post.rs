@@ -2,7 +2,7 @@
 
 use raven_core::msf_client::MsfClient;
 use rmcp::{
-    model::{CallToolResult, Content},
+    model::{CallToolResult, ContentBlock},
     schemars,
 };
 use std::sync::Arc;
@@ -71,7 +71,7 @@ pub async fn run(
         delay = (delay * 2).min(16);
     }
 
-    Ok(CallToolResult::success(vec![Content::text(output)]))
+    Ok(CallToolResult::success(vec![ContentBlock::text(output)]))
 }
 
 #[cfg(test)]

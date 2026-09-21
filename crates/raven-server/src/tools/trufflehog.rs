@@ -20,7 +20,7 @@
 //! and is gitleaks' job anyway. Add a `git` mode here only if a use case appears.
 
 use raven_core::{config::RavenConfig, executor};
-use rmcp::model::{CallToolResult, Content};
+use rmcp::model::{CallToolResult, ContentBlock};
 use rmcp::schemars;
 
 /// MCP request schema for `run_trufflehog`.
@@ -40,6 +40,7 @@ pub async fn run(
     config: &RavenConfig,
     req: TrufflehogRequest,
     peer: Option<rmcp::Peer<rmcp::RoleServer>>,
+    progress_token: Option<rmcp::model::ProgressToken>,
 ) -> Result<(CallToolResult, Vec<crate::tools::extract::ExtractedFinding>), rmcp::ErrorData> {
     // Confine the scan root to the engagement workspace (same gate as john).
     super::validate_file_path(&req.path, &config.execution.output_dir)?;
@@ -52,8 +53,12 @@ pub async fn run(
     }
     // Deliberately no --trust-local-git-config (CVE-2025-41390 RCE).
 
-    let _ticker = peer
-        .map(|p| crate::progress::ProgressTicker::start(p, "trufflehog".into(), req.path.clone()));
+    let _ticker = crate::progress::ProgressTicker::start(
+        peer,
+        progress_token,
+        "trufflehog".into(),
+        req.path.clone(),
+    );
 
     let result = executor::run(config, "trufflehog", None, &args, Some(300))
         .await
@@ -66,7 +71,7 @@ pub async fn run(
     };
     let output = super::format_output("trufflehog", &result, parse_trufflehog);
     Ok((
-        CallToolResult::success(vec![Content::text(output)]),
+        CallToolResult::success(vec![ContentBlock::text(output)]),
         findings,
     ))
 }
