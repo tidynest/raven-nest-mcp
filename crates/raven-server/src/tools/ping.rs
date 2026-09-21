@@ -10,7 +10,7 @@
 
 use raven_core::{config::RavenConfig, safety};
 use rmcp::{
-    model::{CallToolResult, Content},
+    model::{CallToolResult, ContentBlock},
     schemars,
 };
 use tokio::process::Command;
@@ -65,5 +65,5 @@ pub async fn run(
         format!("ping failed (exit {}):\n{stderr}", output.status)
     };
 
-    Ok(CallToolResult::success(vec![Content::text(result)]))
+    Ok(CallToolResult::success(vec![ContentBlock::text(result)]))
 }

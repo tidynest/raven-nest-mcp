@@ -114,6 +114,7 @@ pub async fn run(
     config: &RavenConfig,
     req: NetExecRequest,
     peer: Option<Peer<RoleServer>>,
+    progress_token: Option<rmcp::model::ProgressToken>,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     if !config.netexec.enabled {
         return Err(rmcp::ErrorData::invalid_params(
@@ -167,8 +168,12 @@ pub async fn run(
     validate_scalar("username", &req.username)?;
     validate_scalar("credential", cred_value)?;
 
-    let _ticker = peer
-        .map(|p| crate::progress::ProgressTicker::start(p, "netexec".into(), req.target.clone()));
+    let _ticker = crate::progress::ProgressTicker::start(
+        peer,
+        progress_token,
+        "netexec".into(),
+        req.target.clone(),
+    );
 
     let mut args = vec![
         protocol,

@@ -29,12 +29,17 @@ pub async fn run(
     config: &RavenConfig,
     req: WpscanRequest,
     peer: Option<Peer<RoleServer>>,
+    progress_token: Option<rmcp::model::ProgressToken>,
     result_limit: usize,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
-    let _ticker = peer
-        .map(|p| crate::progress::ProgressTicker::start(p, "wpscan".into(), req.target.clone()));
+    let _ticker = crate::progress::ProgressTicker::start(
+        peer,
+        progress_token,
+        "wpscan".into(),
+        req.target.clone(),
+    );
 
     let enum_value = match req.enumerate.as_deref() {
         Some("thorough") => "vp,vt,u,ap,at,cb,dbe",

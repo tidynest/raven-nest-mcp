@@ -15,9 +15,7 @@
 use raven_core::scan_manager::ScanManager;
 use raven_report::report::ReportFormat;
 use raven_report::store::FindingStore;
-use rmcp::model::{
-    AnnotateAble, ListResourcesResult, RawResource, ReadResourceResult, Resource, ResourceContents,
-};
+use rmcp::model::{ListResourcesResult, ReadResourceResult, Resource, ResourceContents};
 use std::sync::RwLock;
 
 /// (name, mime type) for each report format exposed under `raven://reports/`.
@@ -29,10 +27,9 @@ const REPORT_FORMATS: [(&str, &str); 4] = [
 ];
 
 fn resource(uri: impl Into<String>, name: impl Into<String>, desc: &str, mime: &str) -> Resource {
-    RawResource::new(uri, name)
+    Resource::new(uri, name)
         .with_description(desc)
         .with_mime_type(mime)
-        .no_annotation()
 }
 
 fn not_found(uri: &str) -> rmcp::ErrorData {

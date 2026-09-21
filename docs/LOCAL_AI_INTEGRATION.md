@@ -558,7 +558,8 @@ For **findings and reports:**
 - `generate_report(title, format)` - generate a report (markdown default; json/sarif/html) from all findings
 
 Direct tool calls (run_nuclei, run_nmap, etc.) return when done - the
-MCP server sends progress notifications to the client during execution.
+MCP server sends progress notifications to the client during execution
+when the client supplies a `progressToken` with the call.
 
 ## Reproduction Testing (severity=info)
 

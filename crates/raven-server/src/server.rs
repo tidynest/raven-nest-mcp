@@ -54,7 +54,7 @@ use rmcp::{
     Peer, RoleServer, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{
-        CallToolResult, Content, ListResourcesResult, PaginatedRequestParams, RawContent,
+        CallToolResult, ContentBlock, ListResourcesResult, Meta, PaginatedRequestParams,
         ReadResourceRequestParams, ReadResourceResult, ServerCapabilities, ServerInfo,
     },
     service::RequestContext,
@@ -186,7 +186,7 @@ impl RavenServer {
         result: Result<CallToolResult, rmcp::ErrorData>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         if self.budget.is_exhausted() && result.is_ok() {
-            return Ok(CallToolResult::success(vec![Content::text(
+            return Ok(CallToolResult::success(vec![ContentBlock::text(
                 "Context budget exhausted for scan tools - stop scanning. save_finding, generate_report, and the scan-status tools remain available.",
             )]));
         }
@@ -220,7 +220,7 @@ impl RavenServer {
         // raw fallback, background scan results - is clean.
         let mut total_chars = 0usize;
         for content in &mut call_result.content {
-            if let RawContent::Text(ref mut tc) = content.raw {
+            if let ContentBlock::Text(tc) = content {
                 tc.text = crate::tools::strip_ansi(&tc.text);
                 let text_len = tc.text.chars().count();
                 if text_len > cap.max_chars {
@@ -232,7 +232,7 @@ impl RavenServer {
 
         // Append budget status line
         if let Some(status) = self.budget.status_line() {
-            call_result.content.push(Content::text(status));
+            call_result.content.push(ContentBlock::text(status));
             total_chars += 100; // approximate status line size
         }
 
@@ -330,6 +330,7 @@ impl RavenServer {
     async fn run_nmap(
         &self,
         peer: Peer<RoleServer>,
+        meta: Meta,
         Parameters(req): Parameters<NmapRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let target = req.target.clone();
@@ -337,6 +338,7 @@ impl RavenServer {
             &self.config,
             req,
             Some(peer),
+            meta.get_progress_token(),
             self.budget.scale_cap(10),
             Some(&self.target_store),
         )
@@ -363,12 +365,18 @@ impl RavenServer {
     async fn run_nuclei(
         &self,
         peer: Peer<RoleServer>,
+        meta: Meta,
         Parameters(req): Parameters<NucleiRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let target = req.target.clone();
-        let (result, findings) =
-            crate::tools::nuclei::run(&self.config, req, Some(peer), self.budget.scale_cap(25))
-                .await?;
+        let (result, findings) = crate::tools::nuclei::run(
+            &self.config,
+            req,
+            Some(peer),
+            meta.get_progress_token(),
+            self.budget.scale_cap(25),
+        )
+        .await?;
         // Best-effort auto-save (no-op unless enabled in config); never blocks the response.
         crate::tools::extract::auto_save(
             &self.finding_store,
@@ -392,12 +400,18 @@ impl RavenServer {
     async fn run_nikto(
         &self,
         peer: Peer<RoleServer>,
+        meta: Meta,
         Parameters(req): Parameters<NiktoRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let target = req.target.clone();
-        let (result, findings) =
-            crate::tools::nikto::run(&self.config, req, Some(peer), self.budget.scale_cap(30))
-                .await?;
+        let (result, findings) = crate::tools::nikto::run(
+            &self.config,
+            req,
+            Some(peer),
+            meta.get_progress_token(),
+            self.budget.scale_cap(30),
+        )
+        .await?;
         crate::tools::extract::auto_save(
             &self.finding_store,
             &self.config,
@@ -420,10 +434,13 @@ impl RavenServer {
     async fn run_testssl(
         &self,
         peer: Peer<RoleServer>,
+        meta: Meta,
         Parameters(req): Parameters<TestsslRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let target = req.target.clone();
-        let (result, findings) = crate::tools::testssl::run(&self.config, req, Some(peer)).await?;
+        let (result, findings) =
+            crate::tools::testssl::run(&self.config, req, Some(peer), meta.get_progress_token())
+                .await?;
         crate::tools::extract::auto_save(
             &self.finding_store,
             &self.config,
@@ -446,6 +463,7 @@ impl RavenServer {
     async fn run_feroxbuster(
         &self,
         peer: Peer<RoleServer>,
+        meta: Meta,
         Parameters(req): Parameters<FeroxbusterRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.wrap_result(
@@ -453,6 +471,7 @@ impl RavenServer {
                 &self.config,
                 req,
                 Some(peer),
+                meta.get_progress_token(),
                 self.budget.scale_cap(40),
             )
             .await,
@@ -466,10 +485,13 @@ impl RavenServer {
     async fn run_sqlmap(
         &self,
         peer: Peer<RoleServer>,
+        meta: Meta,
         Parameters(req): Parameters<SqlmapRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let target = req.url.clone();
-        let (result, findings) = crate::tools::sqlmap::run(&self.config, req, Some(peer)).await?;
+        let (result, findings) =
+            crate::tools::sqlmap::run(&self.config, req, Some(peer), meta.get_progress_token())
+                .await?;
         crate::tools::extract::auto_save(
             &self.finding_store,
             &self.config,
@@ -488,9 +510,13 @@ impl RavenServer {
     async fn run_hydra(
         &self,
         peer: Peer<RoleServer>,
+        meta: Meta,
         Parameters(req): Parameters<HydraRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::hydra::run(&self.config, req, Some(peer)).await)
+        self.wrap_result(
+            crate::tools::hydra::run(&self.config, req, Some(peer), meta.get_progress_token())
+                .await,
+        )
     }
 
     #[tool(
@@ -504,6 +530,7 @@ impl RavenServer {
     async fn run_enum4linux_ng(
         &self,
         peer: Peer<RoleServer>,
+        meta: Meta,
         Parameters(req): Parameters<Enum4linuxRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.wrap_result(
@@ -511,6 +538,7 @@ impl RavenServer {
                 &self.config,
                 req,
                 Some(peer),
+                meta.get_progress_token(),
                 self.budget.scale_cap(20),
             )
             .await,
@@ -554,11 +582,18 @@ impl RavenServer {
     async fn run_dnsrecon(
         &self,
         peer: Peer<RoleServer>,
+        meta: Meta,
         Parameters(req): Parameters<DnsreconRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.wrap_result(
-            crate::tools::dnsrecon::run(&self.config, req, Some(peer), self.budget.scale_cap(30))
-                .await,
+            crate::tools::dnsrecon::run(
+                &self.config,
+                req,
+                Some(peer),
+                meta.get_progress_token(),
+                self.budget.scale_cap(30),
+            )
+            .await,
         )
     }
 
@@ -573,11 +608,18 @@ impl RavenServer {
     async fn run_katana(
         &self,
         peer: Peer<RoleServer>,
+        meta: Meta,
         Parameters(req): Parameters<KatanaRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.wrap_result(
-            crate::tools::katana::run(&self.config, req, Some(peer), self.budget.scale_cap(40))
-                .await,
+            crate::tools::katana::run(
+                &self.config,
+                req,
+                Some(peer),
+                meta.get_progress_token(),
+                self.budget.scale_cap(40),
+            )
+            .await,
         )
     }
 
@@ -588,9 +630,12 @@ impl RavenServer {
     async fn run_john(
         &self,
         peer: Peer<RoleServer>,
+        meta: Meta,
         Parameters(req): Parameters<JohnRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::john::run(&self.config, req, Some(peer)).await)
+        self.wrap_result(
+            crate::tools::john::run(&self.config, req, Some(peer), meta.get_progress_token()).await,
+        )
     }
 
     #[tool(
@@ -600,10 +645,13 @@ impl RavenServer {
     async fn run_gitleaks(
         &self,
         peer: Peer<RoleServer>,
+        meta: Meta,
         Parameters(req): Parameters<GitleaksRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let target = req.path.clone();
-        let (result, findings) = crate::tools::gitleaks::run(&self.config, req, Some(peer)).await?;
+        let (result, findings) =
+            crate::tools::gitleaks::run(&self.config, req, Some(peer), meta.get_progress_token())
+                .await?;
         crate::tools::extract::auto_save(
             &self.finding_store,
             &self.config,
@@ -622,11 +670,13 @@ impl RavenServer {
     async fn run_trufflehog(
         &self,
         peer: Peer<RoleServer>,
+        meta: Meta,
         Parameters(req): Parameters<TrufflehogRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let target = req.path.clone();
         let (result, findings) =
-            crate::tools::trufflehog::run(&self.config, req, Some(peer)).await?;
+            crate::tools::trufflehog::run(&self.config, req, Some(peer), meta.get_progress_token())
+                .await?;
         crate::tools::extract::auto_save(
             &self.finding_store,
             &self.config,
@@ -700,11 +750,18 @@ impl RavenServer {
     async fn run_wpscan(
         &self,
         peer: Peer<RoleServer>,
+        meta: Meta,
         Parameters(req): Parameters<WpscanRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.wrap_result(
-            crate::tools::wpscan::run(&self.config, req, Some(peer), self.budget.scale_cap(20))
-                .await,
+            crate::tools::wpscan::run(
+                &self.config,
+                req,
+                Some(peer),
+                meta.get_progress_token(),
+                self.budget.scale_cap(20),
+            )
+            .await,
         )
     }
 
@@ -1053,9 +1110,13 @@ impl RavenServer {
     async fn run_netexec(
         &self,
         peer: Peer<RoleServer>,
+        meta: Meta,
         Parameters(req): Parameters<NetExecRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
-        self.wrap_result(crate::tools::netexec::run(&self.config, req, Some(peer)).await)
+        self.wrap_result(
+            crate::tools::netexec::run(&self.config, req, Some(peer), meta.get_progress_token())
+                .await,
+        )
     }
 }
 
@@ -1065,7 +1126,6 @@ impl ServerHandler for RavenServer {
         let mut info = ServerInfo::default();
         info.capabilities = ServerCapabilities::builder()
             .enable_tools()
-            .enable_logging()
             .enable_resources()
             .build();
         // Advertise the product identity (not the rmcp SDK default) so clients
@@ -1162,7 +1222,7 @@ mod tests {
         // Gated path (scan tools): refused, and the refusal names the tools
         // that remain available.
         let gated = server
-            .wrap_result(Ok(CallToolResult::success(vec![Content::text(
+            .wrap_result(Ok(CallToolResult::success(vec![ContentBlock::text(
                 "nmap output",
             )])))
             .unwrap();
@@ -1178,7 +1238,7 @@ mod tests {
 
         // Ungated path (findings/report/scan-status): real content passes through.
         let ungated = server
-            .wrap_result_ungated(Ok(CallToolResult::success(vec![Content::text(
+            .wrap_result_ungated(Ok(CallToolResult::success(vec![ContentBlock::text(
                 "Finding saved. ID: x",
             )])))
             .unwrap();

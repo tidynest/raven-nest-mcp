@@ -5,7 +5,7 @@
 //! require a [`ProgressTicker`](crate::progress::ProgressTicker).
 
 use raven_core::{config::RavenConfig, executor, safety};
-use rmcp::model::{CallToolResult, Content};
+use rmcp::model::{CallToolResult, ContentBlock};
 use rmcp::schemars;
 
 /// MCP request schema for `run_dalfox`.
@@ -64,7 +64,7 @@ pub async fn run(
     };
     let output = super::format_output("dalfox", &result, |s| parse_dalfox_json(s, result_limit));
     Ok((
-        CallToolResult::success(vec![Content::text(output)]),
+        CallToolResult::success(vec![ContentBlock::text(output)]),
         findings,
     ))
 }

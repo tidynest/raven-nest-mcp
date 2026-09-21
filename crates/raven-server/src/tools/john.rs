@@ -8,7 +8,7 @@
 //! [`ProgressTicker`](crate::progress::ProgressTicker).
 
 use raven_core::{config::RavenConfig, executor};
-use rmcp::model::{CallToolResult, Content};
+use rmcp::model::{CallToolResult, ContentBlock};
 use rmcp::schemars;
 
 /// MCP request schema for `run_john`.
@@ -31,6 +31,7 @@ pub async fn run(
     config: &RavenConfig,
     req: JohnRequest,
     peer: Option<rmcp::Peer<rmcp::RoleServer>>,
+    progress_token: Option<rmcp::model::ProgressToken>,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     // Validate file paths - prevent reading arbitrary files
     super::validate_file_path(&req.hash_file, &config.execution.output_dir)?;
@@ -56,8 +57,12 @@ pub async fn run(
     let hash_file_display = req.hash_file.clone();
     args.push(req.hash_file);
 
-    let _ticker =
-        peer.map(|p| crate::progress::ProgressTicker::start(p, "john".into(), hash_file_display));
+    let _ticker = crate::progress::ProgressTicker::start(
+        peer,
+        progress_token,
+        "john".into(),
+        hash_file_display,
+    );
 
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
     let timeout = Some(max_time + 30); // grace period beyond max-run-time
@@ -74,7 +79,7 @@ pub async fn run(
     } else {
         crate::error::format_result("john", &result)
     };
-    Ok(CallToolResult::success(vec![Content::text(output)]))
+    Ok(CallToolResult::success(vec![ContentBlock::text(output)]))
 }
 
 /// Parse John the Ripper output to extract cracked passwords.

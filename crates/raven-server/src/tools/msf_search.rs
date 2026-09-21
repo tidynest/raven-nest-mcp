@@ -2,7 +2,7 @@
 
 use raven_core::msf_client::MsfClient;
 use rmcp::{
-    model::{CallToolResult, Content},
+    model::{CallToolResult, ContentBlock},
     schemars,
 };
 use std::sync::Arc;
@@ -27,7 +27,7 @@ pub async fn run(
         .await
         .map_err(crate::error::to_mcp)?;
     let output = parse_search_results(&result, limit);
-    Ok(CallToolResult::success(vec![Content::text(output)]))
+    Ok(CallToolResult::success(vec![ContentBlock::text(output)]))
 }
 
 fn parse_search_results(value: &serde_json::Value, limit: usize) -> String {

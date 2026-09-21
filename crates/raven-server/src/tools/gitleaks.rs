@@ -15,7 +15,7 @@
 //! (Linux); a Windows port would need a temp report file instead.
 
 use raven_core::{config::RavenConfig, executor};
-use rmcp::model::{CallToolResult, Content};
+use rmcp::model::{CallToolResult, ContentBlock};
 use rmcp::schemars;
 
 /// MCP request schema for `run_gitleaks`.
@@ -37,6 +37,7 @@ pub async fn run(
     config: &RavenConfig,
     req: GitleaksRequest,
     peer: Option<rmcp::Peer<rmcp::RoleServer>>,
+    progress_token: Option<rmcp::model::ProgressToken>,
 ) -> Result<(CallToolResult, Vec<crate::tools::extract::ExtractedFinding>), rmcp::ErrorData> {
     // Confine the scan root to the engagement workspace (same gate as john).
     super::validate_file_path(&req.path, &config.execution.output_dir)?;
@@ -63,8 +64,12 @@ pub async fn run(
         args.push("--redact");
     }
 
-    let _ticker = peer
-        .map(|p| crate::progress::ProgressTicker::start(p, "gitleaks".into(), req.path.clone()));
+    let _ticker = crate::progress::ProgressTicker::start(
+        peer,
+        progress_token,
+        "gitleaks".into(),
+        req.path.clone(),
+    );
 
     let result = executor::run(config, "gitleaks", None, &args, Some(300))
         .await
@@ -82,7 +87,7 @@ pub async fn run(
         _ => crate::error::format_result("gitleaks", &result),
     };
     Ok((
-        CallToolResult::success(vec![Content::text(output)]),
+        CallToolResult::success(vec![ContentBlock::text(output)]),
         findings,
     ))
 }

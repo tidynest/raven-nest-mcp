@@ -14,7 +14,7 @@
 use raven_core::{config::RavenConfig, executor, safety};
 use rmcp::{
     Peer, RoleServer,
-    model::{CallToolResult, Content},
+    model::{CallToolResult, ContentBlock},
     schemars,
 };
 
@@ -39,13 +39,18 @@ pub async fn run(
     config: &RavenConfig,
     req: NmapRequest,
     peer: Option<Peer<RoleServer>>,
+    progress_token: Option<rmcp::model::ProgressToken>,
     result_limit: usize,
     targets: Option<&std::sync::RwLock<raven_report::targets::TargetStore>>,
 ) -> Result<(CallToolResult, Vec<crate::tools::extract::ExtractedFinding>), rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
-    let _ticker =
-        peer.map(|p| crate::progress::ProgressTicker::start(p, "nmap".into(), req.target.clone()));
+    let _ticker = crate::progress::ProgressTicker::start(
+        peer,
+        progress_token,
+        "nmap".into(),
+        req.target.clone(),
+    );
 
     // OS detection requires root for raw sockets.
     // Skip check when sudo is configured for nmap.
@@ -105,7 +110,7 @@ pub async fn run(
 
     // Machine-readable form for MCP clients (and the target store / scan diff):
     // same XML walk as the text parser, exposed as `structured_content`.
-    let mut call_result = CallToolResult::success(vec![Content::text(output)]);
+    let mut call_result = CallToolResult::success(vec![ContentBlock::text(output)]);
     if let Some(scan) = parse_nmap_xml_structured(&result.stdout) {
         if let Some(targets) = targets {
             super::targets::record_from_scan(targets, &scan);

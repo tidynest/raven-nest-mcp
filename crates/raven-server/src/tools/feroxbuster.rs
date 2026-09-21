@@ -10,7 +10,7 @@
 use raven_core::{config::RavenConfig, executor, safety};
 use rmcp::{
     Peer, RoleServer,
-    model::{CallToolResult, Content},
+    model::{CallToolResult, ContentBlock},
     schemars,
 };
 
@@ -42,6 +42,7 @@ pub async fn run(
     config: &RavenConfig,
     req: FeroxbusterRequest,
     peer: Option<Peer<RoleServer>>,
+    progress_token: Option<rmcp::model::ProgressToken>,
     result_limit: usize,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
@@ -50,9 +51,12 @@ pub async fn run(
         super::validate_file_path(wordlist, &config.execution.output_dir)?;
     }
 
-    let _ticker = peer.map(|p| {
-        crate::progress::ProgressTicker::start(p, "feroxbuster".into(), req.target.clone())
-    });
+    let _ticker = crate::progress::ProgressTicker::start(
+        peer,
+        progress_token,
+        "feroxbuster".into(),
+        req.target.clone(),
+    );
 
     // Reduce threads for localhost to prevent self-DoS
     let default_threads: u16 = if super::is_localhost(&req.target) {
@@ -105,7 +109,7 @@ pub async fn run(
     } else {
         crate::error::format_result("feroxbuster", &result)
     };
-    Ok(CallToolResult::success(vec![Content::text(output)]))
+    Ok(CallToolResult::success(vec![ContentBlock::text(output)]))
 }
 
 /// Parse feroxbuster quiet-mode output to extract discovered URLs.

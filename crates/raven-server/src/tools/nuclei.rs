@@ -9,7 +9,7 @@
 use raven_core::{config::RavenConfig, executor, safety};
 use rmcp::{
     Peer, RoleServer,
-    model::{CallToolResult, Content},
+    model::{CallToolResult, ContentBlock},
     schemars,
 };
 
@@ -32,12 +32,17 @@ pub async fn run(
     config: &RavenConfig,
     req: NucleiRequest,
     peer: Option<Peer<RoleServer>>,
+    progress_token: Option<rmcp::model::ProgressToken>,
     result_limit: usize,
 ) -> Result<(CallToolResult, Vec<crate::tools::extract::ExtractedFinding>), rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
-    let _ticker = peer
-        .map(|p| crate::progress::ProgressTicker::start(p, "nuclei".into(), req.target.clone()));
+    let _ticker = crate::progress::ProgressTicker::start(
+        peer,
+        progress_token,
+        "nuclei".into(),
+        req.target.clone(),
+    );
 
     let mut args = vec!["-u".to_string(), req.target.clone(), "-jsonl".to_string()];
 
@@ -69,7 +74,7 @@ pub async fn run(
     let output = super::format_output("nuclei", &result, |s| parse_nuclei_jsonl(s, result_limit));
 
     // Machine-readable form for MCP clients, exposed as `structured_content`.
-    let mut call_result = CallToolResult::success(vec![Content::text(output)]);
+    let mut call_result = CallToolResult::success(vec![ContentBlock::text(output)]);
     if let Some(value) = structured_nuclei(&result.stdout, result_limit) {
         call_result.structured_content = Some(value);
     }
