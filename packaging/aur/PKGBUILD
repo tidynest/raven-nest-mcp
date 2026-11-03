@@ -1,4 +1,4 @@
-# Maintainer: Eric Jingryd <eric.jingryd@protonmail.com>
+# Maintainer: Eric Jingryd <tidynest@proton.me>
 #
 # Source build of the Raven Nest MCP server. The server itself only needs glibc,
 # gcc-libs, and openssl; every scanner it drives is an *optional* runtime
