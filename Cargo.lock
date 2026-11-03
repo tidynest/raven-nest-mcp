@@ -1209,7 +1209,7 @@ dependencies = [
 
 [[package]]
 name = "raven-core"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "chrono",
  "ipnet",
@@ -1229,7 +1229,7 @@ dependencies = [
 
 [[package]]
 name = "raven-report"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "chrono",
  "serde",
@@ -1241,7 +1241,7 @@ dependencies = [
 
 [[package]]
 name = "raven-server"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "anyhow",
  "chrono",

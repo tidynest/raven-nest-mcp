@@ -7,6 +7,27 @@ minor versions may carry feature additions and refinements).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-03
+
+### Security
+- Lockfile-only release. No source, tool or endpoint changes since v0.4.1.
+  The dependency bumps clear twelve RustSec advisories:
+  - quinn-proto 0.11.15 to 0.11.19 clears RUSTSEC-2026-0338,
+    RUSTSEC-2026-0339, RUSTSEC-2026-0340, RUSTSEC-2026-0341 and
+    RUSTSEC-2026-0342: remote panics and unbounded memory growth in QUIC
+    frame handling.
+  - rustls 0.23.45 to 0.23.46 clears RUSTSEC-2026-0346, RUSTSEC-2026-0347,
+    RUSTSEC-2026-0348 and RUSTSEC-2026-0349: TLS secrets in `Debug` output,
+    data sent to the outer server after ECH rejection, up to 1 GiB allocated
+    before authentication during certificate decompression, and a downgrade
+    to classical key exchange.
+  - rustls-webpki 0.103.15 to 0.103.16 clears RUSTSEC-2026-0382: distrusted
+    intermediates could pass certificate verification.
+  - webpki-root-certs 1.0.6 to 1.0.11 clears RUSTSEC-2026-0383: bundled roots
+    trusted distrusted emSign intermediates.
+  - tokio 1.52.0 to 1.54.1 clears RUSTSEC-2026-0386: `AsyncFd::new` and
+    related constructors violated I/O safety.
+
 ## [0.4.1] - 2026-09-21
 
 ### Changed
