@@ -7,7 +7,7 @@ Ordered by impact. Unchecked = not started.
 
 ### High Priority
 
-- [x] **Auto-finding extraction from scan output** - *shipped (nuclei only; opt-in via `[safety] auto_save_findings`).*
+- [x] **Auto-finding extraction from scan output** - *shipped for nmap, nuclei, nikto, dalfox, sqlmap, testssl, gitleaks and trufflehog, opt-in via `[safety] auto_save_findings`.*
   Extend existing tool parsers to optionally emit structured findings alongside text. Nuclei already tags severity (`[info]`/`[critical]`), nikto flags warnings, nmap identifies vulnerable services. Connect parsers to the finding store with a confidence threshold to filter noise.
   *Affected crates:* `raven-core` (parsers), `raven-report` (store)
 
