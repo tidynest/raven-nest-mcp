@@ -11,6 +11,8 @@
 //!   truncation) that prevents shell injection and resource abuse.
 //! - [`scan_manager`] - Background scan orchestration with concurrency limits,
 //!   disk-persisted outputs, and restart recovery.
+//! - [`time`] - The UTC timestamp type and the text forms it is stored and
+//!   printed in.
 
 pub mod audit;
 pub mod config;
@@ -19,3 +21,4 @@ pub mod executor;
 pub mod msf_client;
 pub mod safety;
 pub mod scan_manager;
+pub mod time;

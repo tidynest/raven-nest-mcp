@@ -18,7 +18,7 @@ rmpv = { workspace = true }
 url = { workspace = true }
 ipnet = { workspace = true }
 uuid = { workspace = true }
-chrono = { workspace = true }
+jiff = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

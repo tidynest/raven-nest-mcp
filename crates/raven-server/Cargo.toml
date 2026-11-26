@@ -24,7 +24,6 @@ reqwest = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
-chrono = { workspace = true }
 uuid = { workspace = true }
 libc = { workspace = true }
 roxmltree = { workspace = true }

@@ -23,7 +23,6 @@ minor versions may carry feature additions and refinements).
 - rustix 1.1.4 to 1.1.6 clears the unsoundness notice RUSTSEC-2026-0486. It
   is a test-only dependency through tempfile.
 
-
 ### Changed
 - **Migrated to rmcp 3.11.0.** The server now answers MCP 2026-07-28: the
   stateless lifecycle where each request carries its protocol version, and
@@ -32,6 +31,17 @@ minor versions may carry feature additions and refinements).
   `server.rs`: the `Meta` extractor is `RequestMetaObject`, `read_resource`
   returns `ReadResourceResponse`, and `ServerInfo` is `ServerConfig`. The
   lockfile pins 3.11.0 over 3.12.0, which was hours old at the time.
+- **The three crates no longer use chrono**, which RUSTSEC-2026-0543 marks
+  as unmaintained with no patched version. Timestamps now go through one
+  type, `raven_core::time::Timestamp`, built on jiff 1.0.1. Every text form
+  is unchanged: stored findings and targets keep `2026-11-26T16:26:55.311147711Z`,
+  the audit log, reports and cookie file keep the `+00:00` form, tool text
+  keeps `2026-11-26 16:26:55.311147711 UTC`, and report file names keep local
+  time as `report-2026-11-26_172656.md`. Files written by earlier releases
+  load as before. `raven-report` now depends on `raven-core` for that type.
+  A `TZ` that names no known zone still falls back to `/etc/localtime`.
+- chrono is still in `Cargo.lock` through rmcp 3.11.0, which requires it.
+  rmcp 3.12.0 makes it optional.
 
 ### Fixed
 - I/O errors show their cause again. The `Io` variant carried
@@ -41,8 +51,10 @@ minor versions may carry feature additions and refinements).
 - The timeout error reads "command timed out: nmap after 600s". It used to
   repeat itself: "command timed out after nmap time out after 600s".
 
-
 ### Changed
+- The Dockerfile no longer installs `libssl3` by name. The server uses rustls
+  and links no SSL library, and the other packages still bring OpenSSL in for
+  the tools that need it.
 - `config/sudoers-raven-nest` ships with a `CHANGE_ME` placeholder where it
   had a local username, and the usage guide says to replace it before
   installing.

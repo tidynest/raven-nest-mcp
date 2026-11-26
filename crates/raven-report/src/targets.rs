@@ -14,7 +14,7 @@
 //! Scoped per engagement: `raven-server` points the store at
 //! `{engagement_dir}/targets`, swapping it alongside the findings store.
 
-use chrono::{DateTime, Utc};
+use raven_core::time::Timestamp;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use std::fs;
@@ -34,8 +34,8 @@ pub struct ServiceRecord {
     pub version: String,
     /// Tool that last reported this service.
     pub source_tool: String,
-    pub first_seen: DateTime<Utc>,
-    pub last_seen: DateTime<Utc>,
+    pub first_seen: Timestamp,
+    pub last_seen: Timestamp,
 }
 
 /// Everything observed about one host, persisted as `{targets_dir}/{host}.json`.
@@ -49,8 +49,8 @@ pub struct HostRecord {
     /// BTreeMap so serialisation (and file diffs) are deterministic.
     #[serde(default)]
     pub services: BTreeMap<String, ServiceRecord>,
-    pub first_seen: DateTime<Utc>,
-    pub last_seen: DateTime<Utc>,
+    pub first_seen: Timestamp,
+    pub last_seen: Timestamp,
 }
 
 impl HostRecord {
@@ -67,7 +67,7 @@ pub struct HostSummary {
     pub host: String,
     pub open_ports: usize,
     pub total_services: usize,
-    pub last_seen: DateTime<Utc>,
+    pub last_seen: Timestamp,
 }
 
 /// A service observation to merge into a host record. Producers are scanner
@@ -178,7 +178,7 @@ impl TargetStore {
         technologies: &[String],
     ) -> Result<(), String> {
         sanitize_host(host)?;
-        let now = Utc::now();
+        let now = Timestamp::now();
         let path = self.record_path(host);
 
         // Load existing record (or start fresh), merge, write back.
