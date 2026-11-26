@@ -7,6 +7,12 @@ minor versions may carry feature additions and refinements).
 
 ## [Unreleased]
 
+### Fixed
+- The AUR recipe builds again. It still packaged v0.2.0, and with a current
+  source it failed at the final link: makepkg's default `lto` option compiles
+  the C half of aws-lc-sys as GCC bitcode, which the Rust linker cannot read.
+  `packaging/aur/PKGBUILD` now targets 0.4.2 and sets `options=('!lto')`.
+
 ## [0.4.2] - 2026-11-26
 
 ### Security
