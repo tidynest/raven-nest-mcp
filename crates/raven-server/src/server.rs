@@ -1211,7 +1211,7 @@ mod tests {
     #[test]
     fn exhaustion_gate_refuses_scans_but_not_management() {
         let dir = tempfile::tempdir().unwrap();
-        // 100K leaves ~69K usable after the 43-tool schema + reasoning overhead.
+        // 100K leaves ~68K usable after the 46-tool schema + reasoning overhead.
         let server = server_with_budget(dir.path(), 100_000);
         assert!(!server.budget.is_exhausted());
 

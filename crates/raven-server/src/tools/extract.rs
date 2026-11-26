@@ -213,7 +213,7 @@ fn find_cve(line: &str) -> Option<String> {
 /// each such line is one High finding; the following `Type:` lines enrich its
 /// evidence. A clean ("not injectable") run yields nothing.
 ///
-/// ponytail: anchors on the `Parameter:`/`Type:` line prefixes - robust to
+/// NOTE: anchors on the `Parameter:`/`Type:` line prefixes - robust to
 /// sqlmap's verbose progress noise without parsing the whole block structure.
 pub fn extract_sqlmap(raw: &str) -> Vec<ExtractedFinding> {
     let clean = crate::tools::strip_ansi(raw);
@@ -241,7 +241,7 @@ pub fn extract_sqlmap(raw: &str) -> Vec<ExtractedFinding> {
 /// text mode drops its own severity rating, so every confirmed vuln is High;
 /// a CVE is pulled from the line when present.
 ///
-/// ponytail: flat High severity. For per-CVE bands, run testssl `--json` and
+/// NOTE: flat High severity. For per-CVE bands, run testssl `--json` and
 /// read its `severity` field instead.
 pub fn extract_testssl(raw: &str) -> Vec<ExtractedFinding> {
     let clean = crate::tools::strip_ansi(raw);

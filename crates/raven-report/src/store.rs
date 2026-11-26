@@ -131,7 +131,7 @@ impl FindingStore {
         // mid-write can't leave a truncated JSON that the loader silently drops
         // (rename is atomic within the same directory). The loader only reads
         // `.json`, so a leftover `.json.tmp` from a crash is ignored.
-        // ponytail: no fsync - rename prevents truncation; surviving power-loss of
+        // NOTE: no fsync - rename prevents truncation; surviving power-loss of
         // the last write isn't worth the dir-sync cost for a findings store.
         let tmp = path.with_extension("json.tmp");
         fs::write(&tmp, json).map_err(|e| format!("disk write failed: {e}"))?;

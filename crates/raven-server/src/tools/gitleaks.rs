@@ -10,7 +10,7 @@
 //! (location + rule id only); set `show_secrets` to reveal them in the raw
 //! report. Slow tool - uses a [`ProgressTicker`](crate::progress::ProgressTicker).
 //!
-//! ponytail: path confined to output_dir; if operators need arbitrary scan
+//! NOTE: path confined to output_dir; if operators need arbitrary scan
 //! roots, add a config path-allowlist. Report is read from `/dev/stdout`
 //! (Linux); a Windows port would need a temp report file instead.
 

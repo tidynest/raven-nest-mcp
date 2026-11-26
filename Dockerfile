@@ -2,7 +2,7 @@
 # 20 of the 22 wrapped tools as apt packages - far less upkeep than hand-building
 # the Go/Rust tools on debian-slim).
 #
-# ponytail: COPY . . busts the cargo layer on any source change, so each release
+# NOTE: COPY . . busts the cargo layer on any source change, so each release
 # does a full compile. Fine for a tag-triggered build; add cargo-chef only if the
 # image build time actually hurts.
 
@@ -13,7 +13,7 @@ RUN cargo build --release --locked --bin raven-server
 
 # katana + dalfox are NOT in the Kali apt repo (verified against pkg.kali.org) -
 # build them in a throwaway Go stage so the toolchain stays out of the runtime image.
-# ponytail: @latest is non-reproducible; pin @vX.Y.Z if you need deterministic builds.
+# NOTE: @latest is non-reproducible; pin @vX.Y.Z if you need deterministic builds.
 FROM golang:1-bookworm AS gobuild
 RUN go install github.com/projectdiscovery/katana/cmd/katana@latest \
  && go install github.com/hahwul/dalfox/v2@latest

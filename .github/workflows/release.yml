@@ -5,7 +5,7 @@ name: Release
 # pre-push gate + CI run fmt/clippy/test on the branch first), so this workflow
 # only compiles, packages, and uploads - it does not re-run the test suite.
 #
-# ponytail: x86_64-gnu only. A fully-static musl build would need reqwest moved
+# NOTE: x86_64-gnu only. A fully-static musl build would need reqwest moved
 # off native-tls (openssl) onto rustls first - add that target once the TLS
 # feature is switched, not before.
 
