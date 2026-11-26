@@ -1,7 +1,7 @@
 # Maintainer: Eric Jingryd <tidynest@proton.me>
 #
-# Source build of the Raven Nest MCP server. The server itself only needs glibc,
-# gcc-libs, and openssl; every scanner it drives is an *optional* runtime
+# Source build of the Raven Nest MCP server. The server itself only needs glibc
+# and gcc-libs (TLS is rustls, compiled in); every scanner it drives is an *optional* runtime
 # dependency (see optdepends) - install only the ones you use. Many of those
 # live in the BlackArch or AUR repositories rather than the official ones.
 pkgname=raven-nest-mcp
@@ -11,7 +11,7 @@ pkgdesc="MCP server exposing 22 security tools + Metasploit behind a safety-hard
 arch=('x86_64')
 url="https://github.com/tidynest/raven-nest-mcp"
 license=('Apache-2.0')
-depends=('gcc-libs' 'glibc' 'openssl')
+depends=('gcc-libs' 'glibc')
 makedepends=('cargo')
 optdepends=(
   'nmap: port/service scanning and NSE'
