@@ -7,6 +7,14 @@ minor versions may carry feature additions and refinements).
 
 ## [Unreleased]
 
+### Fixed
+- I/O errors show their cause again. The `Io` variant carried
+  `#[error("transparent")]`, a format string, so every I/O error printed the
+  word "transparent". It now uses the `transparent` attribute and forwards
+  the underlying message.
+- The timeout error reads "command timed out: nmap after 600s". It used to
+  repeat itself: "command timed out after nmap time out after 600s".
+
 ## [0.4.2] - 2026-11-03
 
 ### Security

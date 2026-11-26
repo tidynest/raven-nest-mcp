@@ -32,7 +32,7 @@ pub enum PentestError {
     CommandFailed(String),
 
     /// The tool exceeded its configured timeout and was killed.
-    #[error("command timed out after {0}")]
+    #[error("command timed out: {0}")]
     CommandTimeout(String),
 
     /// Configuration file could not be read or parsed.
@@ -40,7 +40,7 @@ pub enum PentestError {
     ConfigError(String),
 
     /// Low-level I/O error (file system, process pipes, etc.).
-    #[error("transparent")]
+    #[error(transparent)]
     Io(#[from] std::io::Error),
 
     /// Metasploit RPC daemon is not running or unreachable.
@@ -50,4 +50,18 @@ pub enum PentestError {
     /// Metasploit RPC call returned an error.
     #[error("msf rpc error: {0}")]
     MsfRpcError(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::PentestError;
+
+    /// `#[error("transparent")]` is a format string, not the `transparent`
+    /// attribute, so every I/O error used to print that one word and lose its
+    /// cause.
+    #[test]
+    fn io_error_displays_the_underlying_message() {
+        let source = std::io::Error::other("pipe closed");
+        assert_eq!(PentestError::from(source).to_string(), "pipe closed");
+    }
 }

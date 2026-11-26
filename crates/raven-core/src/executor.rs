@@ -362,9 +362,7 @@ async fn run_inner(
 
     let output = tokio::time::timeout(timeout, cmd.output())
         .await
-        .map_err(|_| {
-            PentestError::CommandTimeout(format!("{tool} time out after {}s", timeout.as_secs()))
-        })?
+        .map_err(|_| PentestError::CommandTimeout(format!("{tool} after {}s", timeout.as_secs())))?
         .map_err(|e| PentestError::CommandFailed(format!("{tool}: {e}")))?;
 
     let stdout = safety::truncate_output(

@@ -1193,7 +1193,7 @@ When the server rejects a request, errors follow predictable formats:
 | Tool not allowed | `tool not allowed: burpsuite` |
 | Invalid CIDR | `invalid target: 192.168.1.0/33` |
 | Root required | `masscan requires root privileges - either run the server as root or add "masscan" to sudo_tools in config` |
-| Timeout | `command timed out after nmap time out after 600s` |
+| Timeout | `command timed out: nmap after 600s` |
 | Tool exit error | `nmap failed (exit exit status: 1): <stderr output>` |
 | FUZZ keyword missing | `URL must contain the FUZZ keyword (e.g. http://example.com/FUZZ)` |
 | Form params missing | `form_params is required for http-post-form/http-get-form` |
