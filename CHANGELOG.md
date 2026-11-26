@@ -16,9 +16,22 @@ minor versions may carry feature additions and refinements).
     `Url::origin()` on nested `blob:` URLs.
   - quinn-udp 0.5.14 to 0.5.16 clears RUSTSEC-2026-0538: the receive loop
     could spin after a truncated datagram.
+  - rmcp 2.2.0 to 3.11.0 clears RUSTSEC-2026-0457 and RUSTSEC-2026-0462. Both
+    are in the SDK's OAuth client and Streamable HTTP client, which this
+    server never compiled: it builds rmcp with `server`, `macros` and
+    `transport-io` only.
 - rustix 1.1.4 to 1.1.6 clears the unsoundness notice RUSTSEC-2026-0486. It
   is a test-only dependency through tempfile.
 
+
+### Changed
+- **Migrated to rmcp 3.11.0.** The server now answers MCP 2026-07-28: the
+  stateless lifecycle where each request carries its protocol version, and
+  `server/discover`. The `initialize` handshake still works for clients on
+  2024-11-05 through 2025-11-25. Source changes were three renames in
+  `server.rs`: the `Meta` extractor is `RequestMetaObject`, `read_resource`
+  returns `ReadResourceResponse`, and `ServerInfo` is `ServerConfig`. The
+  lockfile pins 3.11.0 over 3.12.0, which was hours old at the time.
 
 ### Fixed
 - I/O errors show their cause again. The `Io` variant carried
