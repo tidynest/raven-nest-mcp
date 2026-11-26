@@ -7,6 +7,19 @@ minor versions may carry feature additions and refinements).
 
 ## [Unreleased]
 
+### Security
+- Dependency bumps clear the five RustSec advisories that were filed against
+  the 0.4.2 lockfile after it was prepared:
+  - cookie 0.18.1 to 0.18.3 clears RUSTSEC-2026-0594: private cookie nonces
+    could repeat in a process that forks.
+  - url 2.5.8 to 2.5.9 clears RUSTSEC-2026-0592: stack overflow in
+    `Url::origin()` on nested `blob:` URLs.
+  - quinn-udp 0.5.14 to 0.5.16 clears RUSTSEC-2026-0538: the receive loop
+    could spin after a truncated datagram.
+- rustix 1.1.4 to 1.1.6 clears the unsoundness notice RUSTSEC-2026-0486. It
+  is a test-only dependency through tempfile.
+
+
 ### Fixed
 - I/O errors show their cause again. The `Io` variant carried
   `#[error("transparent")]`, a format string, so every I/O error printed the
