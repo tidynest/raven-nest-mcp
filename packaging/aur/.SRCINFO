@@ -8,7 +8,6 @@ pkgbase = raven-nest-mcp
 	makedepends = cargo
 	depends = gcc-libs
 	depends = glibc
-	depends = openssl
 	optdepends = nmap: port/service scanning and NSE
 	optdepends = masscan: high-rate port scanning
 	optdepends = whatweb: web technology fingerprinting

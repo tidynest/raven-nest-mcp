@@ -54,8 +54,9 @@ use rmcp::{
     Peer, RoleServer, ServerHandler,
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{
-        CallToolResult, ContentBlock, ListResourcesResult, Meta, PaginatedRequestParams,
-        ReadResourceRequestParams, ReadResourceResult, ServerCapabilities, ServerInfo,
+        CallToolResult, ContentBlock, ListResourcesResult, PaginatedRequestParams,
+        ReadResourceRequestParams, ReadResourceResponse, RequestMetaObject, ServerCapabilities,
+        ServerConfig,
     },
     service::RequestContext,
     tool, tool_handler, tool_router,
@@ -330,7 +331,7 @@ impl RavenServer {
     async fn run_nmap(
         &self,
         peer: Peer<RoleServer>,
-        meta: Meta,
+        meta: RequestMetaObject,
         Parameters(req): Parameters<NmapRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let target = req.target.clone();
@@ -365,7 +366,7 @@ impl RavenServer {
     async fn run_nuclei(
         &self,
         peer: Peer<RoleServer>,
-        meta: Meta,
+        meta: RequestMetaObject,
         Parameters(req): Parameters<NucleiRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let target = req.target.clone();
@@ -400,7 +401,7 @@ impl RavenServer {
     async fn run_nikto(
         &self,
         peer: Peer<RoleServer>,
-        meta: Meta,
+        meta: RequestMetaObject,
         Parameters(req): Parameters<NiktoRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let target = req.target.clone();
@@ -434,7 +435,7 @@ impl RavenServer {
     async fn run_testssl(
         &self,
         peer: Peer<RoleServer>,
-        meta: Meta,
+        meta: RequestMetaObject,
         Parameters(req): Parameters<TestsslRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let target = req.target.clone();
@@ -463,7 +464,7 @@ impl RavenServer {
     async fn run_feroxbuster(
         &self,
         peer: Peer<RoleServer>,
-        meta: Meta,
+        meta: RequestMetaObject,
         Parameters(req): Parameters<FeroxbusterRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.wrap_result(
@@ -485,7 +486,7 @@ impl RavenServer {
     async fn run_sqlmap(
         &self,
         peer: Peer<RoleServer>,
-        meta: Meta,
+        meta: RequestMetaObject,
         Parameters(req): Parameters<SqlmapRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let target = req.url.clone();
@@ -510,7 +511,7 @@ impl RavenServer {
     async fn run_hydra(
         &self,
         peer: Peer<RoleServer>,
-        meta: Meta,
+        meta: RequestMetaObject,
         Parameters(req): Parameters<HydraRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.wrap_result(
@@ -530,7 +531,7 @@ impl RavenServer {
     async fn run_enum4linux_ng(
         &self,
         peer: Peer<RoleServer>,
-        meta: Meta,
+        meta: RequestMetaObject,
         Parameters(req): Parameters<Enum4linuxRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.wrap_result(
@@ -582,7 +583,7 @@ impl RavenServer {
     async fn run_dnsrecon(
         &self,
         peer: Peer<RoleServer>,
-        meta: Meta,
+        meta: RequestMetaObject,
         Parameters(req): Parameters<DnsreconRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.wrap_result(
@@ -608,7 +609,7 @@ impl RavenServer {
     async fn run_katana(
         &self,
         peer: Peer<RoleServer>,
-        meta: Meta,
+        meta: RequestMetaObject,
         Parameters(req): Parameters<KatanaRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.wrap_result(
@@ -630,7 +631,7 @@ impl RavenServer {
     async fn run_john(
         &self,
         peer: Peer<RoleServer>,
-        meta: Meta,
+        meta: RequestMetaObject,
         Parameters(req): Parameters<JohnRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.wrap_result(
@@ -645,7 +646,7 @@ impl RavenServer {
     async fn run_gitleaks(
         &self,
         peer: Peer<RoleServer>,
-        meta: Meta,
+        meta: RequestMetaObject,
         Parameters(req): Parameters<GitleaksRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let target = req.path.clone();
@@ -670,7 +671,7 @@ impl RavenServer {
     async fn run_trufflehog(
         &self,
         peer: Peer<RoleServer>,
-        meta: Meta,
+        meta: RequestMetaObject,
         Parameters(req): Parameters<TrufflehogRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         let target = req.path.clone();
@@ -750,7 +751,7 @@ impl RavenServer {
     async fn run_wpscan(
         &self,
         peer: Peer<RoleServer>,
-        meta: Meta,
+        meta: RequestMetaObject,
         Parameters(req): Parameters<WpscanRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.wrap_result(
@@ -1110,7 +1111,7 @@ impl RavenServer {
     async fn run_netexec(
         &self,
         peer: Peer<RoleServer>,
-        meta: Meta,
+        meta: RequestMetaObject,
         Parameters(req): Parameters<NetExecRequest>,
     ) -> Result<CallToolResult, rmcp::ErrorData> {
         self.wrap_result(
@@ -1122,8 +1123,8 @@ impl RavenServer {
 
 #[tool_handler]
 impl ServerHandler for RavenServer {
-    fn get_info(&self) -> ServerInfo {
-        let mut info = ServerInfo::default();
+    fn get_info(&self) -> ServerConfig {
+        let mut info = ServerConfig::default();
         info.capabilities = ServerCapabilities::builder()
             .enable_tools()
             .enable_resources()
@@ -1152,8 +1153,9 @@ impl ServerHandler for RavenServer {
         &self,
         request: ReadResourceRequestParams,
         _context: RequestContext<RoleServer>,
-    ) -> Result<ReadResourceResult, rmcp::ErrorData> {
+    ) -> Result<ReadResourceResponse, rmcp::ErrorData> {
         crate::tools::resources::read(&request.uri, &self.finding_store, &self.scan_manager)
+            .map(Into::into)
     }
 }
 
@@ -1211,7 +1213,7 @@ mod tests {
     #[test]
     fn exhaustion_gate_refuses_scans_but_not_management() {
         let dir = tempfile::tempdir().unwrap();
-        // 100K leaves ~69K usable after the 43-tool schema + reasoning overhead.
+        // 100K leaves ~68K usable after the 46-tool schema + reasoning overhead.
         let server = server_with_budget(dir.path(), 100_000);
         assert!(!server.budget.is_exhausted());
 

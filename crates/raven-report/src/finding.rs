@@ -5,7 +5,7 @@
 //! [`FindingStore`](crate::store::FindingStore) in-memory index, avoiding
 //! disk I/O for listing and sorting operations.
 
-use chrono::{DateTime, Utc};
+use raven_core::time::Timestamp;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -82,7 +82,7 @@ pub struct Finding {
     #[serde(default)]
     pub source: FindingSource,
     /// When this finding was recorded.
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: Timestamp,
 }
 
 impl Finding {
@@ -108,7 +108,7 @@ impl Finding {
             owasp_category: None,
             scan_id: None,
             source: FindingSource::Manual,
-            timestamp: Utc::now(),
+            timestamp: Timestamp::now(),
         }
     }
 }
@@ -130,7 +130,7 @@ pub struct FindingMeta {
     pub scan_id: Option<String>,
     #[serde(default)]
     pub source: FindingSource,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: Timestamp,
 }
 
 impl From<&Finding> for FindingMeta {

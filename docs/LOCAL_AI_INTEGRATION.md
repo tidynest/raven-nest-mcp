@@ -118,15 +118,21 @@ See `docs/METASPLOIT.md` for full setup.
 
 ### Recommended Models (by tool-calling reliability)
 
-Best-to-worst for Raven Nest tool calling, based on the
+Best-to-worst for Raven Nest tool calling. The Notes column is hands-on
+testing against this server. The Tool F1 column is not: those scores are the
+tool-selection F1 published in the
 [Docker practical evaluation](https://www.docker.com/blog/local-llm-tool-calling-a-practical-evaluation/)
-(21 models, 3570 test cases) and hands-on testing.
+(June 2025, 21 models, 3570 test cases), measured on Docker's own test set.
 
-| Model | Size | VRAM (8GB fit?) | Tool F1 | Notes |
-|-------|------|-----------------|---------|-------|
-| Qwen3 8B @64K (dense) | ~5 GB | Yes | 0.933 | **Daily driver.** Zero param hallucination, no interactive fabrication. 8/8 batch steps at 64K context. ~40 tok/s. |
-| Qwen3.5 9B @49K (dense) | ~6.6 GB | Yes (tight, 7.3/8.2 GB) | ~0.93+ | **Best batch model.** 6+ granular findings, professional reports. Batch-only - fabricates in interactive mode. ~30 tok/s. |
-| Qwen3 14B (dense) | ~10 GB | No (CPU offload) | 0.971 | Tested. Correct tool selection in batch mode. Fabricates in interactive. ~8 tok/s with partial offload. |
+| Model | Size | VRAM (8GB fit?) | Tool F1 (Docker eval) | Notes |
+|-------|------|-----------------|-----------------------|-------|
+| Qwen3 8B @64K (dense) | ~5 GB | Yes | 0.919 at Q4_K_M, 0.933 at F16 | **Daily driver.** Zero param hallucination, no interactive fabrication. 8/8 batch steps at 64K context. ~40 tok/s. |
+| Qwen3.5 9B @49K (dense) | ~6.6 GB | Yes (tight, 7.3/8.2 GB) | ~0.93 (own estimate) | **Best batch model.** 6+ granular findings, professional reports. Batch-only - fabricates in interactive mode. ~30 tok/s. |
+| Qwen3 14B (dense) | ~10 GB | No (CPU offload) | 0.971 at Q4_K_M | Tested. Correct tool selection in batch mode. Fabricates in interactive. ~8 tok/s with partial offload. |
+
+Qwen3.5 9B was released after the Docker study, so it has no published score
+there. Its figure is my own estimate from running it against this server, not
+a measured F1.
 
 14 models tested - only the Qwen3/3.5 family produces usable results.
 Dense models outperform MoE for tool calling - all parameters participate
@@ -158,7 +164,7 @@ match Ollama's protocol.
 
 - **Ministral 3B/8B** - fails silently with >2 tools attached (fatal for 46 tools)
 - **Mistral Nemo 12B** - MCP role bug breaks multi-turn tool use
-- **xLAM 8B (v1)** - F1 score 0.570, frequently misses tools
+- **xLAM 8B** - F1 0.570 in the Docker evaluation (`llama-xlam:8B-Q4_K_M`), frequently misses tools
 - **xLAM-2-8B-fc-r (v2)** - despite BFCL #4, outputs JSON text instead of using Ollama tool API
 - **Phi-4-mini** - outputs pseudo-code instead of structured tool calls
 - **Dolphin 3.0** - no tool-calling support in Ollama at all

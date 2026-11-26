@@ -35,7 +35,7 @@ pub fn check_allowlist(tool: &str, config: &SafetyConfig) -> Result<(), PentestE
 /// they must not be group/other-readable - findings and scan spill files within
 /// would otherwise be exposed to other local users. The mode is applied at
 /// creation time only.
-// ponytail: create-time 0700 only; a pre-existing/symlinked dir is not re-chmod'd -
+// NOTE: create-time 0700 only; a pre-existing/symlinked dir is not re-chmod'd -
 // upgrade to an explicit lstat + set_permissions if /tmp symlink TOCTOU matters.
 pub fn ensure_dir_secure(path: impl AsRef<std::path::Path>) -> std::io::Result<()> {
     use std::os::unix::fs::DirBuilderExt;

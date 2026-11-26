@@ -21,7 +21,7 @@ pub fn generate_report(findings: &[&Finding], title: &str) -> String {
     let envelope = serde_json::json!({
         "schema_version": "1.0",
         "title": title,
-        "generated_at": chrono::Utc::now().to_rfc3339(),
+        "generated_at": raven_core::time::Timestamp::now().to_rfc3339(),
         "summary": {
             "total": findings.len(),
             "counts": {

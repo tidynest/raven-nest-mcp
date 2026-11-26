@@ -283,7 +283,8 @@ Some tools require root privileges:
 Instead of running the entire server as root, you can grant passwordless `sudo`
 for just these binaries:
 
-1. Install the sudoers drop-in (included in the repo):
+1. In `config/sudoers-raven-nest`, replace `CHANGE_ME` with the user that runs
+   the server and check the binary paths. Then install the drop-in:
 
 ```bash
 sudo install -m 0440 config/sudoers-raven-nest /etc/sudoers.d/raven-nest
@@ -306,8 +307,6 @@ sudo -n masscan --version   # same
 When a tool is listed in `sudo_tools`, the executor invokes it as
 `sudo /usr/bin/nmap <args>` instead of `nmap <args>`. The tool handlers skip
 their root-privilege check when sudo is configured.
-
-Edit the username and paths in the sudoers file for your environment.
 
 ### `[scope]` - Engagement Authorization
 
@@ -1193,7 +1192,7 @@ When the server rejects a request, errors follow predictable formats:
 | Tool not allowed | `tool not allowed: burpsuite` |
 | Invalid CIDR | `invalid target: 192.168.1.0/33` |
 | Root required | `masscan requires root privileges - either run the server as root or add "masscan" to sudo_tools in config` |
-| Timeout | `command timed out after nmap time out after 600s` |
+| Timeout | `command timed out: nmap after 600s` |
 | Tool exit error | `nmap failed (exit exit status: 1): <stderr output>` |
 | FUZZ keyword missing | `URL must contain the FUZZ keyword (e.g. http://example.com/FUZZ)` |
 | Form params missing | `form_params is required for http-post-form/http-get-form` |
@@ -1455,7 +1454,7 @@ Use `-u` (unbuffered) when piping output to avoid buffering delays.
 Phases 2-3 run actual scans against live targets (bWAPP, Juice Shop) and
 take 30-60 minutes total. Phases 0, 4-7 complete in under 5 minutes.
 
-See `tests/TEST_RESULTS.md` for the latest results.
+Run `cargo test --workspace` for current unit and integration results.
 
 ---
 

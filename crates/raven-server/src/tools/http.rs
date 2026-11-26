@@ -270,7 +270,7 @@ pub async fn run(
         let data = serde_json::json!({
             "url": req.url,
             "cookies": cookies_line,
-            "timestamp": chrono::Utc::now().to_rfc3339()
+            "timestamp": raven_core::time::Timestamp::now().to_rfc3339()
         });
         use std::os::unix::fs::OpenOptionsExt;
         let _ = std::fs::OpenOptions::new()

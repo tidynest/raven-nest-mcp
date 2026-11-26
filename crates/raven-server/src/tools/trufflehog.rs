@@ -16,7 +16,7 @@
 //! malicious scanned repo (CVE-2025-41390). This handler scans the working
 //! tree only and never touches git config.
 //!
-//! ponytail: filesystem mode only; git-history scanning needs a `file://` URI
+//! NOTE: filesystem mode only; git-history scanning needs a `file://` URI
 //! and is gitleaks' job anyway. Add a `git` mode here only if a use case appears.
 
 use raven_core::{config::RavenConfig, executor};

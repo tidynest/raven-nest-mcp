@@ -131,7 +131,7 @@ impl FindingStore {
         // mid-write can't leave a truncated JSON that the loader silently drops
         // (rename is atomic within the same directory). The loader only reads
         // `.json`, so a leftover `.json.tmp` from a crash is ignored.
-        // ponytail: no fsync - rename prevents truncation; surviving power-loss of
+        // NOTE: no fsync - rename prevents truncation; surviving power-loss of
         // the last write isn't worth the dir-sync cost for a findings store.
         let tmp = path.with_extension("json.tmp");
         fs::write(&tmp, json).map_err(|e| format!("disk write failed: {e}"))?;
@@ -409,15 +409,15 @@ mod tests {
 
     #[test]
     fn list_order_is_deterministic_within_a_severity() {
-        use chrono::TimeZone;
+        use raven_core::time::Timestamp;
         let (mut store, _dir) = test_store();
         // Same severity, controlled timestamps b < a < c.
         let mut a = make_finding("A", Severity::High);
         let mut b = make_finding("B", Severity::High);
         let mut c = make_finding("C", Severity::High);
-        b.timestamp = chrono::Utc.timestamp_opt(1_000, 0).unwrap();
-        a.timestamp = chrono::Utc.timestamp_opt(2_000, 0).unwrap();
-        c.timestamp = chrono::Utc.timestamp_opt(3_000, 0).unwrap();
+        b.timestamp = Timestamp::from_second(1_000);
+        a.timestamp = Timestamp::from_second(2_000);
+        c.timestamp = Timestamp::from_second(3_000);
         // Insert scrambled; list() must be timestamp-ordered regardless of
         // insertion or HashMap-iteration order.
         store.insert(a.clone()).unwrap();

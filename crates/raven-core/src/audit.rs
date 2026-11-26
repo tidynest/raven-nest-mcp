@@ -122,7 +122,7 @@ fn append_line(config: &RavenConfig, line: &str) -> std::io::Result<()> {
 /// Record one tool invocation. Best-effort - never fails the caller.
 pub fn record(config: &RavenConfig, entry: &AuditEntry) {
     let line = serde_json::json!({
-        "ts": chrono::Utc::now().to_rfc3339(),
+        "ts": crate::time::Timestamp::now().to_rfc3339(),
         "tool": entry.tool,
         "args": redact(entry.tool, entry.args),
         "exit_code": entry.exit_code,

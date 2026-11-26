@@ -1,7 +1,7 @@
 # AUR packaging
 
 Source-build PKGBUILD for the [`raven-nest-mcp`](https://aur.archlinux.org/packages/raven-nest-mcp)
-AUR package. The server needs only `glibc`/`gcc-libs`/`openssl`; every scanner it
+AUR package. The server needs only `glibc`/`gcc-libs`; every scanner it
 drives is an `optdepends` (install only what you use - many are in BlackArch/AUR).
 
 ## Test before publishing

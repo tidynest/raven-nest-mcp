@@ -283,7 +283,7 @@ pub fn generate_report(
     let report = format.render(&refs, title);
 
     // Persist to disk alongside findings
-    let date = chrono::Local::now().format("%Y-%m-%d_%H%M%S");
+    let date = raven_core::time::local_file_stamp();
     let filename = format!("report-{date}.{}", format.extension());
     // Write into the active engagement's directory (default store -> output_dir).
     let path = store.base_dir().join(&filename);

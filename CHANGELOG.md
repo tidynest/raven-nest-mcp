@@ -7,11 +7,24 @@ minor versions may carry feature additions and refinements).
 
 ## [Unreleased]
 
-## [0.4.2] - 2026-11-03
+## [0.4.2] - 2026-11-26
 
 ### Security
-- Lockfile-only release. No source, tool or endpoint changes since v0.4.1.
-  The dependency bumps clear twelve RustSec advisories:
+- Dependency bumps clear five RustSec advisories:
+  - cookie 0.18.1 to 0.18.3 clears RUSTSEC-2026-0594: private cookie nonces
+    could repeat in a process that forks.
+  - url 2.5.8 to 2.5.9 clears RUSTSEC-2026-0592: stack overflow in
+    `Url::origin()` on nested `blob:` URLs.
+  - quinn-udp 0.5.14 to 0.5.16 clears RUSTSEC-2026-0538: the receive loop
+    could spin after a truncated datagram.
+  - rmcp 2.2.0 to 3.11.0 clears RUSTSEC-2026-0457 and RUSTSEC-2026-0462. Both
+    are in the SDK's OAuth client and Streamable HTTP client, which this
+    server never compiled: it builds rmcp with `server`, `macros` and
+    `transport-io` only.
+- rustix 1.1.4 to 1.1.6 clears the unsoundness notice RUSTSEC-2026-0486. It
+  is a test-only dependency through tempfile.
+- An earlier round of bumps, prepared on 2026-11-03 and never released on
+  its own, clears twelve more RustSec advisories:
   - quinn-proto 0.11.15 to 0.11.19 clears RUSTSEC-2026-0338,
     RUSTSEC-2026-0339, RUSTSEC-2026-0340, RUSTSEC-2026-0341 and
     RUSTSEC-2026-0342: remote panics and unbounded memory growth in QUIC
@@ -27,6 +40,45 @@ minor versions may carry feature additions and refinements).
     trusted distrusted emSign intermediates.
   - tokio 1.52.0 to 1.54.1 clears RUSTSEC-2026-0386: `AsyncFd::new` and
     related constructors violated I/O safety.
+
+### Changed
+- **Migrated to rmcp 3.11.0.** The server now answers MCP 2026-07-28: the
+  stateless lifecycle where each request carries its protocol version, and
+  `server/discover`. The `initialize` handshake still works for clients on
+  2024-11-05 through 2025-11-25. Source changes were three renames in
+  `server.rs`: the `Meta` extractor is `RequestMetaObject`, `read_resource`
+  returns `ReadResourceResponse`, and `ServerInfo` is `ServerConfig`. The
+  lockfile pins 3.11.0 over 3.12.0, which was hours old at the time.
+- **The three crates no longer use chrono**, which RUSTSEC-2026-0543 marks
+  as unmaintained with no patched version. Timestamps now go through one
+  type, `raven_core::time::Timestamp`, built on jiff 1.0.1. Every text form
+  is unchanged: stored findings and targets keep `2026-11-26T16:26:55.311147711Z`,
+  the audit log, reports and cookie file keep the `+00:00` form, tool text
+  keeps `2026-11-26 16:26:55.311147711 UTC`, and report file names keep local
+  time as `report-2026-11-26_172656.md`. Files written by earlier releases
+  load as before. `raven-report` now depends on `raven-core` for that type.
+  A `TZ` that names no known zone still falls back to `/etc/localtime`.
+- chrono is still in `Cargo.lock` through rmcp 3.11.0, which requires it.
+  rmcp 3.12.0 makes it optional.
+- The Dockerfile no longer installs `libssl3` by name. The server uses rustls
+  and links no SSL library, and the other packages still bring OpenSSL in for
+  the tools that need it.
+- `config/sudoers-raven-nest` ships with a `CHANGE_ME` placeholder where it
+  had a local username, and the usage guide says to replace it before
+  installing.
+- `docs/LOCAL_AI_INTEGRATION.md` attributes the Tool F1 column to the Docker
+  evaluation, gives the score for each quantisation, and marks the Qwen3.5 9B
+  figure as an estimate.
+- Removed `tests/TEST_RESULTS.md`, a snapshot from v0.2.9 that no longer
+  matched the suite.
+
+### Fixed
+- I/O errors show their cause again. The `Io` variant carried
+  `#[error("transparent")]`, a format string, so every I/O error printed the
+  word "transparent". It now uses the `transparent` attribute and forwards
+  the underlying message.
+- The timeout error reads "command timed out: nmap after 600s". It used to
+  repeat itself: "command timed out after nmap time out after 600s".
 
 ## [0.4.1] - 2026-09-21
 

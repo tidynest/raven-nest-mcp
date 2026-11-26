@@ -194,7 +194,7 @@ pub fn generate_report(findings: &[&Finding], title: &str) -> String {
          <header>\n<h1>{esc_title}</h1>\n\
          <div class=\"meta\">Generated {}</div>\n</header>\n\
          <h2>Executive Summary</h2>\n{body}</div>\n</body>\n</html>\n",
-        chrono::Utc::now().to_rfc3339(),
+        raven_core::time::Timestamp::now().to_rfc3339(),
     )
 }
 

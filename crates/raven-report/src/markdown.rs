@@ -60,7 +60,7 @@ pub fn generate_report(findings: &[&Finding], title: &str) -> String {
     let mut report = format!("# {title}\n\n");
     report.push_str(&format!(
         "_Generated {}_\n\n",
-        chrono::Utc::now().to_rfc3339()
+        raven_core::time::Timestamp::now().to_rfc3339()
     ));
 
     // Table of Contents
