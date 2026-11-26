@@ -1454,7 +1454,7 @@ Use `-u` (unbuffered) when piping output to avoid buffering delays.
 Phases 2-3 run actual scans against live targets (bWAPP, Juice Shop) and
 take 30-60 minutes total. Phases 0, 4-7 complete in under 5 minutes.
 
-See `tests/TEST_RESULTS.md` for the latest results.
+Run `cargo test --workspace` for current unit and integration results.
 
 ---
 

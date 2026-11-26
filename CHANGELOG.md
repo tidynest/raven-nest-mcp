@@ -20,6 +20,11 @@ minor versions may carry feature additions and refinements).
 - `config/sudoers-raven-nest` ships with a `CHANGE_ME` placeholder where it
   had a local username, and the usage guide says to replace it before
   installing.
+- `docs/LOCAL_AI_INTEGRATION.md` attributes the Tool F1 column to the Docker
+  evaluation, gives the score for each quantisation, and marks the Qwen3.5 9B
+  figure as an estimate.
+- Removed `tests/TEST_RESULTS.md`, a snapshot from v0.2.9 that no longer
+  matched the suite.
 
 ## [0.4.2] - 2026-11-03
 
