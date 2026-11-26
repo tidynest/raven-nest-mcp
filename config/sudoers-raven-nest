@@ -1,1 +1,2 @@
-bakri ALL=(root) NOPASSWD: /usr/bin/masscan, /usr/bin/nmap
+# Replace CHANGE_ME with the user that runs raven-server before installing.
+CHANGE_ME ALL=(root) NOPASSWD: /usr/bin/masscan, /usr/bin/nmap

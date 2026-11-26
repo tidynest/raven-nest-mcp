@@ -283,7 +283,8 @@ Some tools require root privileges:
 Instead of running the entire server as root, you can grant passwordless `sudo`
 for just these binaries:
 
-1. Install the sudoers drop-in (included in the repo):
+1. In `config/sudoers-raven-nest`, replace `CHANGE_ME` with the user that runs
+   the server and check the binary paths. Then install the drop-in:
 
 ```bash
 sudo install -m 0440 config/sudoers-raven-nest /etc/sudoers.d/raven-nest
@@ -306,8 +307,6 @@ sudo -n masscan --version   # same
 When a tool is listed in `sudo_tools`, the executor invokes it as
 `sudo /usr/bin/nmap <args>` instead of `nmap <args>`. The tool handlers skip
 their root-privilege check when sudo is configured.
-
-Edit the username and paths in the sudoers file for your environment.
 
 ### `[scope]` - Engagement Authorization
 

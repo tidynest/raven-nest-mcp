@@ -15,6 +15,12 @@ minor versions may carry feature additions and refinements).
 - The timeout error reads "command timed out: nmap after 600s". It used to
   repeat itself: "command timed out after nmap time out after 600s".
 
+
+### Changed
+- `config/sudoers-raven-nest` ships with a `CHANGE_ME` placeholder where it
+  had a local username, and the usage guide says to replace it before
+  installing.
+
 ## [0.4.2] - 2026-11-03
 
 ### Security
