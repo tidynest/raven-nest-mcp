@@ -7,9 +7,10 @@ minor versions may carry feature additions and refinements).
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-26
+
 ### Security
-- Dependency bumps clear the five RustSec advisories that were filed against
-  the 0.4.2 lockfile after it was prepared:
+- Dependency bumps clear five RustSec advisories:
   - cookie 0.18.1 to 0.18.3 clears RUSTSEC-2026-0594: private cookie nonces
     could repeat in a process that forks.
   - url 2.5.8 to 2.5.9 clears RUSTSEC-2026-0592: stack overflow in
@@ -22,6 +23,23 @@ minor versions may carry feature additions and refinements).
     `transport-io` only.
 - rustix 1.1.4 to 1.1.6 clears the unsoundness notice RUSTSEC-2026-0486. It
   is a test-only dependency through tempfile.
+- An earlier round of bumps, prepared on 2026-11-03 and never released on
+  its own, clears twelve more RustSec advisories:
+  - quinn-proto 0.11.15 to 0.11.19 clears RUSTSEC-2026-0338,
+    RUSTSEC-2026-0339, RUSTSEC-2026-0340, RUSTSEC-2026-0341 and
+    RUSTSEC-2026-0342: remote panics and unbounded memory growth in QUIC
+    frame handling.
+  - rustls 0.23.45 to 0.23.46 clears RUSTSEC-2026-0346, RUSTSEC-2026-0347,
+    RUSTSEC-2026-0348 and RUSTSEC-2026-0349: TLS secrets in `Debug` output,
+    data sent to the outer server after ECH rejection, up to 1 GiB allocated
+    before authentication during certificate decompression, and a downgrade
+    to classical key exchange.
+  - rustls-webpki 0.103.15 to 0.103.16 clears RUSTSEC-2026-0382: distrusted
+    intermediates could pass certificate verification.
+  - webpki-root-certs 1.0.6 to 1.0.11 clears RUSTSEC-2026-0383: bundled roots
+    trusted distrusted emSign intermediates.
+  - tokio 1.52.0 to 1.54.1 clears RUSTSEC-2026-0386: `AsyncFd::new` and
+    related constructors violated I/O safety.
 
 ### Changed
 - **Migrated to rmcp 3.11.0.** The server now answers MCP 2026-07-28: the
@@ -42,16 +60,6 @@ minor versions may carry feature additions and refinements).
   A `TZ` that names no known zone still falls back to `/etc/localtime`.
 - chrono is still in `Cargo.lock` through rmcp 3.11.0, which requires it.
   rmcp 3.12.0 makes it optional.
-
-### Fixed
-- I/O errors show their cause again. The `Io` variant carried
-  `#[error("transparent")]`, a format string, so every I/O error printed the
-  word "transparent". It now uses the `transparent` attribute and forwards
-  the underlying message.
-- The timeout error reads "command timed out: nmap after 600s". It used to
-  repeat itself: "command timed out after nmap time out after 600s".
-
-### Changed
 - The Dockerfile no longer installs `libssl3` by name. The server uses rustls
   and links no SSL library, and the other packages still bring OpenSSL in for
   the tools that need it.
@@ -64,26 +72,13 @@ minor versions may carry feature additions and refinements).
 - Removed `tests/TEST_RESULTS.md`, a snapshot from v0.2.9 that no longer
   matched the suite.
 
-## [0.4.2] - 2026-11-03
-
-### Security
-- Lockfile-only release. No source, tool or endpoint changes since v0.4.1.
-  The dependency bumps clear twelve RustSec advisories:
-  - quinn-proto 0.11.15 to 0.11.19 clears RUSTSEC-2026-0338,
-    RUSTSEC-2026-0339, RUSTSEC-2026-0340, RUSTSEC-2026-0341 and
-    RUSTSEC-2026-0342: remote panics and unbounded memory growth in QUIC
-    frame handling.
-  - rustls 0.23.45 to 0.23.46 clears RUSTSEC-2026-0346, RUSTSEC-2026-0347,
-    RUSTSEC-2026-0348 and RUSTSEC-2026-0349: TLS secrets in `Debug` output,
-    data sent to the outer server after ECH rejection, up to 1 GiB allocated
-    before authentication during certificate decompression, and a downgrade
-    to classical key exchange.
-  - rustls-webpki 0.103.15 to 0.103.16 clears RUSTSEC-2026-0382: distrusted
-    intermediates could pass certificate verification.
-  - webpki-root-certs 1.0.6 to 1.0.11 clears RUSTSEC-2026-0383: bundled roots
-    trusted distrusted emSign intermediates.
-  - tokio 1.52.0 to 1.54.1 clears RUSTSEC-2026-0386: `AsyncFd::new` and
-    related constructors violated I/O safety.
+### Fixed
+- I/O errors show their cause again. The `Io` variant carried
+  `#[error("transparent")]`, a format string, so every I/O error printed the
+  word "transparent". It now uses the `transparent` attribute and forwards
+  the underlying message.
+- The timeout error reads "command timed out: nmap after 600s". It used to
+  repeat itself: "command timed out after nmap time out after 600s".
 
 ## [0.4.1] - 2026-09-21
 
