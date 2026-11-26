@@ -5,7 +5,7 @@
 # dependency (see optdepends) - install only the ones you use. Many of those
 # live in the BlackArch or AUR repositories rather than the official ones.
 pkgname=raven-nest-mcp
-pkgver=0.2.0
+pkgver=0.4.2
 pkgrel=1
 pkgdesc="MCP server exposing 22 security tools + Metasploit behind a safety-hardened interface"
 arch=('x86_64')
@@ -13,6 +13,10 @@ url="https://github.com/tidynest/raven-nest-mcp"
 license=('Apache-2.0')
 depends=('gcc-libs' 'glibc')
 makedepends=('cargo')
+# makepkg's default `lto` adds -flto to CFLAGS, so the C half of aws-lc-sys
+# (rustls's crypto backend) is built as GCC bitcode that the Rust linker
+# cannot read, and the final link fails on undefined aws_lc_* symbols.
+options=('!lto')
 optdepends=(
   'nmap: port/service scanning and NSE'
   'masscan: high-rate port scanning'
@@ -39,7 +43,7 @@ optdepends=(
   'metasploit: exploitation framework, powers the msf_* tools (off by default)'
 )
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
-sha256sums=('b20e9de4b897c0f16381fcfb46fe683fdfa075a224be61724c3ec9b249ccdd3e')
+sha256sums=('f635cc683966d69dc5e69f7372a63bb49b6a6607b5b3d31f54c1ac179f030d7b')
 
 prepare() {
   cd "$pkgname-$pkgver"
