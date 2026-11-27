@@ -4,11 +4,15 @@
 
 ### Run with Docker (skips host-tool install)
 
-The published image bundles `raven-server` and all 22 tools. See
-[INSTALL.md](INSTALL.md#container-image) for the client entry, and for how to
-mount a config and keep output on a volume. INSTALL.md also covers the
-prebuilt binary and the Arch PKGBUILD. The host-tool setup below is only
-needed when the scanners are not coming from the image.
+The published image bundles `raven-server` and all 22 tools.
+
+**Read more:**
+[INSTALL.md](INSTALL.md#container-image) has the client entry, and shows how
+to mount a config and keep output on a volume. It also covers the prebuilt
+binary and the Arch PKGBUILD.
+
+The host-tool setup below is ***only needed when the scanners are not coming
+from the image***.
 
 ### Build
 
@@ -22,8 +26,10 @@ The binary is at `target/release/raven-server`.
 
 ### Host Tools
 
-Install the scanning tools you want to use. All are optional - the server
-starts regardless, but tool calls will fail if the binary isn't installed.
+Install the scanning tools you would like to use.
+
+All are optional. The server starts regardless, but ***tool calls will fail
+if the binary isn't installed***.
 
 ```bash
 # Core tools (official repos - Arch Linux)
@@ -47,14 +53,18 @@ yay -S feroxbuster-bin ffuf-bin enum4linux-ng dalfox-bin trufflehog-bin
 
 `ping` is available by default on all Linux systems.
 
-> **Arch note:** The `testssl.sh` package installs the binary as `testssl`.
+> **Arch note:**
+> The `testssl.sh` package installs the binary as `testssl`.
+>
 > If the tool config references `testssl.sh`, create a symlink:
 > `sudo ln -s /usr/bin/testssl /usr/bin/testssl.sh`
 
 ### Wordlists
 
-`feroxbuster` and `ffuf` default to [SecLists](https://github.com/danielmiessler/SecLists)
-wordlists. Install them for fuzzing to work out of the box:
+`feroxbuster` and `ffuf` default to
+[SecLists](https://github.com/danielmiessler/SecLists) wordlists.
+
+Install them for fuzzing to work out of the box:
 
 ```bash
 # Arch Linux
@@ -67,21 +77,26 @@ sudo apt install seclists
 git clone https://github.com/danielmiessler/SecLists.git /usr/share/seclists
 ```
 
-Default wordlist paths:
-- **feroxbuster** - `/usr/share/seclists/Discovery/Web-Content/raft-medium-directories.txt`
-- **ffuf** - `/usr/share/seclists/Discovery/Web-Content/raft-medium-words.txt`
+**Default wordlist paths:**
+- **feroxbuster** uses
+  `/usr/share/seclists/Discovery/Web-Content/raft-medium-directories.txt`,
+- **ffuf** uses
+  `/usr/share/seclists/Discovery/Web-Content/raft-medium-words.txt`.
 
-You can override these per-call via the `wordlist` parameter.
+You can override these per call with the `wordlist` parameter.
 
 ---
 
 ## Connecting to an MCP Client
 
-The server communicates over stdio - stdout carries JSON-RPC, logs go to stderr.
+The server communicates over stdio:
+- stdout carries JSON-RPC,
+- logs go to stderr.
 
 ### Claude Code
 
-Create `.mcp.json` in the project root (or `~/.claude/.mcp.json` for global access):
+Create `.mcp.json` in the project root, or `~/.claude/.mcp.json` for global
+access:
 
 ```json
 {
@@ -100,9 +115,10 @@ automatically.
 
 ### Generic MCP Clients
 
-Any MCP client that supports stdio transport works. Point the client at the
-binary with the working directory set to the repo root (so the config resolves
-correctly):
+Any MCP client that supports stdio transport works.
+
+Point the client at the binary with the ***working directory set to the repo
+root***, so that the config resolves correctly:
 
 ```json
 {
@@ -118,8 +134,9 @@ correctly):
 
 ### Local AI (ollmcp)
 
-When using local models (Ollama, llama.cpp), rename the server to avoid
-hyphens - many local models struggle with tool names containing hyphens:
+When using local models, for example with Ollama or llama.cpp, ***rename the
+server to avoid hyphens***. Many local models struggle with tool names
+containing hyphens:
 
 ```json
 {
@@ -134,31 +151,48 @@ hyphens - many local models struggle with tool names containing hyphens:
 
 Launch: `ollmcp --model <model> -j ~/.mcphost.json`
 
-For small-context models (32K-64K), set `context_budget` in the config -
-see the [Configuration](#configuration) section.
+For small-context models, 32K to 64K, set `context_budget` in the config.
+
+**Read more:**
+The [Configuration](#configuration) section.
 
 ---
 
 ## Configuration
 
-Edit `config/default.toml` to customise behaviour. The config file has these
-sections: `[safety]`, `[scope]`, `[execution]`, `[network]`, `[metasploit]`, and
-`[netexec]`.
+Edit `config/default.toml` to customise behaviour.
+
+The config file has these sections:
+- `[safety]`,
+- `[scope]`,
+- `[execution]`,
+- `[network]`,
+- `[metasploit]`,
+- `[netexec]`.
 
 ### Config Resolution Chain
 
 The server searches for config in this order, using the first one found:
 
-1. **`RAVEN_CONFIG` env var** - explicit file path (e.g. `RAVEN_CONFIG=/etc/raven.toml`)
-2. **Exe-relative** - `config/default.toml` in the binary's directory or one directory above it. For `target/release/raven-server` that is `target/release/config/` and `target/config/`, so a source build does not find the repository's `config/` this way. Set `RAVEN_CONFIG` or run with the repository as the working directory.
-3. **CWD** - `config/default.toml` in the current working directory
-4. **Built-in defaults** - hardcoded fallback if nothing else is found
+1. **`RAVEN_CONFIG` env var**. An explicit file path, such as
+   `RAVEN_CONFIG=/etc/raven.toml`.
+2. **Exe-relative**. `config/default.toml` in the binary's directory or one
+   directory above it. For `target/release/raven-server` that is
+   `target/release/config/` and `target/config/`, so ***a source build does
+   not find the repository's `config/` this way***. Set `RAVEN_CONFIG` or run
+   with the repository as the working directory.
+3. **CWD**. `config/default.toml` in the current working directory.
+4. **Built-in defaults**. A hardcoded fallback if nothing else is found.
 
-If all fail, the server starts with the built-in defaults: a 600s timeout,
-output at `/tmp/raven-nest`, the scope off, and every wrapped tool allowed
-except `gitleaks` and `trufflehog`, which the built-in allowlist leaves out.
-A `RAVEN_CONFIG` file that is missing or does not parse is skipped with a
-warning on stderr, and the search continues down this list.
+If all fail, the server starts with the built-in defaults:
+- a 600s timeout,
+- output at `/tmp/raven-nest`,
+- the scope off,
+- every wrapped tool allowed except `gitleaks` and `trufflehog`, which the
+  built-in allowlist leaves out.
+
+A `RAVEN_CONFIG` file that is missing or does not parse is ***skipped with a
+warning on stderr***, and the search continues down this list.
 
 ### `[safety]` - Tool Allowlisting and Limits
 
@@ -196,7 +230,7 @@ max_output_chars = 50000
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `allowed_tools` | string list | all tools | Allowlisted tool binaries. Calls for unlisted tools are rejected before execution. Remove tools to restrict what the AI can invoke. |
+| `allowed_tools` | string list | every wrapped tool except `gitleaks` and `trufflehog` | Allowlisted tool binaries. Calls for unlisted tools are rejected before execution. Remove tools to restrict what the AI can invoke. |
 | `max_output_chars` | integer | 50000 | Truncation limit for subprocess output. When exceeded, keeps 70% from the start and 30% from the end with a marker in between. Uses char boundaries for UTF-8 safety. Overridden by `context_budget` when set. |
 | `context_budget` | integer | 0 (disabled) | Model context window size in characters. When > 0, derives output caps automatically so ~4 tool outputs fit in the context. See table below. |
 | `sqlmap_max_level` | integer (1-5) | 2 | Caps sqlmap `--level`. Higher levels add more injection vectors but are slower and noisier. |
@@ -212,8 +246,10 @@ max_output_chars = 50000
 
 #### Context Budget
 
-The `context_budget` setting is designed for local AI models with limited context
-windows. When set, it overrides `max_output_chars` and the HTTP response body
+The `context_budget` setting is designed for local AI models with limited
+context windows.
+
+When set, it ***overrides `max_output_chars`*** and the HTTP response body
 cap proportionally:
 
 | `context_budget` | Tool output cap (`/4`) | HTTP body cap (`/6`) | Recommended for |
@@ -223,15 +259,18 @@ cap proportionally:
 | 65536 | 16,384 | 10,922 | Models with q8_0 KV cache doubling |
 | 131072 | 32,768 | 21,845 | Qwen3 14B, models with 128K context |
 
-**When to set this:** Only when using models with limited context windows. Leave
-at 0 (disabled) for Claude or other large-context models - `max_output_chars`
-alone handles truncation fine.
+**When to set this:**
+Only when using models with limited context windows.
+
+Leave it at 0, which disables it, for Claude or other large-context models.
+`max_output_chars` alone handles truncation fine.
 
 #### Session Budget Tracker
 
 When `context_budget` is set, the server tracks cumulative output across the
-entire session and dynamically adjusts per-tool caps. This prevents context
-overflow during multi-tool pentest sessions.
+entire session and dynamically adjusts per-tool caps.
+
+This prevents context overflow during multi-tool pentest sessions.
 
 The tracker appends a status line to every tool response:
 ```
@@ -246,19 +285,27 @@ Three output modes escalate automatically as the budget is consumed:
 | **Compact** | 30-60% remaining | Output truncated more aggressively per tool |
 | **Minimal** | <30% remaining | Output heavily compressed |
 
-**Hard safety floor:** Below 1,000 chars remaining, the server refuses new
-tool calls and returns: "Context budget exhausted. Save findings and generate
-report."
+**Hard safety floor:**
+Below 1,000 chars remaining, the server ***refuses new tool calls*** and
+returns: "Context budget exhausted. Save findings and generate report."
 
-The `expected_tool_calls` setting controls how the budget is divided. With
-`expected_tool_calls = 10`, the tracker assumes 10 total calls and allocates
-accordingly. If you typically run longer sessions, increase this value.
+The `expected_tool_calls` setting controls how the budget is divided.
+
+With `expected_tool_calls = 10`, the tracker assumes 10 total calls and
+allocates accordingly. If you typically run longer sessions, increase this
+value.
 
 #### Parser Result Caps
 
-Output parsers cap results to prevent any single tool from consuming excessive
-context, regardless of the budget tracker. These caps are dynamically scaled by
-the budget system (Full = 100%, Compact = 50%, Minimal = 25%, minimum 3):
+Output parsers cap results to prevent any single tool from consuming
+excessive context, regardless of the budget tracker.
+
+The budget system scales these caps dynamically, with a ***minimum of 3***:
+- 100% in Full mode,
+- 50% in Compact mode,
+- 25% in Minimal mode.
+
+The caps in Full mode:
 
 | Parser | Max results (Full mode) | Overflow |
 |--------|-------------------------|----------|
@@ -282,14 +329,14 @@ These caps are applied before the budget tracker's per-call enforcement.
 #### `sudo_tools` - Privilege Escalation
 
 Some tools require root privileges:
-- **masscan** - raw socket access for SYN scanning
-- **nmap** with `scan_type: "os"` - raw sockets for OS fingerprinting
+- **masscan** needs raw socket access for SYN scanning,
+- **nmap** with `scan_type: "os"` needs raw sockets for OS fingerprinting.
 
-Instead of running the entire server as root, you can grant passwordless `sudo`
-for just these binaries:
+Instead of running the entire server as root, you can grant passwordless
+`sudo` for ***just these binaries***:
 
-1. In `config/sudoers-raven-nest`, replace `CHANGE_ME` with the user that runs
-   the server and check the binary paths. Then install the drop-in:
+1. **Edit `config/sudoers-raven-nest`**. Replace `CHANGE_ME` with the user
+   that runs the server and check the binary paths. Then install the drop-in:
 
 ```bash
 sudo install -m 0440 config/sudoers-raven-nest /etc/sudoers.d/raven-nest
@@ -310,15 +357,25 @@ sudo -n masscan --version   # same
 ```
 
 When a tool is listed in `sudo_tools`, the executor invokes it as
-`sudo /usr/bin/nmap <args>` instead of `nmap <args>`. The tool handlers skip
-their root-privilege check when sudo is configured.
+`sudo /usr/bin/nmap <args>` instead of `nmap <args>`.
+
+The tool handlers skip their root-privilege check when sudo is configured.
 
 ### `[scope]` - Engagement Authorisation
 
-Off by default - any syntactically valid target may be scanned. When
-`enabled = true`, `validate_target` (the chokepoint every tool and the scan
-launcher share) requires each target to match an allowed entry **and** not match
-a denied entry (deny wins). Loopback is always allowed unless `allow_localhost = false`.
+***Off by default***. Until you enable it, any syntactically valid target
+may be scanned.
+
+When `enabled = true`, `validate_target` requires each target to
+- match an allowed entry,
+- not match a denied entry.
+
+A deny wins.
+
+`validate_target` is the chokepoint that every tool and the scan launcher
+share.
+
+Loopback is always allowed unless `allow_localhost = false`.
 
 ```toml
 # [scope]
@@ -370,9 +427,12 @@ output_dir = "/tmp/raven-nest"
 | `min_exec_gap_ms` | integer | 0 | Proactive cooldown: minimum milliseconds between consecutive tool launches (process-wide). Spaces out back-to-back aggressive tools so they don't trip a target's WAF/rate-limiter. 0 disables; max 60000. Complements the reactive WAF detection. |
 | `per_target_min_gap_ms` | integer | 0 | Per-host cooldown: minimum milliseconds between launches against the same host, applied on top of the global gap. Independent hosts proceed in parallel. Targets normalise to their host (URL scheme/port/path dropped); tools without a network target (john, gitleaks, trufflehog) are exempt, as are Metasploit RPC tools. Applies to `http_request` too. 0 disables; max 60000. |
 
-**When to change timeouts:** Vulnerability scans (`nuclei`, `nikto`, `testssl.sh`)
-and OS detection (`nmap -O`) can take several minutes on large targets. Increase
-their specific timeouts rather than raising the global default.
+**When to change timeouts:**
+These can take several minutes on large targets:
+- vulnerability scans with `nuclei`, `nikto` and `testssl.sh`,
+- OS detection with `nmap -O`.
+
+Increase their specific timeouts rather than raising the global default.
 
 ### `[network]` - Proxy Configuration
 
@@ -389,14 +449,19 @@ no_proxy = ["127.0.0.1", "localhost"]
 | `https_proxy` | string | none | HTTPS proxy URL. Injected similarly. |
 | `no_proxy` | string list | empty | Hostnames/IPs that should bypass the proxy. |
 
-**When to set this:** Route traffic through a proxy like Burp Suite or ZAP for
-request inspection. Both upper- and lower-case env vars are set, so tools using
-either convention pick up the proxy automatically. The `http_request` tool also
-honours these proxy settings.
+**When to set this:**
+Route traffic through a proxy like Burp Suite or ZAP for request inspection.
+
+Both upper-case and lower-case env vars are set, so tools using either
+convention pick up the proxy automatically.
+
+The `http_request` tool also honours these proxy settings.
 
 ### `[metasploit]` - Metasploit Framework Integration
 
-Disabled by default. See [docs/METASPLOIT.md](METASPLOIT.md) for full setup.
+***Disabled by default***.
+
+Full setup is in [docs/METASPLOIT.md](METASPLOIT.md).
 
 ```toml
 [metasploit]
@@ -414,7 +479,7 @@ require_confirmation = true
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `enabled` | bool | `false` | Master switch - MSF tools only registered when true |
+| `enabled` | bool | `false` | Master switch. The MSF tools are always listed, and every call is refused until this is `true` |
 | `host` | string | `127.0.0.1` | msfrpcd host |
 | `port` | integer | `55553` | msfrpcd port |
 | `username` | string | `msf` | RPC username |
@@ -427,12 +492,22 @@ require_confirmation = true
 
 ### `[netexec]` - Credentialed Enumeration (Gated)
 
-Disabled by default. The `run_netexec` tool refuses to run unless
-`enabled = true`. Even when enabled it permits only **read-only enumeration**
-(auth, shares, users, groups, loggedon, sessions, disks, pass-pol) against a
-**single host** with a **single scalar credential** - no command/module
-execution, no credential lists or spraying, no CIDR ranges. Requires the `nxc`
-binary on `PATH` (or set `[safety.tool_paths].nxc`).
+***Disabled by default***. The `run_netexec` tool refuses to run unless
+`enabled = true`.
+
+Even when enabled it permits only **read-only enumeration** against a
+**single host** with a **single scalar credential**.
+
+The permitted actions are auth, shares, users, groups, loggedon, sessions,
+disks and pass-pol.
+
+**It does not allow:**
+- command or module execution,
+- credential lists or spraying,
+- CIDR ranges.
+
+It requires the `nxc` binary on `PATH`, or a path set in
+`[safety.tool_paths].nxc`.
 
 ```toml
 # [netexec]
@@ -447,10 +522,12 @@ binary on `PATH` (or set `[safety.tool_paths].nxc`).
 
 ## Tools Reference
 
-The server exposes all 46 tools regardless of configuration. The 6 Metasploit
-tools and `run_netexec` are always listed, but they are gated at call time:
-each returns a clear "disabled" error unless enabled (`[metasploit] enabled = true`
-or `[netexec] enabled = true`), rather than being hidden from the tool list.
+The server exposes all 46 tools regardless of configuration.
+
+The 6 Metasploit tools and `run_netexec` are always listed, and they are
+***gated at call time***. Each returns a clear "disabled" error unless
+enabled with `[metasploit] enabled = true` or `[netexec] enabled = true`.
+They are not hidden from the tool list.
 
 ### Tool Timing Overview
 
@@ -465,7 +542,8 @@ or `[netexec] enabled = true`), rather than being hidden from the tool list.
 ### Utility
 
 #### `ping_target`
-Verify target connectivity and measure latency. Typically the first tool in a session.
+Verify target connectivity and measure latency. Typically the first tool in
+a session.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -473,13 +551,18 @@ Verify target connectivity and measure latency. Typically the first tool in a se
 | `count` | integer | no | Number of ICMP packets, 1-10 (default 4) |
 
 #### `http_request`
-Send crafted HTTP requests for manual endpoint testing. Cookies are
-automatically persisted across requests within the same session via a shared
-cookie jar (see [Session Features](#session-features)).
+Send crafted HTTP requests for manual endpoint testing.
 
-HTML responses are automatically stripped of tags, scripts, and styles, with
-entity decoding applied. Only security-relevant headers are shown in the
-response (see [Output Processing](#output-processing)).
+Cookies are ***persisted automatically across requests*** within the same
+session through a shared cookie jar. See
+[Session Features](#session-features).
+
+HTML responses are cleaned automatically:
+- tags, scripts and styles are stripped,
+- entities are decoded.
+
+Only security-relevant headers are shown in the response. See
+[Output Processing](#output-processing).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -496,11 +579,17 @@ response (see [Output Processing](#output-processing)).
 ### Reconnaissance
 
 #### `run_nmap`
-Port scanning and service detection. Output is parsed from nmap's XML format
-into a structured summary (host addresses, port states with service/version,
-NSE script results per port and host-level, OS detection matches, run stats).
-For `vuln` scans, the `vulners` script output is compressed to the top 5 CVEs
-by CVSS score; other scripts are summarised to single-line entries.
+Port scanning and service detection.
+
+Output is parsed from nmap's XML format into a structured summary:
+- host addresses,
+- port states with service and version,
+- NSE script results per port and at host level,
+- OS detection matches,
+- run stats.
+
+For `vuln` scans, the `vulners` script output is compressed to the ***top 5
+CVEs by CVSS score***. Other scripts are summarised to single-line entries.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -508,15 +597,19 @@ by CVSS score; other scripts are summarised to single-line entries.
 | `ports` | string | no | Port spec (e.g. `80,443` or `1-1000`) |
 | `scan_type` | string | no | `quick` (default), `service`, `os`, `vuln` |
 
-Scan type presets:
-- **quick** - `-T4 -F` (top 100 ports, aggressive timing). When `ports` is specified, `-F` is omitted.
-- **service** - `-sV` (version detection)
-- **os** - `-O` (OS fingerprinting, requires root or `sudo_tools` config)
-- **vuln** - `-sV --script=vuln` (vulnerability scripts)
+**Scan type presets:**
+- **quick** runs `-T4 -F`, the top 100 ports with aggressive timing. When
+  `ports` is specified, `-F` is omitted.
+- **service** runs `-sV` for version detection.
+- **os** runs `-O` for OS fingerprinting. It ***requires root or the
+  `sudo_tools` config***.
+- **vuln** runs `-sV --script=vuln`, the vulnerability scripts.
 
 #### `run_whatweb`
-Identify web technologies (CMS, frameworks, server software). Output is parsed
-to extract technology identification lines with bracket-notation tags.
+Identify web technologies such as the CMS, frameworks and server software.
+
+Output is parsed to extract technology identification lines with
+bracket-notation tags.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -525,8 +618,12 @@ to extract technology identification lines with bracket-notation tags.
 | `cookie` | string | no | Cookie string for authenticated scanning (e.g. `PHPSESSID=abc123`) |
 
 #### `run_masscan`
-High-speed port scanning. Requires root or `sudo_tools` config - returns an
-error if neither is available. Output is parsed to extract discovered open ports.
+High-speed port scanning.
+
+It ***requires root or the `sudo_tools` config*** and returns an error if
+neither is available.
+
+Output is parsed to extract discovered open ports.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -534,15 +631,26 @@ error if neither is available. Output is parsed to extract discovered open ports
 | `ports` | string | yes | Port spec (e.g. `80,443` or `0-65535`) |
 | `rate` | integer | no | Packets/sec (clamped to `masscan_max_rate` config, default 100) |
 
-> **Limitation:** masscan uses raw SYN packets that bypass the kernel TCP
-> stack. It **cannot scan localhost** (`127.0.0.1`) or Docker bridge IPs
-> (`172.17.x.x`) - the kernel short-circuits loopback traffic, and Docker's
-> iptables NAT rules don't apply to raw packets. Use nmap for local/Docker
-> targets. masscan works correctly against targets on real network interfaces.
+> **Limitation:**
+> masscan uses raw SYN packets that bypass the kernel TCP stack. It
+> ***cannot scan localhost*** at `127.0.0.1`, or Docker bridge IPs in
+> `172.17.x.x`.
+>
+> **Why:**
+> The kernel short-circuits loopback traffic, and Docker's iptables NAT
+> rules don't apply to raw packets.
+>
+> Use nmap for local and Docker targets. masscan works correctly against
+> targets on real network interfaces.
 
 #### `run_subfinder`
-Passive subdomain enumeration via certificate transparency logs, DNS databases,
-and search engine scraping. Does not actively probe the target - purely passive.
+Passive subdomain enumeration through
+- certificate transparency logs,
+- DNS databases,
+- search engine scraping.
+
+It is ***purely passive*** and does not actively probe the target.
+
 Output is parsed from JSONL format into `host (source)` lines.
 
 | Parameter | Type | Required | Description |
@@ -551,13 +659,17 @@ Output is parsed from JSONL format into `host (source)` lines.
 | `sources` | string | no | Comma-separated source filter (e.g. `crtsh,hackertarget`) |
 | `timeout_secs` | integer | no | Scan timeout in seconds |
 
-> **Internet access required:** subfinder queries online APIs (crt.sh,
-> HackerTarget, etc.). It won't find subdomains for purely local targets.
+> **Internet access required:**
+> subfinder queries online APIs such as crt.sh and HackerTarget. It won't
+> find subdomains for purely local targets.
 
 #### `run_dnsrecon`
-DNS enumeration with support for standard lookups, zone transfers, and SRV
-record discovery. Output is parsed from JSON format into `TYPE NAME VALUE`
-record lines.
+DNS enumeration with support for
+- standard lookups,
+- zone transfers,
+- SRV record discovery.
+
+Output is parsed from JSON format into `TYPE NAME VALUE` record lines.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -566,9 +678,16 @@ record lines.
 | `timeout_secs` | integer | no | Timeout in seconds |
 
 #### `run_httpx`
-HTTP/HTTPS prober and fingerprinter. Probes a host or URL for live web services,
-status codes, titles, technologies, and TLS details. Output is parsed into
-compact per-URL lines.
+HTTP/HTTPS prober and fingerprinter.
+
+It probes a host or URL for
+- live web services,
+- status codes,
+- titles,
+- technologies,
+- TLS details.
+
+Output is parsed into compact per-URL lines.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -577,8 +696,12 @@ compact per-URL lines.
 | `timeout_secs` | integer | no | Timeout in seconds |
 
 #### `run_dnsx`
-Fast DNS resolver and record toolkit. Resolves A/AAAA and queries record types
-(MX, NS, TXT, CNAME, etc.). Output is parsed into record lines.
+Fast DNS resolver and record toolkit.
+
+It resolves A and AAAA, and queries record types such as MX, NS, TXT and
+CNAME.
+
+Output is parsed into record lines.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -587,9 +710,18 @@ Fast DNS resolver and record toolkit. Resolves A/AAAA and queries record types
 | `timeout_secs` | integer | no | Timeout in seconds |
 
 #### `run_enum4linux_ng`
-SMB and Active Directory enumeration. Discovers shares, users, groups,
-password policies, and OS information. Useful for internal pentests against
-Windows/Samba environments. Uses `-A` (all simple enumeration) by default.
+SMB and Active Directory enumeration.
+
+It discovers
+- shares,
+- users,
+- groups,
+- password policies,
+- OS information.
+
+Useful for internal pentests against Windows and Samba environments.
+
+By default it uses `-A`, which runs all simple enumeration.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -598,16 +730,24 @@ Windows/Samba environments. Uses `-A` (all simple enumeration) by default.
 | `password` | string | no | SMB password |
 | `timeout_secs` | integer | no | Scan timeout in seconds |
 
-Output is parsed into sections: OS info, shares, users, groups, and password
-policy. Each section is capped at 20 items.
+Output is parsed into sections:
+- OS info,
+- shares,
+- users,
+- groups,
+- password policy.
+
+Each section is ***capped at 20 items***.
 
 ---
 
 ### Web Scanning
 
 #### `run_nuclei`
-Template-based vulnerability scanning. Output is parsed from JSONL format into
-compact lines: `[SEVERITY] template-id - name @ url (type)`.
+Template-based vulnerability scanning.
+
+Output is parsed from JSONL format into compact lines:
+`[SEVERITY] template-id - name @ url (type)`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -617,8 +757,10 @@ compact lines: `[SEVERITY] template-id - name @ url (type)`.
 | `cookie` | string | no | Cookie string for authenticated scanning (e.g. `PHPSESSID=abc123`) |
 
 #### `run_nikto`
-Web server misconfiguration scanner. Output is parsed to extract finding lines
-(prefixed with `+`), filtering out help text.
+Web server misconfiguration scanner.
+
+Output is parsed to extract finding lines, which are prefixed with `+`, and
+help text is filtered out.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -628,22 +770,32 @@ Web server misconfiguration scanner. Output is parsed to extract finding lines
 | `cookie` | string | no | Cookie string for authenticated scanning (e.g. `PHPSESSID=abc123`) |
 | `timeout_secs` | integer | no | Scan timeout in seconds (default 600) |
 
-Tuning presets map to nikto's `-T` flag:
-- **quick** - `-T 1234` (interesting files, misconfigs, info disclosure, XSS)
-- **thorough** - `-T 123456789abc` (all test categories)
-- **injection** - `-T 9` (SQL/command injection tests)
-- **fileupload** - `-T 0` (file upload tests)
+**Tuning presets map to nikto's `-T` flag:**
+- **quick** runs `-T 1234`, which covers interesting files, misconfigs, info
+  disclosure and XSS,
+- **thorough** runs `-T 123456789abc`, all test categories,
+- **injection** runs `-T 9`, the SQL and command injection tests,
+- **fileupload** runs `-T 0`, the file upload tests.
 
-> **URL vs hostname:** When `target` is a full URL (starts with `http://`),
-> the `port` parameter is ignored - nikto v2.6+ rejects the `-p` flag when
-> given a URL. Use the port in the URL instead (e.g. `http://localhost:3000`).
+> **URL vs hostname:**
+> When `target` is a full URL that starts with `http://`, the `port`
+> parameter is ***ignored***, because nikto v2.6+ rejects the `-p` flag when
+> given a URL. Use the port in the URL instead, for example
+> `http://localhost:3000`.
+>
 > When `target` is a bare hostname, `-p` is added automatically. Port 443
 > automatically enables SSL.
 
 #### `run_wpscan`
-WordPress vulnerability scanner. Enumerates plugins, themes, and users, then
-cross-references against the WPVulnDB vulnerability database. Output is parsed
-from JSON into a structured summary of versions, vulnerabilities, and users.
+WordPress vulnerability scanner.
+
+It enumerates plugins, themes and users, then cross-references them against
+the WPVulnDB vulnerability database.
+
+Output is parsed from JSON into a structured summary of
+- versions,
+- vulnerabilities,
+- users.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -652,18 +804,25 @@ from JSON into a structured summary of versions, vulnerabilities, and users.
 | `api_token` | string | no | WPVulnDB API token for full vulnerability data |
 | `cookie` | string | no | Cookie string for authenticated scanning |
 
-Enumerate presets:
-- **quick** - `--enumerate vp,vt,u` (vulnerable plugins, vulnerable themes, users)
-- **thorough** - `--enumerate vp,vt,u,ap,at,cb,dbe` (all plugins, all themes, users, config backups, DB exports)
+**Enumerate presets:**
+- **quick** runs `--enumerate vp,vt,u`, which covers vulnerable plugins,
+  vulnerable themes and users,
+- **thorough** runs `--enumerate vp,vt,u,ap,at,cb,dbe`, which covers all
+  plugins, all themes, users, config backups and DB exports.
 
-> **API token:** Without a WPVulnDB API token, wpscan still identifies
-> versions and plugins but cannot look up their known vulnerabilities.
+> **API token:**
+> Without a WPVulnDB API token, wpscan still identifies versions and plugins
+> but ***cannot look up their known vulnerabilities***.
+>
 > Register at https://wpscan.com/ for a free API key.
 
 #### `run_dalfox`
-XSS vulnerability scanning via parameter analysis and injection testing. Output
-is parsed from JSON into compact finding lines with injection type, parameter,
-and payload.
+XSS vulnerability scanning through parameter analysis and injection testing.
+
+Output is parsed from JSON into compact finding lines with
+- injection type,
+- parameter,
+- payload.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -673,9 +832,12 @@ and payload.
 | `timeout_secs` | integer | no | Timeout in seconds |
 
 #### `run_testssl`
-SSL/TLS configuration audit. Output is parsed to extract vulnerability
-assessments, certificate details (CN, SAN, issuer, expiry, trust, CT), and
-overall rating.
+SSL/TLS configuration audit.
+
+Output is parsed to extract
+- vulnerability assessments,
+- certificate details, namely CN, SAN, issuer, expiry, trust and CT,
+- the overall rating.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -683,20 +845,25 @@ overall rating.
 | `quick` | boolean | no | Quick mode (`--quiet --sneaky`, fewer checks) |
 | `severity` | string | no | Minimum severity to report: `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` |
 
-The `severity` parameter accepts any case (`high`, `HIGH`, `High`) and is
-normalised internally. Invalid values are silently ignored.
+The `severity` parameter accepts any case, such as `high`, `HIGH` or `High`,
+and is normalised internally.
 
-> **Non-TLS targets:** If the target has no TLS service, testssl returns
-> minimal output or a connection error. This is expected - the tool is
-> designed for TLS analysis only.
+Invalid values are ***silently ignored***.
+
+> **Non-TLS targets:**
+> If the target has no TLS service, testssl returns minimal output or a
+> connection error. This is expected, because the tool is designed for TLS
+> analysis only.
 
 ---
 
 ### Web Fuzzing and Discovery
 
 #### `run_feroxbuster`
-Directory brute-forcing / content discovery. Output is parsed to extract
-status-code + URL pairs, filtering out 404 responses.
+Directory brute-forcing and content discovery.
+
+Output is parsed to extract pairs of status code and URL, and 404 responses
+are filtered out.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -708,9 +875,15 @@ status-code + URL pairs, filtering out 404 responses.
 | `cookie` | string | no | Cookie string for authenticated scanning (e.g. `PHPSESSID=abc123`) |
 
 #### `run_ffuf`
-Web fuzzing with FUZZ keyword substitution. The URL must contain the `FUZZ`
-keyword - requests are rejected without it. Output is parsed to extract result
-lines containing status codes, sizes, and word counts.
+Web fuzzing with FUZZ keyword substitution.
+
+The URL ***must contain the `FUZZ` keyword***. Requests are rejected without
+it.
+
+Output is parsed to extract result lines containing
+- status codes,
+- sizes,
+- word counts.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -724,8 +897,14 @@ lines containing status codes, sizes, and word counts.
 | `cookie` | string | no | Cookie string for authenticated fuzzing (e.g. `PHPSESSID=abc123`) |
 
 #### `run_katana`
-Web crawler and endpoint discovery. Crawls a target to enumerate URLs, forms,
-and JavaScript endpoints. Output is parsed into a deduplicated endpoint list.
+Web crawler and endpoint discovery.
+
+It crawls a target to enumerate
+- URLs,
+- forms,
+- JavaScript endpoints.
+
+Output is parsed into a deduplicated endpoint list.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -739,9 +918,16 @@ and JavaScript endpoints. Output is parsed into a deduplicated endpoint list.
 ### Exploitation
 
 #### `run_sqlmap`
-SQL injection testing. Always runs in `--batch` mode (non-interactive). Output
-is parsed to extract injection points (parameter/type/title/payload), DBMS
-info, and critical errors. Non-injectable verdicts are preserved.
+SQL injection testing.
+
+It always runs in `--batch` mode, which is non-interactive.
+
+Output is parsed to extract
+- injection points with parameter, type, title and payload,
+- DBMS info,
+- critical errors.
+
+Non-injectable verdicts are preserved.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -753,7 +939,10 @@ info, and critical errors. Non-injectable verdicts are preserved.
 | `technique` | string | no | SQL injection techniques: `B`oolean, `E`rror, `U`nion, `S`tacked, `T`ime, `Q`uery (e.g. `BEUSTQ`) |
 
 #### `run_hydra`
-Authentication brute-forcing. Stops on first valid credential (`-f` flag).
+Authentication brute-forcing.
+
+It ***stops on the first valid credential***, using the `-f` flag.
+
 Output is parsed to extract discovered credentials and the summary line.
 
 | Parameter | Type | Required | Description |
@@ -771,9 +960,11 @@ Output is parsed to extract discovered credentials and the summary line.
 ### Password Cracking
 
 #### `run_john`
-John the Ripper password hash cracking. Runtime is capped via `--max-run-time`
-to prevent runaway sessions. Output is parsed to extract cracked credentials
-and session status.
+John the Ripper password hash cracking.
+
+Runtime is ***capped with `--max-run-time`*** to prevent runaway sessions.
+
+Output is parsed to extract cracked credentials and session status.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -786,12 +977,19 @@ and session status.
 
 #### `run_gitleaks`
 Scan a directory's working tree or a git repo's full commit history for
-committed secrets (API keys, tokens, private keys) via gitleaks. The scan path
-is confined to the configured output directory (same gate as `run_john`), so
-clone target repos into the engagement workspace first. Secret values are
-redacted by default and never echoed in the summary - only the rule id and
-`file:line` (plus short commit, in history mode) are returned. Exit code 1
-(secrets found) is treated as success, not an error.
+committed secrets with gitleaks. Secrets here means API keys, tokens and
+private keys.
+
+The scan path is ***confined to the configured output directory***, the same
+gate as `run_john`, so clone target repos into the engagement workspace
+first.
+
+Secret values are redacted by default and never echoed in the summary. Only
+the rule id and `file:line` are returned, plus the short commit in history
+mode.
+
+Exit code 1, which means secrets were found, is treated as success and not
+as an error.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -802,15 +1000,22 @@ redacted by default and never echoed in the summary - only the rule id and
 ---
 
 #### `run_trufflehog`
-Scan a directory tree for secrets via trufflehog. Unlike gitleaks it can
-*verify* a secret by testing it against its live API - this is **off by
-default** because verification makes outbound calls to third-party services
-with discovered credentials; enable `verify` only when that is in scope. Path
-is confined to the output directory (same gate as `run_john`). Secret values
-are never echoed in the summary - only the detector name and `file:line`.
+Scan a directory tree for secrets with trufflehog.
 
-> **Safety:** this handler never passes `--trust-local-git-config`
-> (CVE-2025-41390 RCE); it scans the working tree only.
+Unlike gitleaks it can *verify* a secret by testing it against its live API.
+This is ***off by default***, because verification makes outbound calls to
+third-party services with discovered credentials. Enable `verify` only when
+that is in scope.
+
+The path has to sit under the output directory, `/usr/share/` or `/usr/lib/`.
+That is the same gate as `run_john`.
+
+Secret values are never echoed in the summary. Only the detector name and
+`file:line` are returned.
+
+> **Safety:**
+> This handler never passes `--trust-local-git-config`, the flag behind the
+> CVE-2025-41390 RCE. It scans the working tree only.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -821,13 +1026,21 @@ are never echoed in the summary - only the detector name and `file:line`.
 
 ### NetExec (Gated)
 
-Disabled by default - see [`[netexec]`](#netexec---credentialed-enumeration-gated).
+***Disabled by default***. See
+[`[netexec]`](#netexec---credentialed-enumeration-gated).
+
 Read-only, single-host, single-credential enumeration only.
 
 #### `run_netexec`
-Authenticate to a host and run a read-only enumeration action via NetExec
-(`nxc`). Refuses to run unless `netexec.enabled = true`. Rejects CIDR ranges,
-credential lists/files, and any command/module execution.
+Authenticate to a host and run a read-only enumeration action with NetExec,
+the `nxc` binary.
+
+It refuses to run unless `netexec.enabled = true`.
+
+**It rejects:**
+- CIDR ranges,
+- credential lists and files,
+- any command or module execution.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -842,9 +1055,12 @@ credential lists/files, and any command/module execution.
 
 ### Metasploit Framework
 
-Metasploit integration is **disabled by default** and requires a running
-`msfrpcd` instance. See [docs/METASPLOIT.md](METASPLOIT.md) for full setup,
-safety model, and troubleshooting.
+Metasploit integration is ***disabled by default*** and requires a running
+`msfrpcd` instance.
+
+**Read more:**
+[docs/METASPLOIT.md](METASPLOIT.md) has the full setup and the safety model,
+and a troubleshooting section.
 
 #### `msf_search`
 Search for exploit, auxiliary, and post-exploitation modules. Results show
@@ -856,8 +1072,12 @@ module path, rank, and description.
 | `limit` | integer | no | Max results (default 20) |
 
 #### `msf_module_info`
-Get details about a module - description, references (CVEs, EDB IDs), required
-options with defaults, and compatible payloads (for exploit modules, top 5).
+Get details about a module:
+- description,
+- references, with CVEs and EDB IDs,
+- required options with defaults,
+- compatible payloads, the top 5, for exploit modules.
+
 Module type is inferred from the path prefix.
 
 | Parameter | Type | Required | Description |
@@ -865,10 +1085,14 @@ Module type is inferred from the path prefix.
 | `module` | string | yes | Module path (e.g. `exploit/multi/http/log4shell_header_injection`) |
 
 #### `msf_exploit`
-Execute an exploit module. When `require_confirmation` is enabled (default),
-the first call shows a plan summary. Calling again with identical parameters
-executes the exploit. Polls for completion with exponential backoff and reports
-any new sessions.
+Execute an exploit module.
+
+When `require_confirmation` is enabled, which is the default, the ***first
+call shows a plan summary***. Calling again with identical parameters
+executes the exploit.
+
+The tool polls for completion with exponential backoff and reports any new
+sessions.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -881,7 +1105,7 @@ any new sessions.
 | `options` | object | no | Additional module options as key-value pairs (cannot override RHOSTS) |
 
 #### `msf_auxiliary`
-Run auxiliary modules (scanners, fuzzers). Polls for completion with
+Run auxiliary modules such as scanners and fuzzers. Polls for completion with
 exponential backoff.
 
 | Parameter | Type | Required | Description |
@@ -900,11 +1124,13 @@ Manage active Metasploit sessions.
 | `session_id` | integer | conditional | Session ID. Required for `interact`, `stop`, `compatible_modules`. |
 | `command` | string | conditional | Command to execute. Required for `interact`. |
 
-Actions:
-- **list** - show all active sessions with type, tunnel, and platform
-- **interact** - run a command in a session (output read after 2s delay, max 4096 chars)
-- **stop** - terminate a session
-- **compatible_modules** - list post modules compatible with a session (top 20)
+**Actions:**
+- **list** shows all active sessions with type, tunnel and platform,
+- **interact** runs a command in a session, with output read after a 2s
+  delay and limited to 4096 chars,
+- **stop** terminates a session,
+- **compatible_modules** lists the top 20 post modules compatible with a
+  session.
 
 Blocked session commands: `rm`, `del`, `format`, `mkfs`, `dd`, `shutdown`,
 `reboot`, `halt`, `poweroff`, `upload`.
@@ -932,18 +1158,23 @@ launch_scan -> Running -> Completed (success)
              cancel_scan -> Cancelled
 ```
 
-The server enforces a concurrency cap (default 3, set via
-`max_concurrent_scans`). Launching a scan when all slots are occupied
-returns an error - cancel or wait for a running scan to finish first.
+The server enforces a concurrency cap. The default is 3, set with
+`max_concurrent_scans`.
+
+Launching a scan when all slots are occupied ***returns an error***. Cancel
+a running scan or wait for one to finish first.
 
 During execution, the server sends progress notifications every 15 seconds
-to keep the MCP client informed. They ride on `notifications/progress` and
-require the client to pass a `progressToken` with the tool call; without one
-no updates are sent.
+to keep the MCP client informed.
+
+They ride on `notifications/progress` and require the client to pass a
+`progressToken` with the tool call. ***Without one no updates are sent***.
 
 #### `launch_scan`
-Start a scan in the background, returns a scan ID immediately. The target is
-validated and the tool is checked against the allowlist before launching.
+Start a scan in the background. It returns a scan ID immediately.
+
+The target is validated and the tool is checked against the allowlist before
+launching.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -951,14 +1182,17 @@ validated and the tool is checked against the allowlist before launching.
 | `target` | string | yes | Target IP, hostname, or URL |
 | `timeout_secs` | integer | no | Scan timeout in seconds (default from config, typically 600) |
 
-Each tool uses safe preset arguments (e.g. sqlmap `--batch --level 1 --risk 1`,
-nmap `-T4 -F -oX -`). Custom arguments are not accepted - use the dedicated
-tool handlers (e.g. `run_nmap`, `run_sqlmap`) for fine-grained control.
+Each tool uses safe preset arguments, such as sqlmap
+`--batch --level 1 --risk 1` and nmap `-T4 -F -oX -`.
+
+***Custom arguments are not accepted***. For fine-grained control, use the
+dedicated tool handlers such as `run_nmap` and `run_sqlmap`.
 
 #### `get_scan_status`
 Check whether a scan is Running, Completed, Failed, or Cancelled.
-Completed scans with output under 10K chars include the output inline
-(auto-inline), saving a follow-up `get_scan_results` call.
+
+Completed scans with output under 10K chars include the output inline. This
+auto-inline saves a follow-up `get_scan_results` call.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -988,10 +1222,14 @@ List all scans and their current status. No parameters.
 ### Findings and Reports
 
 #### `save_finding`
-Record a vulnerability finding. Each finding is stored as an individual JSON file
-under `{output_dir}/findings/` and indexed in memory for fast listing. There is no
-hard cap on finding count - the store scales to tens of thousands of findings with
-bounded memory (only metadata is kept in RAM; full data lives on disk).
+Record a vulnerability finding.
+
+Each finding is stored as an individual JSON file under
+`{output_dir}/findings/` and indexed in memory for fast listing.
+
+There is ***no hard cap on finding count***. The store scales to tens of
+thousands of findings with bounded memory, because only metadata is kept in
+RAM and the full data lives on disk.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -1015,55 +1253,80 @@ Retrieve full details of a finding as JSON.
 | `finding_id` | string | yes | Finding ID |
 
 #### `list_findings`
-List all findings sorted by severity (Critical first). No parameters.
+List all findings sorted by severity, Critical first. No parameters.
 Returns `ID | [Severity] Title` for each finding.
 
 #### `list_findings_by_scan`
-List findings linked to a specific scan ID (set via `save_finding`'s `scan_id`).
+List findings linked to a specific scan ID, which is set through
+`save_finding`'s `scan_id`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `scan_id` | string | yes | Scan ID (UUID) to list findings for |
 
 #### `delete_finding`
-Remove a finding. The individual file is deleted from disk and the index is updated.
+Remove a finding. The individual file is deleted from disk and the index is
+updated.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `finding_id` | string | yes | Finding ID |
 
 #### `generate_report`
-Generate a pentest report from all saved findings. Markdown (default) and HTML
-include a table of contents, methodology section, tools used, a scope & timeline
-section (assessed targets and the engagement window), OWASP category mapping,
-findings grouped by severity, and a generation timestamp; JSON and SARIF are
-structured envelopes, also available via `format`. The report is automatically saved to
-`{output_dir}/report-{timestamp}.{ext}` (extension per format). Returns a brief
-summary (finding count by severity) instead of the full report to conserve context.
+Generate a pentest report from all saved findings.
+
+Markdown, which is the default, and HTML include
+- a table of contents,
+- a methodology section,
+- the tools used,
+- a scope & timeline section with the assessed targets and the engagement
+  window,
+- OWASP category mapping,
+- findings grouped by severity,
+- a generation timestamp.
+
+JSON and SARIF are structured envelopes, also available through `format`.
+
+The report is automatically saved to
+`{output_dir}/report-{timestamp}.{ext}`, with the extension set by the
+format.
+
+To conserve context, the tool returns a ***brief summary instead of the full
+report***: the finding count by severity.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `title` | string | no | Report title (default "Penetration Test Report") |
 | `format` | string | no | `markdown` (default), `json`, `sarif`, `html` |
 
-> **Persistence:** Findings are stored as individual JSON files at
-> `{output_dir}/findings/{uuid}.json` and survive server restarts. The
-> server loads all existing findings from disk on startup. Reports are
-> written to `{output_dir}/report-{timestamp}.{ext}` and are never deleted
-> automatically. With an active engagement, findings and reports are scoped to
-> `{output_dir}/engagements/{name}/` instead (see [Engagement](#engagement)).
+> **Persistence:**
+> Findings are stored as individual JSON files at
+> `{output_dir}/findings/{uuid}.json` and ***survive server restarts***. The
+> server loads all existing findings from disk on startup.
+>
+> Reports are written to `{output_dir}/report-{timestamp}.{ext}` and are
+> never deleted automatically.
+>
+> With an active engagement, findings and reports are scoped to
+> `{output_dir}/engagements/{name}/` instead. See [Engagement](#engagement).
 
 ### Engagement
 
-Engagements scope findings, discovery data, and reports to a
-per-client/per-target subdirectory, so separate jobs don't co-mingle. Switching
-is filesystem-backed - the active engagement's findings live under
-`{output_dir}/engagements/{name}/findings/`, its tracked hosts under
-`{output_dir}/engagements/{name}/targets/`, and its reports alongside.
+Engagements scope findings, discovery data and reports to a subdirectory per
+client or per target, so separate jobs don't co-mingle.
+
+Switching is filesystem-backed. For the active engagement,
+- findings live under `{output_dir}/engagements/{name}/findings/`,
+- tracked hosts live under `{output_dir}/engagements/{name}/targets/`,
+- reports sit alongside.
 
 #### `set_engagement`
-Switch the active engagement, creating it on first use. Subsequent
-`save_finding` / `generate_report` / discovery-tracking calls scope to it.
+Switch the active engagement, creating it on first use.
+
+Later calls scope to it:
+- `save_finding`,
+- `generate_report`,
+- discovery tracking.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -1074,18 +1337,29 @@ List all engagements and show which is active. No parameters.
 
 ### Target Discovery Tracking
 
-nmap results (both `run_nmap` and background nmap scans via `launch_scan`)
-accumulate per host: ports, states, services, versions, and OS guesses, with
-first/last-seen timestamps. Re-scanning merges into the existing record (new
-ports are added, changed versions updated, `last_seen` bumped) rather than
-overwriting it, so the record builds a picture of the target over time.
+nmap results accumulate per host, both from `run_nmap` and from background
+nmap scans started with `launch_scan`.
 
-Records are stored as `{output_dir}/targets/{host}.json` (or under the active
-engagement) and survive restarts.
+**Each record holds:**
+- ports,
+- states,
+- services,
+- versions,
+- OS guesses,
+- first-seen and last-seen timestamps.
+
+Re-scanning ***merges into the existing record*** rather than overwriting
+it, so the record builds a picture of the target over time:
+- new ports are added,
+- changed versions are updated,
+- `last_seen` is bumped.
+
+Records are stored as `{output_dir}/targets/{host}.json`, or under the
+active engagement, and survive restarts.
 
 #### `list_targets`
-One line per tracked host (open/tracked service counts, last seen). No
-parameters. Also returns the summaries as `structured_content`.
+One line per tracked host, with open and tracked service counts and last
+seen. No parameters. Also returns the summaries as `structured_content`.
 
 #### `get_target_info`
 
@@ -1093,8 +1367,10 @@ parameters. Also returns the summaries as `structured_content`.
 |-----------|------|----------|-------------|
 | `host` | string | yes | Host IP or hostname (as reported by the scanner) |
 
-Returns the full record: every service with state/name/version and timestamps,
-plus technologies. The complete record is also returned as `structured_content`.
+Returns the full record: every service with state, name, version and
+timestamps, plus technologies.
+
+The complete record is also returned as `structured_content`.
 
 #### `diff_scans`
 
@@ -1103,31 +1379,45 @@ plus technologies. The complete record is also returned as `structured_content`.
 | `scan_id_a` | string | yes | Baseline scan ID (the "before" scan) |
 | `scan_id_b` | string | yes | Comparison scan ID (the "after" scan) |
 
-Compares two **completed nmap background scans** (IDs from `launch_scan`):
-hosts that appeared/disappeared, ports that appeared/disappeared, and ports
-whose state, service, or version changed. Non-nmap scans or still-running scans
-are rejected with a clear error. The diff is returned as text and as
-`structured_content`.
+Compares two **completed nmap background scans**, with IDs from
+`launch_scan`.
+
+**It reports:**
+- hosts that appeared or disappeared,
+- ports that appeared or disappeared,
+- ports whose state, service or version changed.
+
+Non-nmap scans or still-running scans are ***rejected with a clear error***.
+
+The diff is returned as text and as `structured_content`.
 
 ## Structured Outputs
 
 `run_nmap` and `run_nuclei` attach a machine-readable `structured_content`
-object alongside their text output (uncapped by the context budget), so clients
-can filter, sort, or persist results without re-parsing prose:
+object alongside their text output. It is ***not capped by the context
+budget***.
+
+Clients can filter, sort or persist results without re-parsing prose:
 
 - `run_nmap`: `{ args?, hosts: [{ ip, status, hostnames?, os?, ports: [{ proto,
   port, state, service, version?, cves? }] }], stats? }`
 - `run_nuclei`: `{ total, shown, findings: [{ template, severity, name,
   matched_at, type }] }`
 
-Several management tools (`save_finding`, `launch_scan`, `get_scan_status`,
-`list_findings`, `generate_report`, the target tools) also return
-`structured_content` with their key fields.
+Several management tools also return `structured_content` with their key
+fields:
+- `save_finding`,
+- `launch_scan`,
+- `get_scan_status`,
+- `list_findings`,
+- `generate_report`,
+- the target tools.
 
 ## MCP Resources
 
-Alongside the tools, the server exposes read-only resources under the `raven://`
-scheme, so a resource-aware client can browse or attach data without a tool call.
+Alongside the tools, the server exposes read-only resources under the
+`raven://` scheme, so a resource-aware client can browse or attach data
+without a tool call.
 
 | URI | Contents |
 |-----|----------|
@@ -1137,9 +1427,11 @@ scheme, so a resource-aware client can browse or attach data without a tool call
 | `raven://scans` | JSON index of background scans |
 | `raven://scans/{id}` | a scan's captured output |
 
-Each saved finding and tracked scan is also listed individually. Resources are a
-read-only view over the same `FindingStore` and `ScanManager` the tools use, not
-a separate store, so they reflect the active engagement's findings.
+Each saved finding and tracked scan is also listed individually.
+
+Resources are a read-only view over the same `FindingStore` and
+`ScanManager` the tools use, ***not a separate store***, so they reflect the
+active engagement's findings.
 
 ---
 
@@ -1159,31 +1451,47 @@ The `validate_target` function accepts targets in these formats:
 | HTTPS URL | `https://example.com` | web tools, http_request |
 
 **Rejected:**
-- Empty strings
-- Shell metacharacters: `` ; | & $ ` ( ) { } < > ! \n ``
-- Non-HTTP URL schemes (`ftp://`, `file://`, etc.)
-- CIDR prefix out of range (`/33` for IPv4, `/129` for IPv6)
-- Hostnames longer than 253 characters
-- Hostname labels starting or ending with hyphens (`-evil.com`, `test-.com`)
-- Empty hostname labels (`a..b`)
+- empty strings,
+- shell metacharacters: `` ; | & $ ` ( ) { } < > ! \n ``,
+- non-HTTP URL schemes such as `ftp://` and `file://`,
+- a CIDR prefix out of range, such as `/33` for IPv4 or `/129` for IPv6,
+- hostnames longer than 253 characters,
+- hostname labels starting or ending with hyphens, such as `-evil.com` and
+  `test-.com`,
+- empty hostname labels, such as `a..b`.
 
-URL query strings are allowed to contain `&` - it is safe because tool
-arguments are passed directly to `Command::arg()`, not through a shell.
+URL query strings are ***allowed to contain `&`***.
+
+**Why:**
+It is safe because tool arguments are passed directly to `Command::arg()`,
+not through a shell.
 
 ### Lenient Deserialisation
 
 All optional numeric parameters accept both JSON numbers and string-encoded
-numbers. This handles a common LLM quirk where models serialise `2` as `"2"`.
+numbers.
 
-Fields with lenient deserialisation: `count` (ping), `port` (nikto, hydra,
-msf_exploit, msf_auxiliary), `threads` (feroxbuster, ffuf), `rate` (masscan),
-`level` (sqlmap), `risk` (sqlmap), `tasks` (hydra), `timeout_secs` (nikto,
-http_request, launch_scan, subfinder, enum4linux-ng, dalfox, dnsrecon, httpx,
-dnsx, katana, john `max_run_time`), `depth` (katana), `offset` (get_scan_results),
-`limit` (get_scan_results, msf_search), `lport` (msf_exploit), `session_id` (msf_sessions).
+This handles a common LLM quirk where models serialise `2` as `"2"`.
 
-Invalid strings (e.g. `"abc"`) produce a clear parse error. `null` and
-omitted fields both resolve to `None` (the default is used).
+**Fields with lenient deserialisation:**
+- `count` in ping,
+- `port` in nikto, hydra, msf_exploit and msf_auxiliary,
+- `threads` in feroxbuster and ffuf,
+- `rate` in masscan,
+- `level` and `risk` in sqlmap,
+- `tasks` in hydra,
+- `timeout_secs` in nikto, http_request, launch_scan, subfinder,
+  enum4linux-ng, dalfox, dnsrecon, httpx, dnsx and katana,
+- `max_run_time` in john,
+- `depth` in katana,
+- `offset` in get_scan_results,
+- `limit` in get_scan_results and msf_search,
+- `lport` in msf_exploit,
+- `session_id` in msf_sessions.
+
+Invalid strings such as `"abc"` produce a clear parse error.
+
+`null` and omitted fields both resolve to `None`, so the default is used.
 
 ### Error Message Formats
 
@@ -1207,67 +1515,92 @@ When the server rejects a request, errors follow predictable formats:
 
 ## Safety Architecture
 
-Every tool call passes through multiple validation layers before any subprocess
-is spawned:
+Every tool call passes through multiple validation layers before any
+subprocess is spawned:
 
-1. **Allowlist** - the tool binary must be in `config.safety.allowed_tools`. Calls
-   for unlisted tools are rejected immediately.
+1. **Allowlist**. The tool binary must be in `config.safety.allowed_tools`.
+   Calls for unlisted tools are ***rejected immediately***.
 
-2. **Input validation** - targets are validated against strict rules:
-   - Must be a valid IP (v4/v6), hostname, CIDR range, `host:port`, or
-     HTTP(S) URL.
-   - Shell metacharacters are rejected: `` ; | & $ ` ( ) { } < > ! \n ``
-   - Only `http://` and `https://` URL schemes are accepted.
-   - CIDR masks are range-checked (IPv4: /0-/32, IPv6: /0-/128).
-   - Hostnames: alphanumerics, hyphens, dots; max 253 chars; no
-     leading/trailing hyphens; per-label validation (each dot-separated
-     label must not start or end with a hyphen, and must not be empty).
-   - When `[scope]` is enabled, the target must match an allowed CIDR/domain
-     and must not match a denied one (deny wins); loopback allowed unless disabled.
+2. **Input validation**. Targets are validated against strict rules:
+   - a target must be a valid IPv4 or IPv6 address, hostname, CIDR range,
+     `host:port`, or HTTP or HTTPS URL,
+   - shell metacharacters are rejected: `` ; | & $ ` ( ) { } < > ! \n ``,
+   - only `http://` and `https://` URL schemes are accepted,
+   - CIDR masks are range-checked, /0 to /32 for IPv4 and /0 to /128 for
+     IPv6,
+   - hostnames may hold alphanumerics, hyphens and dots, up to 253 chars,
+     with no leading or trailing hyphens,
+   - hostname labels are validated one by one, so each dot-separated label
+     must not start or end with a hyphen, and must not be empty,
+   - when `[scope]` is enabled, the target must match an allowed CIDR or
+     domain and must not match a denied one. A deny wins, and loopback is
+     allowed unless disabled.
 
-3. **Argument building** - users pick presets (e.g. `scan_type: "service"`),
-   never raw CLI flags. The server translates presets into safe argument lists.
+3. **Argument building**. Users pick presets such as `scan_type: "service"`,
+   ***never raw CLI flags***. The server translates presets into safe
+   argument lists.
 
-4. **Parameter validation** - all request structs use `deny_unknown_fields`,
-   which rejects any parameter the tool doesn't recognise. This catches LLM
-   parameter hallucination with clear error messages (e.g. "unknown field
-   `verbosity`"). Numeric parameters also accept string-encoded numbers
-   (e.g. `"2"` instead of `2`) via a lenient deserialiser, handling a common
-   LLM serialisation quirk.
+4. **Parameter validation**. All request structs use `deny_unknown_fields`,
+   which ***rejects any parameter the tool doesn't recognise***. This catches
+   LLM parameter hallucination with clear error messages, such as "unknown
+   field `verbosity`".
 
-5. **Safety caps** - dangerous tools have configurable upper limits that the
-   AI cannot exceed:
-   - sqlmap: `--level` clamped to `sqlmap_max_level`, `--risk` to `sqlmap_max_risk`
-   - hydra: `-t` (parallel tasks) clamped to `hydra_max_tasks`
-   - masscan: `--rate` clamped to `masscan_max_rate`
-   - john: `--max-run-time` capped at 600 seconds
+   Numeric parameters also accept string-encoded numbers, such as `"2"`
+   instead of `2`, through a lenient deserialiser. That handles a common LLM
+   serialisation quirk.
 
-6. **Execution containment** - configurable timeout per tool, `kill_on_drop` on
-   all subprocesses (no orphaned processes), concurrent scan limit enforced.
+5. **Safety caps**. Dangerous tools have configurable upper limits that the
+   ***AI cannot exceed***:
+   - sqlmap has `--level` clamped to `sqlmap_max_level` and `--risk` clamped
+     to `sqlmap_max_risk`,
+   - hydra has `-t`, the parallel tasks, clamped to `hydra_max_tasks`,
+   - masscan has `--rate` clamped to `masscan_max_rate`,
+   - john has `--max-run-time` capped at 600 seconds.
 
-7. **Output sanitisation** - truncation at `max_output_chars` (70% head / 30%
-   tail), with structured parsing to reduce noise before truncation.
+6. **Execution containment**. Each run is held in by
+   - a configurable timeout per tool,
+   - `kill_on_drop` on all subprocesses, so there are no orphaned processes,
+   - an enforced concurrent scan limit.
 
-8. **Output quality assessment** - checks for empty results, missing tool
-   completion markers, and rate-limit/WAF indicators; appends warnings when
-   detected (e.g. "Output appears empty", "Possible rate limiting detected").
+7. **Output sanitisation**. Output is truncated at `max_output_chars`, 70%
+   head and 30% tail, with structured parsing to reduce noise before
+   truncation.
 
-9. **Session budget tracking** - when `context_budget` is set, tracks cumulative
-   output across all tool calls and dynamically shrinks per-call caps. Escalates
-   through Full -> Compact -> Minimal output modes. Hard floor at 1,000 chars
-   remaining refuses new calls.
+8. **Output quality assessment**. The server checks for
+   - empty results,
+   - missing tool completion markers,
+   - rate-limit and WAF indicators.
 
-10. **Metasploit safety** - when MSF is enabled, an additional 5-layer model
-    applies: disabled by default, target validation and scope, module
-    blocklist, exploit confirmation gate, and session command filtering. See
-    [docs/METASPLOIT.md](METASPLOIT.md).
+   It appends warnings when one is detected, such as "Output appears empty"
+   or "Possible rate limiting detected".
 
-11. **Audit logging** - every subprocess the executor ran to completion,
-    and every `http_request`, is appended to `{output_dir}/audit.log` (JSON
-    lines) with the tool, target, and credential-redacted arguments.
-    Best-effort; never blocks the tool call. Rejected calls, timed-out runs,
-    `ping_target` and Metasploit RPC calls are not recorded.
+9. **Session budget tracking**. When `context_budget` is set, the server
+   tracks cumulative output across all tool calls and dynamically shrinks
+   per-call caps. It escalates from Full to Compact to Minimal output mode.
+   A hard floor at 1,000 chars remaining ***refuses new calls***.
 
+10. **Metasploit safety**. When MSF is enabled, an additional 5-layer model
+    applies:
+    - disabled by default,
+    - target validation and scope,
+    - module blocklist,
+    - exploit confirmation gate,
+    - session command filtering.
+
+    See [docs/METASPLOIT.md](METASPLOIT.md).
+
+11. **Audit logging**. Every subprocess the executor ran to completion, and
+    every `http_request`, is appended to `{output_dir}/audit.log` as JSON
+    lines, with the tool, target and credential-redacted arguments. It is
+    best effort and never blocks the tool call.
+
+    ***Not recorded***:
+    - rejected calls,
+    - timed-out runs,
+    - `ping_target`,
+    - Metasploit RPC calls.
+
+**Read more:**
 [SAFETY.md](SAFETY.md) covers each of these controls in more depth, with the
 limits of each one and a hardening checklist.
 
@@ -1280,9 +1613,13 @@ Tool output goes through a multi-stage pipeline before reaching the AI model:
 ### Structured Parsers
 
 All subprocess tools have output parsers that extract the essential
-information and discard noise. Parsers return `Option<String>` - if parsing
-fails, the raw output is used as a fallback. Each parser has a result cap to
-prevent context overflow (see [Parser Result Caps](#parser-result-caps)).
+information and discard noise.
+
+Parsers return `Option<String>`. If parsing fails, the ***raw output is used
+as a fallback***.
+
+Each parser has a result cap to prevent context overflow. See
+[Parser Result Caps](#parser-result-caps).
 
 | Tool | Parser | What It Extracts |
 |------|--------|-----------------|
@@ -1310,23 +1647,26 @@ prevent context overflow (see [Parser Result Caps](#parser-result-caps)).
 
 The `http_request` tool applies additional processing to HTTP responses:
 
-- **HTML stripping** - removes `<script>` and `<style>` blocks, strips all
-  HTML tags (inserting newlines for block elements), decodes HTML entities
-  (named like `&amp;`, numeric like `&#169;`), and collapses blank lines.
-- **Header filtering** - only security-relevant headers are shown:
+- **HTML stripping**. The tool removes `<script>` and `<style>` blocks and
+  strips all HTML tags, inserting newlines for block elements. It decodes
+  HTML entities, both named like `&amp;` and numeric like `&#169;`, and
+  collapses blank lines.
+- **Header filtering**. Only security-relevant headers are shown:
   `server`, `x-powered-by`, `set-cookie`, `content-type`, `location`,
   `www-authenticate`, `x-frame-options`, `content-security-policy`,
   `strict-transport-security`, `x-content-type-options`,
   `access-control-allow-origin`, `x-xss-protection`.
-- **Body cap** - response bodies are truncated to the effective cap (default
-  20,000 chars; derived from `context_budget / 6` when set).
+- **Body cap**. Response bodies are truncated to the effective cap. The
+  default is 20,000 chars, and the cap is derived from `context_budget / 6`
+  when that is set.
 
 ### Truncation
 
-After parsing, output that still exceeds `max_output_chars` (or
-`context_budget / 4` when set) is truncated with a 70/30 split: the first
-70% of chars and last 30% are kept, with a marker in between showing how many
-chars were omitted.
+After parsing, output that still exceeds `max_output_chars`, or
+`context_budget / 4` when set, is truncated with a ***70/30 split***.
+
+The first 70% of chars and the last 30% are kept, with a marker in between
+showing how many chars were omitted.
 
 ---
 
@@ -1335,48 +1675,60 @@ chars were omitted.
 ### Cookie Jar
 
 The `http_request` tool maintains a shared cookie jar that persists across
-requests within the same server session. This enables authenticated workflows:
+requests within the same server session.
 
-1. Send a login request via `http_request` (cookies are captured automatically).
-2. Subsequent `http_request` calls to the same domain include the session cookies.
-3. Session cookies are displayed in the response under `--- Session Cookies ---`.
+This enables authenticated workflows:
 
-**Important:** Subprocess tools (sqlmap, nikto, feroxbuster, ffuf, nuclei,
-whatweb, wpscan, dalfox) run as separate processes and do **not** share the
-cookie jar. Pass cookies explicitly via each tool's `cookie` parameter for
-authenticated scanning.
+1. **Send a login request with `http_request`**. Cookies are captured
+   automatically.
+2. **Later `http_request` calls to the same domain** include the session
+   cookies.
+3. **Session cookies are displayed in the response** under
+   `--- Session Cookies ---`.
+
+**Important:**
+Subprocess tools run as separate processes and ***do not share the cookie
+jar***. These are sqlmap, nikto, feroxbuster, ffuf, nuclei, whatweb, wpscan
+and dalfox.
+
+For authenticated scanning, pass cookies explicitly through each tool's
+`cookie` parameter.
 
 ### Scan Persistence and Restart Recovery
 
-Every background scan (`launch_scan`) is persisted under `{output_dir}/scans/`:
+Every background scan started with `launch_scan` is persisted under
+`{output_dir}/scans/`:
 
-- `{scan_id}.txt` - the scan's terminal output (always written, not just large
-  ones), with `0o600` owner-only permissions.
-- `{scan_id}.json` - metadata (tool, target, status, start/terminal epoch
-  timestamps), written atomically at launch, on every terminal transition,
-  and on cancel.
+- `{scan_id}.txt` holds the scan's terminal output. It is ***always
+  written***, not just for large outputs, with `0o600` owner-only
+  permissions.
+- `{scan_id}.json` holds metadata: tool, target, status, and the start and
+  terminal epoch timestamps. It is written atomically at launch, on every
+  terminal transition and on cancel.
 
 On server restart, `ScanManager` recovers state from these files:
 
-- **Completed scans come back as-is** with their output attached. Results are
-  never re-run; `get_scan_status`, `get_scan_results`, and `list_scans` work
-  immediately after a restart.
+- **Completed scans come back as-is** with their output attached. Results
+  are ***never re-run***, and `get_scan_status`, `get_scan_results` and
+  `list_scans` work immediately after a restart.
 - **Scans that were running when the server stopped** surface as
-  `failed: "interrupted by server restart"` instead of vanishing - a client
+  `failed: "interrupted by server restart"` instead of vanishing. A client
   polling them gets a definitive answer rather than `scan not found`.
-- **Expired, corrupt, and orphaned files are cleaned up**: scans past
-  `scan_retention_secs` are not resurrected (files deleted), unreadable
-  metadata and crash leftovers (`.json.tmp`) are removed, and outputs without
-  metadata are dropped.
+- **Expired, corrupt, and orphaned files are cleaned up**:
+  - scans past `scan_retention_secs` are not resurrected and their files are
+    deleted,
+  - unreadable metadata and crash leftovers named `.json.tmp` are removed,
+  - outputs without metadata are dropped.
 
-The retention TTL still applies after recovery: an old completed scan ages out
-exactly like one that finished in the current process.
+The retention TTL still applies after recovery. An old completed scan ages
+out exactly like one that finished in the current process.
 
 ### Auto-Inline Small Outputs
 
 When `get_scan_status` is called on a completed scan, if the output is under
-10,000 characters, it is included directly in the status response. This saves
-a follow-up `get_scan_results` call for quick scans.
+10,000 characters, it is ***included directly in the status response***.
+
+This saves a follow-up `get_scan_results` call for quick scans.
 
 ### Localhost Thread Reduction
 
@@ -1388,8 +1740,8 @@ automatically reduce their default concurrency to prevent self-DoS:
 | feroxbuster | 50 | 10 | 200 |
 | ffuf | 40 | 10 | 150 |
 
-This only affects the default - explicit `threads` values are still honoured
-(up to the max).
+This ***only affects the default***. Explicit `threads` values are still
+honoured, up to the max.
 
 ---
 
@@ -1438,10 +1790,16 @@ Assistant: [calls run_nikto with target: "http://target.example.com",
 
 ## Testing
 
-A comprehensive test harness at `tests/manual_test_harness.py` spawns the
-MCP server as a subprocess and communicates via JSON-RPC 2.0 over stdin/stdout.
-Rust unit and integration tests cover parsers, config, safety, budget
-tracking, request validation, and tool-manifest integrity.
+A test harness at `tests/manual_test_harness.py` spawns the MCP server as a
+subprocess and communicates through JSON-RPC 2.0 over stdin and stdout.
+
+Rust unit and integration tests cover
+- parsers,
+- config,
+- safety,
+- budget tracking,
+- request validation,
+- tool-manifest integrity.
 
 ```bash
 # Run all phases
@@ -1459,10 +1817,12 @@ python3 -u tests/manual_test_harness.py phase7          # cross-cutting validati
 python3 -u tests/manual_test_harness.py phase0 phase4   # multiple phases
 ```
 
-Use `-u` (unbuffered) when piping output to avoid buffering delays.
+Use `-u`, which is unbuffered, when piping output to avoid buffering delays.
 
-Phases 2-3 run actual scans against live targets (bWAPP, Juice Shop) and
-take 30-60 minutes total. Phases 0, 4-7 complete in under 5 minutes.
+Phases 2 and 3 run actual scans against live targets, bWAPP and Juice Shop,
+and take ***30 to 60 minutes*** in total.
+
+Phases 0 and 4 to 7 complete in under 5 minutes.
 
 Run `cargo test --workspace` for current unit and integration results.
 
@@ -1472,65 +1832,78 @@ Run `cargo test --workspace` for current unit and integration results.
 
 ### masscan finds nothing on localhost
 
-masscan uses raw SYN packets that bypass the kernel TCP stack. It cannot
-scan `127.0.0.1`, `::1`, or Docker bridge IPs (`172.17.x.x`). Use nmap
-for local targets. masscan is designed for scanning remote hosts on real
-network interfaces.
+masscan uses raw SYN packets that bypass the kernel TCP stack. It ***cannot
+scan*** `127.0.0.1`, `::1`, or Docker bridge IPs in `172.17.x.x`.
+
+Use nmap for local targets.
+
+masscan is designed for scanning remote hosts on real network interfaces.
 
 ### nikto times out
 
-nikto full scans can take 5-10+ minutes depending on the target. The
-default timeout is 600 seconds. If nikto consistently times out:
+nikto full scans can take 5 to 10 minutes or more, depending on the target.
+The default timeout is ***600 seconds***.
 
-- Use `tuning: "quick"` (default) instead of `"thorough"`
-- Set a higher timeout: `timeout_secs: 900`
-- Or increase the per-tool timeout in config: `[execution.timeouts] nikto = 900`
+If nikto consistently times out,
+- use `tuning: "quick"`, the default, instead of `"thorough"`,
+- set a higher timeout: `timeout_secs: 900`,
+- or increase the per-tool timeout in config:
+  `[execution.timeouts] nikto = 900`.
 
 ### nuclei takes very long
 
-nuclei runs all templates by default, which can take 2-5 minutes. To
-speed it up:
+nuclei runs ***all templates by default***, which can take 2 to 5 minutes.
 
-- Filter by severity: `severity: "high"` (skips info/low/medium templates)
-- Filter by tags: `tags: "cve"` (only CVE-related templates)
-- Both can be combined: `severity: "high", tags: "cve"`
+To speed it up,
+- filter by severity: `severity: "high"` skips the info, low and medium
+  templates,
+- filter by tags: `tags: "cve"` keeps only CVE-related templates,
+- combine both: `severity: "high", tags: "cve"`.
 
 ### feroxbuster/ffuf "file not found" error
 
 The default wordlists point to SecLists paths under `/usr/share/seclists/`.
-Install SecLists (see [Wordlists](#wordlists)) or specify a custom path
-via the `wordlist` parameter.
+
+Install SecLists as described in [Wordlists](#wordlists), or specify a
+custom path with the `wordlist` parameter.
 
 ### "tool not allowed" error
 
 The tool binary isn't in the `allowed_tools` list in `config/default.toml`.
-Add it to the list and restart the server.
+
+Add it to the list and ***restart the server***.
 
 ### "unknown field" error
 
 All request structs use `deny_unknown_fields`. This means misspelled or
-extra parameters are rejected. Check the exact parameter names in the
-[Tools Reference](#tools-reference). Common mistakes:
-- `target` vs `url` - nmap/ping/masscan use `target`; sqlmap/ffuf/http_request use `url`
-- `data` vs `body` - sqlmap uses `data`; http_request uses `body`
+extra parameters are ***rejected***.
+
+Check the exact parameter names in the [Tools Reference](#tools-reference).
+
+**Common mistakes:**
+- **`target` vs `url`**. nmap, ping and masscan use `target`, while sqlmap,
+  ffuf and http_request use `url`.
+- **`data` vs `body`**. sqlmap uses `data`, and http_request uses `body`.
 
 ### testssl returns minimal output
 
-The target likely doesn't have TLS configured. testssl only analyses
-SSL/TLS - it won't produce meaningful results for plain HTTP services.
+The target likely doesn't have TLS configured.
+
+testssl ***only analyses SSL/TLS***. It won't produce meaningful results for
+plain HTTP services.
 
 ### Quality warnings in output
 
 The server appends warnings when output quality is suspect:
-- **"returned minimal output (N chars)"** - tool produced less than 50
+- **"returned minimal output (N chars)"**. The tool produced less than 50
   characters. The scan may have failed silently or the target returned
   nothing.
-- **"output missing expected completion indicators"** - the tool ran but
-  didn't include its normal completion marker (e.g. nmap's "Nmap done").
+- **"output missing expected completion indicators"**. The tool ran but
+  didn't include its normal completion marker, such as nmap's "Nmap done".
   Results may be incomplete.
-- **"target may be rate-limiting requests"** - output contains indicators
+- **"target may be rate-limiting requests"**. The output contains indicators
   like "429", "blocked", or "access denied". Consider reducing scan
   aggressiveness or adding delays.
-- **"exited with error (code N) and produced no output"** - the tool
-  returned a non-zero exit code with empty stdout. Check that the tool
-  is installed correctly and the target is reachable.
+- **"exited with error (code N) and produced no output"**. The tool returned
+  a non-zero exit code with empty stdout. Check that the tool is installed
+  correctly and the target is reachable.
