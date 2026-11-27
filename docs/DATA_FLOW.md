@@ -29,7 +29,7 @@ tools::<tool>::run(&config, …, req)                  (per-tool module)
   ▼
 CallToolResult  ──►  server::wrap_result  ──►  PentestError → MCP error code
   │
-  ├─(nmap, nuclei, nikto, dalfox only)
+  ├─(the eight auto-save scanners, see below)
   │     extract::auto_save(finding_store, config, tool, target, scan_id, findings)
   │       └─ writes {findings_dir}/{id}.json + updates in-RAM index
   ▼
@@ -68,3 +68,42 @@ finding.
 Gated by `auto_save_findings` config, deduped on insert, capped per scan. All
 other findings are saved explicitly by the client through `save_finding`.
 Either way the `FindingStore` is the single owner - auto-save is just one writer.
+
+## What leaves the machine
+
+The server is a local process. It talks to its MCP client over stdin and
+stdout and opens no listening port. It has no telemetry, no update check and
+no client for any AI provider. Its own outbound connections are these two:
+
+| Connection | When | Source |
+|------------|------|--------|
+| HTTP requests to the URL you pass | each `http_request` call | [tools/http.rs](../crates/raven-server/src/tools/http.rs) |
+| RPC to your `msfrpcd` | only with `[metasploit] enabled = true` | [msf_client.rs](../crates/raven-core/src/msf_client.rs) |
+
+Everything else on the network comes from the wrapped tools, which are the
+stock binaries. They talk to the target, as you would expect. Some also talk
+to third parties as part of their normal work:
+
+| Tool | Third party | When |
+|------|-------------|------|
+| subfinder | the public data sources it queries about the domain | always, that is how it finds subdomains |
+| nmap | the vulnerability database behind the `vulners` script | `scan_type: "vuln"` |
+| wpscan | the WPScan vulnerability API | when the call carries `api_token` |
+| trufflehog | the service that issued a found secret | when the call sets `verify: true`, off by default |
+| nuclei | ProjectDiscovery's servers for out-of-band checks and template updates | with nuclei's stock settings, which the server does not change |
+| dnsx, dnsrecon | the DNS resolvers they are configured to use | always |
+
+The first four rows follow from the arguments the handlers pass. The nuclei
+and DNS rows describe how those tools behave by default according to their
+own documentation, and the server neither adds to nor removes from that.
+Check a tool's own docs before relying on this table for a strict engagement,
+and remove a tool from `allowed_tools` if its lookups are not acceptable.
+
+Where the tool results go next is decided by the MCP client and the model
+behind it, not by the server. With a model running on the same machine they
+stay there. With a hosted model, each tool result is sent to that provider as
+part of the conversation. See
+[LOCAL_AI_INTEGRATION.md](LOCAL_AI_INTEGRATION.md) for the local setup.
+
+If you set `[network] http_proxy`, the subprocess tools and `http_request`
+send their traffic through that proxy.

@@ -1,0 +1,67 @@
+title: "Tool proposal: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A wrapper is mostly a decision about what a model may ask for. These questions are the ones a maintainer will ask anyway.
+        CONTRIBUTING.md has the checklists for the implementation.
+  - type: input
+    id: tool
+    attributes:
+      label: Tool and project link
+      placeholder: "example-tool, https://github.com/example/example-tool"
+    validations:
+      required: true
+  - type: textarea
+    id: gap
+    attributes:
+      label: What gap does it fill?
+      description: Name the existing wrapper that comes closest and say why it is not enough.
+    validations:
+      required: true
+  - type: textarea
+    id: interface
+    attributes:
+      label: What would the model be allowed to ask for?
+      description: List the presets and fields you have in mind. Leave out anything you would not want a model to choose unattended.
+    validations:
+      required: true
+  - type: textarea
+    id: worst-case
+    attributes:
+      label: What is the worst it can do to a target?
+      description: Account lockouts, data changes, heavy load, files written to the target.
+    validations:
+      required: true
+  - type: textarea
+    id: limits
+    attributes:
+      label: Which parts need a cap or a gate?
+      description: A cap is a config limit the model cannot exceed. A gate is an off-by-default switch for the whole tool.
+    validations:
+      required: true
+  - type: textarea
+    id: third-parties
+    attributes:
+      label: Does it contact anyone besides the target?
+      description: Public APIs, update servers, callback hosts, public DNS resolvers.
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Does it read or write local files?
+      description: Say which paths.
+  - type: input
+    id: packaging
+    attributes:
+      label: How is it installed?
+      description: Mention whether Kali packages it. The container image is built from Kali packages where they exist.
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Can you help?
+      options:
+        - label: I can write the handler
+        - label: I can supply real output samples for parser tests
+        - label: I can test it against a lab target

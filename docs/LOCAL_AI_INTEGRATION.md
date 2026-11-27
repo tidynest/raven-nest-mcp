@@ -3,6 +3,15 @@
 Guide for connecting local LLMs (via Ollama, LM Studio, etc.) to Raven Nest
 as MCP clients.
 
+The reason to do this is data control. Every tool result passes through the
+model, so with a hosted model your targets and findings go to that provider.
+With a model on your own machine they stay there. The server sends nothing
+anywhere on its own account. Some wrapped tools do contact third parties, and
+[DATA_FLOW.md](DATA_FLOW.md#what-leaves-the-machine) lists which ones.
+
+The trade is capability. Of the 14 models tested below, only the Qwen3 and
+Qwen3.5 family was usable, and even those need step-by-step guidance.
+
 ## Prerequisites
 
 - Raven Nest built: `cargo build --release`
@@ -14,8 +23,8 @@ as MCP clients.
 
 | Client | Language | Notes |
 |--------|----------|-------|
-| [ollmcp](https://github.com/jonirrings/ollmcp) | Python | TUI with human-in-the-loop confirmation, `pipx install ollmcp` |
-| [mcphost](https://github.com/nicobailon/mcphost) | Go | CLI, `go install` from GitHub |
+| [ollmcp](https://github.com/jonigl/mcp-client-for-ollama) | Python | TUI with human-in-the-loop confirmation, `pipx install ollmcp` |
+| [mcphost](https://github.com/mark3labs/mcphost) | Go | CLI, `go install` from GitHub |
 | LM Studio | Desktop | Built-in MCP support via `.lmstudio/mcp.json` |
 
 All three use `~/.mcphost.json` or their own config file to define MCP
@@ -45,9 +54,9 @@ easier for smaller models to handle.
 
 ## Tool Installation
 
-Raven Nest exposes **46 MCP endpoints** wrapping 22 security tools + 6
-Metasploit modules + ping/http + 5 scan management + 6 finding management +
-2 engagement.
+Raven Nest exposes **46 MCP endpoints**: 22 security tool wrappers + 6
+Metasploit tools + ping/http + 5 scan management + 6 finding management +
+2 engagement + 3 target discovery.
 
 ### Core Tools (likely already installed)
 
@@ -379,9 +388,10 @@ the only tool (individual mode), Qwen3 8B does save the info finding.
 
 **Mitigation (shipped):** enable server-side auto-save - set
 `auto_save_findings = true` (and optionally `auto_save_min_severity = "info"`)
-under `[safety]`. Qualifying nuclei findings are then extracted and saved
-automatically, independent of whether the model remembers to call
-`save_finding`.
+under `[safety]`. Qualifying findings from nuclei and seven other scanners
+(nmap, nikto, dalfox, sqlmap, testssl, gitleaks, trufflehog) are then
+extracted and saved automatically, independent of whether the model remembers
+to call `save_finding`.
 
 ### Tool Discovery Failures
 

@@ -7,6 +7,26 @@ minor versions may carry feature additions and refinements).
 
 ## [Unreleased]
 
+### Documentation
+- The README is restructured around what the server is for, who it suits and
+  what its controls do and do not cover. Detail moved into two new pages:
+  `docs/SAFETY.md` for the safety model and its limits, and `docs/INSTALL.md`
+  for the container, the release binary, source builds and config lookup.
+- `docs/DATA_FLOW.md` gains a section on what leaves the machine.
+- New `CONTRIBUTING.md`, with checklists for adding a tool wrapper.
+- New `docs/DISCUSSIONS.md`, discussion category forms and an issue form.
+- Corrections where the docs disagreed with the code: the Metasploit module
+  blocklist matches at path boundaries, not substrings, so a bare word such
+  as `eternalblue` blocks nothing. The audit log does not cover rejected
+  calls, timed-out runs, `ping_target` or Metasploit RPC. The built-in
+  defaults leave `gitleaks` and `trufflehog` out of the allowlist. A source
+  build does not find the repository's `config/default.toml` unless it runs
+  from the repository root. `SECURITY.md` now names 0.4.x as supported.
+- The ollmcp and mcphost links in `docs/LOCAL_AI_INTEGRATION.md` pointed at
+  repositories that do not exist and now point at the real ones.
+- `docs/assets/social-preview.png` is a 1280x640 image for the repository's
+  social preview setting.
+
 ### Fixed
 - The AUR recipe builds again. It still packaged v0.2.0, and with a current
   source it failed at the final link: makepkg's default `lto` option compiles

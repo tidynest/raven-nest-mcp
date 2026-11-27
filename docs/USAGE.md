@@ -4,9 +4,11 @@
 
 ### Run with Docker (skips host-tool install)
 
-The published image bundles `raven-server` and all 22 tools - see the
-[README Quick Start](../README.md#run-with-docker-recommended). The host-tool
-setup below is only needed for a from-source install.
+The published image bundles `raven-server` and all 22 tools. See
+[INSTALL.md](INSTALL.md#container-image) for the client entry, and for how to
+mount a config and keep output on a volume. INSTALL.md also covers the
+prebuilt binary and the Arch PKGBUILD. The host-tool setup below is only
+needed when the scanners are not coming from the image.
 
 ### Build
 
@@ -148,12 +150,15 @@ sections: `[safety]`, `[scope]`, `[execution]`, `[network]`, `[metasploit]`, and
 The server searches for config in this order, using the first one found:
 
 1. **`RAVEN_CONFIG` env var** - explicit file path (e.g. `RAVEN_CONFIG=/etc/raven.toml`)
-2. **Exe-relative** - `config/default.toml` relative to the binary (checks parent dir too, for `target/release/` layouts)
+2. **Exe-relative** - `config/default.toml` in the binary's directory or one directory above it. For `target/release/raven-server` that is `target/release/config/` and `target/config/`, so a source build does not find the repository's `config/` this way. Set `RAVEN_CONFIG` or run with the repository as the working directory.
 3. **CWD** - `config/default.toml` in the current working directory
 4. **Built-in defaults** - hardcoded fallback if nothing else is found
 
-If all fail, the server starts with safe defaults (all tools allowed, 600s
-timeout, output at `/tmp/raven-nest`).
+If all fail, the server starts with the built-in defaults: a 600s timeout,
+output at `/tmp/raven-nest`, the scope off, and every wrapped tool allowed
+except `gitleaks` and `trufflehog`, which the built-in allowlist leaves out.
+A `RAVEN_CONFIG` file that is missing or does not parse is skipped with a
+warning on stderr, and the search continues down this list.
 
 ### `[safety]` - Tool Allowlisting and Limits
 
@@ -199,7 +204,7 @@ max_output_chars = 50000
 | `hydra_max_tasks` | integer | 4 | Max parallel threads for hydra brute-forcing. Prevents account lockout and network saturation. |
 | `masscan_max_rate` | integer | 1000 | Max packets/sec for masscan. High rates can disrupt networks - increase only with explicit authorisation. |
 | `tool_paths` | table | empty | Map of tool name to absolute binary path, for tools not on `$PATH`. Falls back to `$PATH` lookup if not specified. |
-| `sudo_tools` | string list | `[]` | Tools invoked via `sudo` for privilege escalation. See [sudo_tools](#sudo_tools--privilege-escalation) below. |
+| `sudo_tools` | string list | `[]` | Tools invoked via `sudo` for privilege escalation. See [sudo_tools](#sudo_tools---privilege-escalation) below. |
 | `expected_tool_calls` | integer | 10 | Expected tool calls per session. Used by the session budget tracker to plan per-call output allocation. Higher values yield smaller per-call caps. Typical pentest: 6-12 calls. |
 | `auto_save_findings` | bool | `false` | Auto-extract findings from scan output (nmap, nuclei, nikto, dalfox, sqlmap, testssl, gitleaks, trufflehog) into the finding store. Opt-in. |
 | `auto_save_min_severity` | string | `medium` | Minimum severity an auto-extracted finding must meet to be saved (`info`-`critical`). |
@@ -418,7 +423,7 @@ require_confirmation = true
 | `max_search_results` | integer | `20` | Cap module search results |
 | `max_concurrent_exploits` | integer | `1` | Max simultaneous exploit executions |
 | `require_confirmation` | bool | `true` | Require double-call to execute exploits |
-| `blocked_modules` | string list | `[]` | Regex patterns for blocked modules |
+| `blocked_modules` | string list | `[]` | Module path patterns, matched at path boundaries: a pattern blocks that exact module and everything beneath it. Not regex and not substring. |
 
 ### `[netexec]` - Credentialed Enumeration (Gated)
 
@@ -816,7 +821,7 @@ are never echoed in the summary - only the detector name and `file:line`.
 
 ### NetExec (Gated)
 
-Disabled by default - see [`[netexec]`](#netexec--credentialed-enumeration-gated).
+Disabled by default - see [`[netexec]`](#netexec---credentialed-enumeration-gated).
 Read-only, single-host, single-credential enumeration only.
 
 #### `run_netexec`
@@ -1253,13 +1258,18 @@ is spawned:
    remaining refuses new calls.
 
 10. **Metasploit safety** - when MSF is enabled, an additional 5-layer model
-    applies: disabled by default, per-tool allowlisting, module blocklist,
-    exploit confirmation gate, and session command filtering. See
+    applies: disabled by default, target validation and scope, module
+    blocklist, exploit confirmation gate, and session command filtering. See
     [docs/METASPLOIT.md](METASPLOIT.md).
 
-11. **Audit logging** - every tool invocation is appended to
-    `{output_dir}/audit.log` (JSON lines) with the tool, target, and
-    credential-redacted arguments. Best-effort; never blocks the tool call.
+11. **Audit logging** - every subprocess the executor ran to completion,
+    and every `http_request`, is appended to `{output_dir}/audit.log` (JSON
+    lines) with the tool, target, and credential-redacted arguments.
+    Best-effort; never blocks the tool call. Rejected calls, timed-out runs,
+    `ping_target` and Metasploit RPC calls are not recorded.
+
+[SAFETY.md](SAFETY.md) covers each of these controls in more depth, with the
+limits of each one and a hardening checklist.
 
 ---
 
@@ -1430,8 +1440,8 @@ Assistant: [calls run_nikto with target: "http://target.example.com",
 
 A comprehensive test harness at `tests/manual_test_harness.py` spawns the
 MCP server as a subprocess and communicates via JSON-RPC 2.0 over stdin/stdout.
-Additionally, 351 Rust unit and integration tests cover parsers, config,
-safety, budget tracking, request validation, and tool-manifest integrity.
+Rust unit and integration tests cover parsers, config, safety, budget
+tracking, request validation, and tool-manifest integrity.
 
 ```bash
 # Run all phases

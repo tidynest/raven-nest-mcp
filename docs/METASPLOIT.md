@@ -61,7 +61,7 @@ ssl = true
 max_search_results = 10
 max_concurrent_exploits = 1
 require_confirmation = true
-blocked_modules = ["payload/", "eternalblue", "doublepulsar"]
+blocked_modules = ["payload/", "exploit/windows/smb/ms17_010_eternalblue", "exploit/windows/smb/smb_doublepulsar_rce"]
 ```
 
 ## Workflow
@@ -276,21 +276,21 @@ The Metasploit integration uses a 5-layer safety model. Each layer is independen
 
 ### Layer 1: Disabled by Default
 
-The `[metasploit]` section is commented out in the default config. Setting `enabled = false` (or omitting the section entirely) prevents MSF tools from being registered at all. Any call to an `msf_*` tool returns an error:
+The `[metasploit]` section is commented out in the default config. With `enabled = false`, or with the section left out, the six `msf_*` tools are still listed to the client, and any call to one returns an error:
 
 > Metasploit is disabled. Set [metasploit] enabled = true in config.
 
-### Layer 2: Target Allowlist
+### Layer 2: Target Validation and Scope
 
-All tools that accept a `target` parameter (`msf_exploit`, `msf_auxiliary`) pass it through `safety::validate_target()` before any RPC call. The same allowlist validation used by nmap, nuclei, and other tools applies here.
+All tools that accept a `target` parameter (`msf_exploit`, `msf_auxiliary`) pass it through `safety::validate_target()` before any RPC call. That is the same syntax check and, when `[scope]` is enabled, the same engagement scope check that nmap, nuclei and the other tools use. `msf_post` and `msf_sessions` act on existing sessions and take no target.
 
 ### Layer 3: Module Blocklist
 
-The `blocked_modules` config field accepts substring patterns. Before executing any module (exploit, auxiliary, or post), the client checks the module path against every pattern using substring matching. If any pattern is found within the module path, execution is denied:
+The `blocked_modules` config field accepts module path patterns. Before executing any module (exploit, auxiliary, or post), the client checks the module path against every pattern at path boundaries: a pattern blocks the module with that exact path and everything beneath it. `exploit/foo` blocks `exploit/foo` and `exploit/foo/bar` and does not block `exploit/foobar`. The list is empty by default. If a pattern matches, execution is denied:
 
-> module 'exploit/windows/smb/eternalblue' is blocked by config
+> module 'exploit/windows/smb/ms17_010_eternalblue' is blocked by config
 
-Use this to block entire categories (`payload/`), specific exploits (`eternalblue`), or platforms (`windows/`).
+Use this to block a whole tree with a trailing slash, such as `exploit/windows/`, or one module by its full path. A bare word such as `eternalblue` matches nothing, because it is not a path prefix.
 
 ### Layer 4: Confirmation Gate
 
@@ -300,7 +300,7 @@ When `require_confirmation = true` (the default), `msf_exploit` requires the cal
 2. **Second call:** If the hash matches the pending confirmation, the exploit runs. The pending hash is then cleared.
 3. **Changed parameters:** If the second call has different parameters (module, target, port, or payload), it replaces the pending hash -- execution does not proceed.
 
-This gives the operator (or LLM supervisor) an explicit chance to review and approve. The confirmation gate only applies to `msf_exploit`, not to auxiliary or post modules.
+The same caller makes both calls, so on its own this is not a human approval step. It puts the plan in the transcript before anything runs, and a client that asks before each tool call gives the operator the chance to stop it. The confirmation gate only applies to `msf_exploit`, not to auxiliary or post modules.
 
 Note: `lhost`, `lport`, and `options` are not part of the confirmation hash. Only `module`, `target`, `port`, and `payload` are hashed.
 
@@ -328,7 +328,7 @@ The check is case-insensitive and matches the start of the command string.
 **Block specific modules:**
 
 ```toml
-blocked_modules = ["eternalblue", "doublepulsar", "payload/windows/x64/meterpreter"]
+blocked_modules = ["exploit/windows/smb/ms17_010_eternalblue", "exploit/multi/", "payload/windows/x64/meterpreter"]
 ```
 
 **Disable the confirmation gate** (not recommended for LLM-driven use):

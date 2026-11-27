@@ -1,0 +1,60 @@
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Reports from real hardware are what make the local model guide useful. Failures count as much as successes.
+        Run against a lab target and leave real engagement data out.
+  - type: input
+    id: model
+    attributes:
+      label: Model and quantisation
+      placeholder: "qwen3:8b, Q4_K_M"
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: Runtime and MCP client
+      placeholder: "Ollama 0.x with ollmcp, or LM Studio"
+    validations:
+      required: true
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware
+      placeholder: "8 GB VRAM laptop GPU, 32 GB RAM"
+    validations:
+      required: true
+  - type: input
+    id: context
+    attributes:
+      label: Context size and context_budget
+      description: The context length set in the runtime, and the value of context_budget in the server config.
+      placeholder: "num_ctx 65536, context_budget 65536"
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Server version
+      placeholder: "0.4.2"
+    validations:
+      required: true
+  - type: dropdown
+    id: verdict
+    attributes:
+      label: How did it go?
+      options:
+        - Usable step by step
+        - Usable only with all steps in one prompt
+        - Calls tools but makes too many mistakes
+        - Could not call tools at all
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: What happened?
+      description: How many tool calls it managed, wrong parameter names, made-up tool output, empty replies, whether it saved findings. The prompt you used helps.
+    validations:
+      required: true
