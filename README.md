@@ -10,29 +10,38 @@
 nmap, nuclei, sqlmap and 19 other pentesting tools, plus Metasploit, without
 giving the agent a shell.**
 
+**The problem:**
 The quick way to let an agent pentest is to hand it a terminal. Then the model
 writes every command line, and an invented flag or a line of hostile text in a
-scan result is enough to run something you never approved. Raven Nest puts a
-fixed interface in between. The model picks a tool and fills in typed fields.
-The server checks the target, builds the arguments itself, starts the binary
-with no shell, limits how aggressive it can be, and writes down what ran.
+scan result is enough to ***run something you never approved***.
 
-- **The model never writes a command line.** Tools take presets and typed
-  fields. Unknown parameters are rejected and no tool accepts a raw flag
-  string.
-- **You decide what it may touch.** A scope allowlist of CIDR ranges and
-  domains rejects every other target, and a deny entry always wins. A second
-  allowlist does the same for which binaries may run.
-- **The intrusive parts start switched off.** Metasploit and credentialed
+**What Raven Nest does:**
+It puts a fixed interface in between. The model picks a tool and fills in
+typed fields. The server then
+- checks the target,
+- builds the arguments itself,
+- starts the binary with no shell,
+- limits how aggressive it can be,
+- writes down what ran.
+
+**What you get:**
+
+- **The model never writes a command line**. Tools take presets and typed
+  fields. Unknown parameters are rejected and ***no tool accepts a raw flag
+  string***.
+- **You decide what it may touch**. A scope allowlist of CIDR ranges and
+  domains rejects every other target, and ***a deny entry always wins***. A
+  second allowlist does the same for which binaries may run.
+- **The intrusive parts start switched off**. Metasploit and credentialed
   NetExec stay disabled until you enable them. sqlmap, hydra, masscan and john
-  run under limits the model cannot raise.
-- **It works with a small local model.** Output is parsed into short
+  run under ***limits the model cannot raise***.
+- **It works with a small local model**. Output is parsed into short
   summaries and fitted to a context budget, so an 8B model on an 8 GB GPU can
-  get through a multi-step session. Your targets and findings then stay on
-  your machine.
-- **There is a record.** Each subprocess the server runs is appended to a
-  JSON audit log with credentials redacted.
-- **Findings become a report.** Save findings as you go and export Markdown,
+  get through a multi-step session. Your targets and findings then ***stay on
+  your machine***.
+- **There is a record**. Each subprocess the server runs is appended to a
+  JSON audit log with ***credentials redacted***.
+- **Findings become a report**. Save findings as you go and export Markdown,
   HTML, JSON or SARIF.
 
 > **Authorized use only.** Raven Nest is an offensive-security tool intended
@@ -60,31 +69,33 @@ with no shell, limits how aggressive it can be, and writes down what ran.
 
 ## Is this for you
 
-It probably is if you:
+**It probably is if you**
 
-- already use these tools and want an agent to drive recon and the routine
-  scanning while you watch and decide
-- test under a contract or NDA and cannot send client data to a hosted AI
-  service
-- build agent workflows and want a tool layer with fixed, typed inputs
-- practise on labs such as Juice Shop or DVWA and want to see how far a local
-  model gets
+- already use these tools and would like an agent to drive recon and the
+  routine scanning while you watch and decide,
+- test under a contract or NDA and ***cannot send client data to a hosted AI
+  service***,
+- build agent workflows and would like a tool layer with fixed, typed inputs,
+- practise on labs such as Juice Shop or DVWA and would like to see how far a
+  local model gets.
 
-It probably is not if you:
+**It probably is not if you**
 
-- want a scanner with a user interface. This is a server, and it does nothing
-  until an MCP client and a model drive it.
-- want to leave an agent unattended on a production network. The controls
-  here narrow what a model can do. They do not make it right.
-- need native Windows or ARM builds. See [Project status](#project-status).
-- need a tool that has been through an independent security audit. This one
-  has not.
+- **would like a scanner with a user interface**. This is a server, and it
+  does nothing until an MCP client and a model drive it.
+- **would like to leave an agent unattended on a production network**. The
+  controls here narrow what a model can do. ***They do not make it right***.
+- **need native Windows or ARM builds**. See
+  [Project status](#project-status).
+- **need a tool that has been through an independent security audit**. This
+  one has not.
 
 ## Demo
 
-These recordings are real MCP traffic to the tools with no model in the loop,
-so they replay the same way every time. The targets are the public test hosts
-`example.com` and `scanme.nmap.org`.
+These recordings are real MCP traffic to the tools with ***no model in the
+loop***, so they replay the same way every time.
+
+The targets are the public test hosts `example.com` and `scanme.nmap.org`.
 
 **A scan, a saved finding and a report**
 
@@ -101,13 +112,17 @@ container image does not include Metasploit.
 
 ## Quick start
 
-Raven Nest is a server. It does nothing on its own. An MCP client such as
-Claude Desktop, Claude Code, Cursor or a local-model client starts it over
-stdio and calls its tools.
+Raven Nest is a server. ***It does nothing on its own***.
 
+An MCP client starts it over stdio and calls its tools. That client can be
+- Claude Desktop,
+- Claude Code,
+- Cursor,
+- a local-model client.
+
+**1. Add the server to your MCP client config.**
 The container image carries the server and all 22 wrapped tools on a Kali
-base, so there is nothing else to install. Add this to your MCP client
-config:
+base, so there is nothing else to install:
 
 ```json
 {
@@ -120,18 +135,26 @@ config:
 }
 ```
 
-Then ask your agent for something small against a host you may scan:
+**2. Ask your agent for something small** against a host you may scan:
 
 ```
 Ping scanme.nmap.org, run a quick nmap scan, and save anything notable as a finding.
 ```
 
-That entry is enough to try it. It runs on built-in defaults, with the scope
-allowlist off and all output lost when the container exits. Before real work,
-read [docs/INSTALL.md](docs/INSTALL.md#container-image). It shows how to
-mount your own config, keep findings and the audit log on a volume, add
-wordlists, and grant raw sockets to `masscan`.
+That entry is enough to try it.
 
+**Before real work:**
+The entry above runs on built-in defaults, which means
+- ***the scope allowlist is off***,
+- all output is lost when the container exits.
+
+[docs/INSTALL.md](docs/INSTALL.md#container-image) shows how to
+- mount your own config,
+- keep findings and the audit log on a volume,
+- add wordlists,
+- grant raw sockets to `masscan`.
+
+**No agent?**
 If you would sooner drive the tools by hand,
 [raven-nest-client](https://github.com/tidynest/raven-nest-client) is a
 terminal client for this server with tab completion and commands for scans,
@@ -148,82 +171,111 @@ container.
 | **Capped** | sqlmap level and risk, hydra parallel tasks, masscan packet rate and john run time. The model can ask for less and never more. |
 | **Written to the audit log** | Every subprocess the server ran to completion, and every `http_request`, with tool, arguments, exit code, duration and whether `sudo` was used. Credential values are redacted. |
 
-Four things a sceptical reader should know before trusting that table:
+**Four things a sceptical reader should know before trusting that table:**
 
-1. **The scope allowlist is off by default.** Out of the box the server
-   accepts any target that is well formed. Turn `[scope]` on before you point
-   an agent at anything that matters.
-2. **The second call for an exploit is not human approval.** The same model
-   makes both calls. It forces the plan into the open, and your MCP client's
-   own approval prompt is what puts a person in the loop.
-3. **The audit log has gaps.** Rejected calls, timed-out runs, `ping_target`
-   and Metasploit RPC calls are not in it today.
-4. **A config that fails to load is skipped, not fatal.** If the file in
+1. **The scope allowlist is off by default**. Out of the box the server
+   ***accepts any target that is well formed***. Turn `[scope]` on before you
+   point an agent at anything that matters.
+2. **The second call for an exploit is not human approval**. ***The same
+   model makes both calls***. It forces the plan into the open, and your MCP
+   client's own approval prompt is what puts a person in the loop.
+3. **The audit log has gaps**. Rejected calls, timed-out runs, `ping_target`
+   and Metasploit RPC calls are ***not in it today***.
+4. **A config that fails to load is skipped, not fatal**. If the file in
    `RAVEN_CONFIG` is missing or broken, the server warns on stderr and starts
-   on the next config it finds, which can mean built-in defaults with the
-   scope off. Check the first log line.
+   on the next config it finds, which can mean ***built-in defaults with the
+   scope off***. Check the first log line.
 
-The wrapped tools are the stock binaries. sqlmap and hydra can disrupt a
-target while doing exactly what they were built to do, and nothing
-here inspects scan output for text aimed at the model. This is pre-1.0
-software from one maintainer and it has had no outside security audit.
+**Also worth knowing:**
 
-The full account, including what each control does not cover and a hardening
-checklist, is in [docs/SAFETY.md](docs/SAFETY.md). To report a way past any
-of these controls, see [SECURITY.md](SECURITY.md).
+- **The wrapped tools are the stock binaries**. sqlmap and hydra can disrupt
+  a target while doing exactly what they were built to do.
+- **Nothing here inspects scan output** for text aimed at the model.
+- **This is pre-1.0 software from one maintainer**, and it has had ***no
+  outside security audit***.
+
+**Read more:**
+- [docs/SAFETY.md](docs/SAFETY.md) has the full account, including what each
+  control does not cover and a hardening checklist,
+- [SECURITY.md](SECURITY.md) says how to report a way past any of these
+  controls.
 
 ## Keeping engagement data on your machine
 
-When an agent runs a pentest, every tool result passes through the model:
-target addresses, service banners, findings, and any credentials that turn
-up. With a hosted model, all of that goes to the provider. Under a contract
-or an NDA that is often not allowed.
+**In short:**
+Drive the server with a model on your own machine, and ***nothing is sent to
+a third-party AI service*** while you test someone's systems.
 
+**Why it matters:**
+When an agent runs a pentest, every tool result passes through the model.
+That includes
+- target addresses,
+- service banners,
+- findings,
+- any credentials that turn up.
+
+With a hosted model, all of that goes to the provider. Under a contract or an
+NDA that is often not allowed.
+
+**What the server itself does:**
 Raven Nest was built to be driven by a small model running on the same
-machine. The server itself is a local process that talks to its client over
-stdio. It has no telemetry and no AI provider client in it. The only network
-connections it opens itself are the requests you make with `http_request`
-and, if you enable Metasploit, the RPC connection to your own `msfrpcd`. So
-with a local model the whole loop stays on your hardware:
+machine. The server is a local process that talks to its client over stdio.
+It has ***no telemetry and no AI provider client*** in it.
+
+The only network connections it opens itself are
+- the requests you make with `http_request`,
+- the RPC connection to your own `msfrpcd`, if you enable Metasploit.
+
+So with a local model the whole loop stays on your hardware:
 
 ```
 local model  <->  MCP client  <->  raven-server  <->  scanners  <->  target
 ```
 
+**How it meets small models halfway:**
 Small models have short context windows and make more tool-calling mistakes,
-so the server does some work to meet them:
+so the server does some work for them.
 
-- A context budget tracks how much output the session has used and shrinks
-  each tool's allowance as it fills. When it runs out, scan tools are refused
-  and the model is told to save findings and write the report.
-- Each tool's raw output is parsed into a short summary before the model sees
-  it.
-- A wrong parameter name gets an error that names the field, and a number
-  sent as a string is accepted.
-- With auto-save turned on, the server saves findings straight from scanner
-  output, so the report does not depend on the model remembering to do it.
+- **A context budget** tracks how much output the session has used and
+  shrinks each tool's allowance as it fills. When it runs out, scan tools are
+  refused and the model is told to ***save findings and write the report***.
+- **Parsed output**. Each tool's raw output is turned into a short summary
+  before the model sees it.
+- **Forgiving input, clear errors**. A wrong parameter name gets an error
+  that names the field, and a number sent as a string is accepted.
+- **Auto-save**. When you turn it on, the server saves findings straight from
+  scanner output, so the report does not depend on the model remembering to
+  do it.
 
-What I have tested, on a laptop with an 8 GB GPU through Ollama: Qwen3 8B at
-a 64K context completes an eight-step session and is the one I use
-interactively. Qwen3.5 9B writes better findings, and only when given all the
-steps in a single prompt. Most other models I tried, 14 in total, could not
-call tools reliably enough to be useful. The full table, the client setup
-and the failure modes are in
+**What I have tested,** on a laptop with an 8 GB GPU through Ollama:
+
+- **Qwen3 8B at a 64K context** completes an eight-step session and is the
+  one I use interactively.
+- **Qwen3.5 9B** writes better findings, and ***only when given all the
+  steps in a single prompt***.
+- **Most other models I tried**, 14 in total, could not call tools reliably
+  enough to be useful.
+
+The full table, the client setup and the failure modes are in
 [docs/LOCAL_AI_INTEGRATION.md](docs/LOCAL_AI_INTEGRATION.md).
 
-What this does not promise:
+**What this does not promise:**
 
-- A local model is weaker than a large hosted one. Expect to guide it step by
-  step and to check what it reports.
-- If you connect a hosted model, every tool result goes to that provider.
-  The server cannot tell the difference and does not try to.
-- Some wrapped tools contact third parties as part of their normal work.
-  subfinder queries public data sources about the domain. nmap's `vuln` scan
-  type runs scripts that look up service versions online. wpscan sends data
-  to its vulnerability API when you pass a token. trufflehog tests found
-  secrets against the issuing service if you ask it to verify. Leave those
-  out of the tool allowlist if the engagement rules them out.
-  [docs/DATA_FLOW.md](docs/DATA_FLOW.md#what-leaves-the-machine) has the list.
+- **A local model is weaker than a large hosted one**. Expect to guide it
+  step by step and to check what it reports.
+- **If you connect a hosted model, every tool result goes to that provider**.
+  The server ***cannot tell the difference*** and does not try to.
+- **Some wrapped tools contact third parties** as part of their normal work:
+  - subfinder queries public data sources about the domain,
+  - nmap's `vuln` scan type runs scripts that look up service versions
+    online,
+  - wpscan sends data to its vulnerability API when you pass a token,
+  - trufflehog tests found secrets against the issuing service if you ask it
+    to verify.
+
+  Leave those out of the tool allowlist if the engagement rules them out.
+  [docs/DATA_FLOW.md](docs/DATA_FLOW.md#what-leaves-the-machine) has the
+  list.
 
 ## How it compares
 
@@ -241,20 +293,23 @@ tool. This is how the two differ, going only by what this code does:
 | Record | your client's transcript | an audit log, plus findings and reports on disk |
 | Flexibility | everything the tools can do | only what the handlers expose |
 
-The last row is the cost. If a tool flag is not exposed as a preset, the
-agent cannot use it, and you run that step yourself or open a discussion
-asking for it.
+**The last row is the cost.**
+If a tool flag is not exposed as a preset, ***the agent cannot use it***, and
+you run that step yourself or open a discussion asking for it.
 
-Other MCP servers for security tools exist. I have not run them side by
-side with this one, so there is no feature table against them here. If you
-maintain one and want a fair comparison written up, start a thread in
+**What about other MCP servers for security tools?**
+They exist. I have not run them side by side with this one, so there is no
+feature table against them here. If you maintain one and would like a fair
+comparison written up, start a thread in
 [Discussions](https://github.com/tidynest/raven-nest-mcp/discussions).
 
 ## Supported tools
 
-The server exposes 46 MCP tools: 22 wrappers around external security tools,
-6 for Metasploit, and 18 for utilities, background scans, findings,
-engagements and discovery data.
+The server exposes ***46 MCP tools***:
+- 22 wrappers around external security tools,
+- 6 for Metasploit,
+- 18 for utilities, background scans, findings, engagements and discovery
+  data.
 
 | Category | Tools |
 |----------|-------|
@@ -275,10 +330,11 @@ engagements and discovery data.
 | Engagements | set\_engagement, list\_engagements |
 | Discovery | get\_target\_info, list\_targets, diff\_scans |
 
-Every parameter of every tool is documented in
-[docs/USAGE.md](docs/USAGE.md#tools-reference). The exact names and
-descriptions the server sends to a client are in
-[docs/MCP_TOOLS.md](docs/MCP_TOOLS.md).
+**Read more:**
+- [docs/USAGE.md](docs/USAGE.md#tools-reference) documents every parameter of
+  every tool,
+- [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md) has the exact names and descriptions
+  the server sends to a client.
 
 ## Beyond running tools
 
@@ -326,10 +382,15 @@ Steps for each, and how the server finds its config, are in
 
 ## Configuration
 
-Configuration is one TOML file. The server reads the file named in
-`RAVEN_CONFIG`, then looks for `config/default.toml` near the binary and in
-the working directory, and falls back to built-in defaults. The settings most
-people touch:
+Configuration is ***one TOML file***.
+
+The server looks for it in this order:
+1. the file named in `RAVEN_CONFIG`,
+2. `config/default.toml` near the binary,
+3. `config/default.toml` in the working directory,
+4. the built-in defaults.
+
+**The settings most people touch:**
 
 ```toml
 [safety]
@@ -350,8 +411,9 @@ max_concurrent_scans = 3
 output_dir = "/var/lib/raven-nest"
 ```
 
-[config/default.toml](config/default.toml) is a commented starting point and
-[docs/USAGE.md](docs/USAGE.md#configuration) documents every key.
+**Read more:**
+- [config/default.toml](config/default.toml) is a commented starting point,
+- [docs/USAGE.md](docs/USAGE.md#configuration) documents every key.
 
 ## Documentation
 
@@ -382,15 +444,14 @@ output_dir = "/var/lib/raven-nest"
 
 ## Project status
 
-Raven Nest is pre-1.0 and maintained by one person. Minor versions can change
-tool parameters and config keys, and the [changelog](CHANGELOG.md) says when
-they do.
-
-The container image and the release binary are both x86_64 Linux. The code
-has not been tested on macOS or Windows.
-
-[raven-nest-client](https://github.com/tidynest/raven-nest-client) is
-released with the same version number as the server.
+- **Pre-1.0 and maintained by one person**. Minor versions can change tool
+  parameters and config keys, and the [changelog](CHANGELOG.md) says when
+  they do.
+- **x86_64 Linux only**. That goes for both the container image and the
+  release binary. The code has ***not been tested on macOS or Windows***.
+- **Client and server share a version number**.
+  [raven-nest-client](https://github.com/tidynest/raven-nest-client) is
+  released together with the server.
 
 ## License
 

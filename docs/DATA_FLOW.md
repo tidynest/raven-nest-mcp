@@ -71,18 +71,26 @@ Either way the `FindingStore` is the single owner - auto-save is just one writer
 
 ## What leaves the machine
 
+**In short:**
 The server is a local process. It talks to its MCP client over stdin and
-stdout and opens no listening port. It has no telemetry, no update check and
-no client for any AI provider. Its own outbound connections are these two:
+stdout and ***opens no listening port***.
+
+It has
+- no telemetry,
+- no update check,
+- no client for any AI provider.
+
+**Its own outbound connections are these two:**
 
 | Connection | When | Source |
 |------------|------|--------|
 | HTTP requests to the URL you pass | each `http_request` call | [tools/http.rs](../crates/raven-server/src/tools/http.rs) |
 | RPC to your `msfrpcd` | only with `[metasploit] enabled = true` | [msf_client.rs](../crates/raven-core/src/msf_client.rs) |
 
-Everything else on the network comes from the wrapped tools, which are the
-stock binaries. They talk to the target, as you would expect. Some also talk
-to third parties as part of their normal work:
+**Everything else on the network comes from the wrapped tools**, which are
+the stock binaries. They talk to the target, as you would expect.
+
+Some ***also talk to third parties*** as part of their normal work:
 
 | Tool | Third party | When |
 |------|-------------|------|
@@ -93,16 +101,24 @@ to third parties as part of their normal work:
 | nuclei | ProjectDiscovery's servers for out-of-band checks and template updates | with nuclei's stock settings, which the server does not change |
 | dnsx, dnsrecon | the DNS resolvers they are configured to use | always |
 
-The first four rows follow from the arguments the handlers pass. The nuclei
-and DNS rows describe how those tools behave by default according to their
-own documentation, and the server neither adds to nor removes from that.
-Check a tool's own docs before relying on this table for a strict engagement,
-and remove a tool from `allowed_tools` if its lookups are not acceptable.
+**How sure is this table?**
+- **The first four rows** follow from the arguments the handlers pass.
+- **The nuclei and DNS rows** describe how those tools behave by default
+  according to their own documentation. The server neither adds to nor
+  removes from that.
 
-Where the tool results go next is decided by the MCP client and the model
-behind it, not by the server. With a model running on the same machine they
-stay there. With a hosted model, each tool result is sent to that provider as
-part of the conversation. See
+Check a tool's own docs before relying on this table for a strict engagement,
+and ***remove a tool from `allowed_tools`*** if its lookups are not
+acceptable.
+
+**Where do the tool results go next?**
+That is decided by the MCP client and the model behind it, ***not by the
+server***.
+- **With a model running on the same machine**, they stay there.
+- **With a hosted model**, each tool result is sent to that provider as part
+  of the conversation.
+
+See
 [LOCAL_AI_INTEGRATION.md](LOCAL_AI_INTEGRATION.md) for the local setup.
 
 If you set `[network] http_proxy`, the subprocess tools and `http_request`

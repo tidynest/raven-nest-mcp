@@ -3,14 +3,18 @@
 Guide for connecting local LLMs (via Ollama, LM Studio, etc.) to Raven Nest
 as MCP clients.
 
-The reason to do this is data control. Every tool result passes through the
-model, so with a hosted model your targets and findings go to that provider.
-With a model on your own machine they stay there. The server sends nothing
-anywhere on its own account. Some wrapped tools do contact third parties, and
+**Why do this:**
+Data control. Every tool result passes through the model, so
+- with a hosted model, your targets and findings ***go to that provider***,
+- with a model on your own machine, they stay there.
+
+The server sends nothing anywhere on its own account. Some wrapped tools do
+contact third parties, and
 [DATA_FLOW.md](DATA_FLOW.md#what-leaves-the-machine) lists which ones.
 
-The trade is capability. Of the 14 models tested below, only the Qwen3 and
-Qwen3.5 family was usable, and even those need step-by-step guidance.
+**The trade:**
+Capability. Of the 14 models tested below, ***only the Qwen3 and Qwen3.5
+family was usable***, and even those need step-by-step guidance.
 
 ## Prerequisites
 

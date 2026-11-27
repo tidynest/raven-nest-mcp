@@ -1,8 +1,14 @@
 # Discussions
 
+**In short:**
 [GitHub Discussions](https://github.com/tidynest/raven-nest-mcp/discussions)
-is where questions, ideas and field reports for Raven Nest go. Issues are
-kept for bugs that someone can reproduce.
+is where these go:
+- questions,
+- ideas,
+- tool proposals,
+- field reports.
+
+Issues are kept for ***bugs that someone can reproduce***.
 
 ## Where things go
 
@@ -18,57 +24,86 @@ kept for bugs that someone can reproduce.
 
 ## Categories
 
-**Announcements.** Releases and changes that break something. Only the
-maintainer posts here. Anyone can reply.
+### Announcements
 
-**Q&A.** Questions with an answer. Mark the reply that solved it so the next
-person finds it. Say how you run the server, which version, and paste the
-error text.
+Releases and changes that break something.
 
-**Ideas.** Features, presets and changes to how something works. Describe the
-problem before the solution. An idea that would loosen a safety default
-should say who needs it and what stops it from being misused.
+***Only the maintainer posts here***. Anyone can reply.
 
-**Tool proposals.** One thread per tool you would like wrapped. The form asks
-the questions from [CONTRIBUTING.md](../CONTRIBUTING.md#proposing-a-new-tool-wrapper),
-because a wrapper is mostly a decision about what a model may ask for.
+### Q&A
 
-**Local models.** Reports on running the server with a model on your own
-hardware. Which model, which client, what context size, and what happened.
-Failures are as useful as successes. Good reports get folded into
+Questions with an answer. Mark the reply that solved it, so the next person
+finds it.
+
+**Please include**
+- how you run the server,
+- which version,
+- the error text.
+
+### Ideas
+
+Features, presets and changes to how something works.
+
+***Describe the problem before the solution***. An idea that would loosen a
+safety default should say who needs it and what stops it from being misused.
+
+### Tool proposals
+
+One thread per tool you would like wrapped.
+
+The form asks the questions from
+[CONTRIBUTING.md](../CONTRIBUTING.md#proposing-a-new-tool-wrapper), because a
+wrapper is mostly ***a decision about what a model may ask for***.
+
+### Local models
+
+Reports on running the server with a model on your own hardware.
+
+**Please include**
+- which model,
+- which client,
+- what context size,
+- what happened.
+
+***Failures are as useful as successes***. Good reports get folded into
 [LOCAL_AI_INTEGRATION.md](LOCAL_AI_INTEGRATION.md).
 
-**Show and tell.** Workflows, system prompts, client configs and write-ups
-from lab targets.
+### Show and tell
 
-**General.** Anything that fits nowhere else.
+Workflows, system prompts, client configs and write-ups from lab targets.
+
+### General
+
+Anything that fits nowhere else.
 
 ## House rules
 
-1. **Authorised targets only.** Talk about systems you own, lab targets, or
+1. **Authorised targets only**. Talk about systems you own, lab targets, or
    work you are permitted to do. Threads asking for help against someone
-   else's system get closed.
-2. **No client data.** Do not paste scan output, findings, hostnames,
+   else's system ***get closed***.
+2. **No client data**. ***Do not paste*** scan output, findings, hostnames,
    addresses or credentials from a real engagement. Reproduce the problem
    against `scanme.nmap.org`, a lab target or `example.com`, or redact it
    properly. Remember that the audit log and findings contain targets.
-3. **Vulnerabilities in Raven Nest go private.** If you can get past the
+3. **Vulnerabilities in Raven Nest go private**. If you can get past the
    allowlist, the scope, a gate or a cap, report it through
-   [SECURITY.md](../SECURITY.md) and not in a thread.
-4. **Be decent to each other.** Disagree with the idea and leave the person
+   [SECURITY.md](../SECURITY.md) and ***not in a thread***.
+4. **Be decent to each other**. Disagree with the idea and leave the person
    alone.
 
 ## What to expect
 
-One person maintains this project in their spare time. Answers can take a few
-days. If you know the answer to someone else's question, please give it.
+One person maintains this project in their spare time, so ***answers can
+take a few days***.
+
+If you know the answer to someone else's question, please give it.
 
 ---
 
 ## Maintainer setup
 
-These steps are for the repository owner and can be deleted from this file
-once they are done.
+These steps are ***for the repository owner*** and can be deleted from this
+file once they are done.
 
 ### 1. Enable Discussions
 
@@ -77,9 +112,11 @@ default set of categories and a welcome thread.
 
 ### 2. Set up the categories
 
-In the Discussions tab, use the pencil next to Categories. The slug is
-derived from the name, and each form in `.github/DISCUSSION_TEMPLATE/` is
-matched to its category by slug, so the names below need to be exact.
+In the Discussions tab, use the pencil next to Categories.
+
+The slug is derived from the name, and each form in
+`.github/DISCUSSION_TEMPLATE/` is matched to its category by slug, so ***the
+names below need to be exact***.
 
 | Category | Slug | Format | Action |
 |----------|------|--------|--------|
@@ -92,7 +129,7 @@ matched to its category by slug, so the names below need to be exact.
 | General | `general` | Open-ended discussion | keep |
 | Polls | `polls` | Poll | delete, nothing here needs it |
 
-Suggested descriptions:
+**Suggested descriptions:**
 
 - Announcements: Releases and breaking changes.
 - Q&A: Setup, configuration and error messages.
@@ -134,6 +171,10 @@ it. A draft:
 
 ### 4. Check the links
 
-The README, `CONTRIBUTING.md` and `.github/ISSUE_TEMPLATE/config.yml` all
-link to Discussions. Those links return 404 until step 1 is done, so enable
-Discussions before this branch reaches `main`.
+These files all link to Discussions:
+- the README,
+- `CONTRIBUTING.md`,
+- `.github/ISSUE_TEMPLATE/config.yml`.
+
+Those links ***return 404 until step 1 is done***, so enable Discussions
+before this branch reaches `main`.

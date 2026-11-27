@@ -1,11 +1,12 @@
 # Installing and running
 
+**In short:**
 Raven Nest is one binary, `raven-server`, that speaks MCP over stdio. It
-opens no network port. An MCP client starts it as a child process and talks
-to it over stdin and stdout.
+***opens no network port***. An MCP client starts it as a child process and
+talks to it over stdin and stdout.
 
-There are four ways to get it. The container is the only one that also brings
-the scanners.
+There are four ways to get it. The container is ***the only one that also
+brings the scanners***.
 
 | Method | Brings the scanners | Platform |
 |--------|---------------------|----------|
@@ -14,16 +15,21 @@ the scanners.
 | [Build from source](#build-from-source) | no | Linux, Rust 1.93 or newer |
 | [Arch Linux PKGBUILD](#arch-linux-pkgbuild) | no, listed as optional dependencies | x86_64 Arch |
 
-Nothing else is built or tested. The code uses Unix file modes and will not
-compile for Windows as it stands.
+Nothing else is built or tested.
+
+The code uses Unix file modes and ***will not compile for Windows*** as it
+stands.
 
 ## Container image
 
-The image is `ghcr.io/tidynest/raven-nest-mcp`. It is built on Kali rolling,
-runs as a non-root user and contains `raven-server` plus the 22 wrapped tools.
-Metasploit is not in the image because it roughly doubles the size.
+The image is `ghcr.io/tidynest/raven-nest-mcp`. It
+- is built on Kali rolling,
+- runs as a non-root user,
+- contains `raven-server` plus the 22 wrapped tools.
 
-The shortest client entry:
+***Metasploit is not in the image***, because it roughly doubles the size.
+
+**The shortest client entry:**
 
 ```json
 {
@@ -36,32 +42,38 @@ The shortest client entry:
 }
 ```
 
-That is enough to try it. Before you use it on real work, read the next four
-points.
+That is enough to try it.
+
+Before you use it on real work, ***read the next four points***.
 
 ### 1. Without a config file, the container uses the built-in defaults
 
 The image carries no config in a place the server looks, so it starts on the
-defaults compiled into the binary. Those differ from `config/default.toml` in
-this repository:
+defaults compiled into the binary.
 
-- The engagement scope is off.
-- The context budget is off.
-- `sudo_tools` is empty, which is what you want in the container.
-- `gitleaks` and `trufflehog` are missing from the built-in allowlist, so
-  both tools answer "tool not allowed" until you supply a config that lists
-  them.
+**Those differ from `config/default.toml` in this repository:**
+
+- **The engagement scope** is ***off***.
+- **The context budget** is off.
+- **`sudo_tools`** is empty, which is what you need in the container.
+- **`gitleaks` and `trufflehog`** are missing from the built-in allowlist, so
+  both tools answer ***"tool not allowed"*** until you supply a config that
+  lists them.
 
 ### 2. Pass your own config
 
-Copy the reference config out of the image, edit it, and mount it back:
+**Step 1.** Copy the reference config out of the image:
 
 ```bash
 docker run --rm --entrypoint cat ghcr.io/tidynest/raven-nest-mcp:latest /usr/share/doc/raven-nest-mcp/default.toml > raven.toml
 ```
 
-In `raven.toml`, set `sudo_tools = []`, because the container has no `sudo`.
-Then turn on `[scope]` and set `output_dir` as described below.
+**Step 2.** Edit `raven.toml`:
+- set `sudo_tools = []`, because ***the container has no `sudo`***,
+- turn on `[scope]`,
+- set `output_dir` as described below.
+
+**Step 3.** Mount it back and name it in `RAVEN_CONFIG`:
 
 ```json
 {
@@ -82,9 +94,14 @@ Then turn on `[scope]` and set `output_dir` as described below.
 
 ### 3. Keep the output
 
-With `--rm` and no volume, findings, reports and the audit log disappear when
-the client closes the server. To keep them, mount a volume and point
-`output_dir` inside it:
+With `--rm` and no volume, these ***disappear when the client closes the
+server***:
+- findings,
+- reports,
+- discovery data,
+- the audit log.
+
+To keep them, mount a volume and point `output_dir` inside it:
 
 ```toml
 [execution]
@@ -92,20 +109,28 @@ output_dir = "/var/lib/raven-nest/data"
 ```
 
 `/var/lib/raven-nest` is the home directory of the container user, uid 10001.
-A named volume mounted there should take that ownership on first use. If you
-bind-mount a host directory instead, make it writable for uid 10001.
 
-Wordlists follow the same rule. The image ships no SecLists, and the server
-only reads wordlists from `/usr/share/`, `/usr/lib/` or `output_dir`. Mount
-your lists into one of those, for example
+- **A named volume** mounted there should take that ownership on first use.
+- **A bind-mounted host directory** has to be writable for uid 10001.
+
+**Wordlists follow the same rule.**
+***The image ships no SecLists***, and the server only reads wordlists from
+- `/usr/share/`,
+- `/usr/lib/`,
+- `output_dir`.
+
+Mount your lists into one of those, for example
 `-v /usr/share/seclists:/usr/share/seclists:ro`, or pass a `wordlist` path
-that sits under `output_dir`. The same applies to a repository you want
-gitleaks or trufflehog to scan.
+that sits under `output_dir`.
+
+The same applies to a repository you would like gitleaks or trufflehog to
+scan.
 
 ### 4. Raw sockets
 
-`masscan` and nmap OS detection need raw sockets. Add these two arguments
-before the image name:
+`masscan` and nmap OS detection ***need raw sockets***.
+
+Add these two arguments before the image name:
 
 ```
 "--cap-add=NET_RAW", "--cap-add=NET_ADMIN"
@@ -115,9 +140,13 @@ The capabilities go to the container process, so the tools work without root.
 
 ### Pin the version
 
-`latest` moves with each release. For an engagement, pin a tag such as
-`ghcr.io/tidynest/raven-nest-mcp:0.4.2` so the tools and the server do not
-change under you. The image is also listed on the
+`latest` moves with each release.
+
+For an engagement, ***pin a tag*** such as
+`ghcr.io/tidynest/raven-nest-mcp:0.4.2`, so the tools and the server do not
+change under you.
+
+The image is also listed on the
 [MCP Registry](https://registry.modelcontextprotocol.io) as
 `io.github.tidynest/raven-nest-mcp`.
 
@@ -133,17 +162,26 @@ docker run --rm --entrypoint cat ghcr.io/tidynest/raven-nest-mcp:latest /usr/sha
 
 Each [GitHub release](https://github.com/tidynest/raven-nest-mcp/releases)
 has `raven-server-<tag>-x86_64-unknown-linux-gnu.tar.gz` and a `.sha256` file
-next to it. The archive holds the binary, the README, the changelog, the
-licence and `default.toml`.
+next to it.
+
+**The archive holds**
+- the binary,
+- the README,
+- the changelog,
+- the licence,
+- `default.toml`.
+
+**Check the download:**
 
 ```bash
 sha256sum -c raven-server-v0.4.2-x86_64-unknown-linux-gnu.tar.gz.sha256
 ```
 
-The server does not look for `default.toml` beside the binary. Point at it
-with `RAVEN_CONFIG`, or move it to `config/default.toml` next to the binary.
+The server ***does not look for `default.toml` beside the binary***. Either
+- point at it with `RAVEN_CONFIG`, or
+- move it to `config/default.toml` next to the binary.
 
-You install the scanners yourself. See
+***You install the scanners yourself***. See
 [Host tools](USAGE.md#host-tools) and [Wordlists](USAGE.md#wordlists).
 
 ## Build from source
@@ -154,9 +192,11 @@ cd raven-nest-mcp
 cargo build --release
 ```
 
-The binary is `target/release/raven-server`. It finds the repository's
-`config/default.toml` only when its working directory is the repository root,
-so name the config in the client entry and do not depend on that:
+The binary is `target/release/raven-server`.
+
+It finds the repository's `config/default.toml` ***only when its working
+directory is the repository root***, so name the config in the client entry
+and do not depend on that:
 
 ```json
 {
@@ -171,9 +211,10 @@ so name the config in the client entry and do not depend on that:
 ```
 
 Without `RAVEN_CONFIG` or a matching working directory the server starts on
-the built-in defaults.
+***the built-in defaults***.
 
-If your model is a small local one, name the server `raven` with no hyphen.
+**Local model?**
+Name the server `raven` with no hyphen.
 [LOCAL_AI_INTEGRATION.md](LOCAL_AI_INTEGRATION.md) explains why.
 
 ## Arch Linux PKGBUILD
@@ -190,38 +231,43 @@ The package installs the reference config to
 `/usr/share/raven-nest-mcp/default.toml`. Copy it somewhere you own and point
 `RAVEN_CONFIG` at the copy.
 
-The package is not on the AUR yet. When it is, this section will say so.
+***The package is not on the AUR yet***. When it is, this section will say
+so.
 
 ## Where the config comes from
 
-The server takes the first of these that loads:
+The server takes ***the first of these that loads***:
 
-1. The file named in the `RAVEN_CONFIG` environment variable.
-2. `config/default.toml` in the directory of the binary, or one directory up.
+1. **The file named in the `RAVEN_CONFIG` environment variable**.
+2. **`config/default.toml` in the directory of the binary**, or one directory
+   up.
    For a binary at `target/release/raven-server` that means
    `target/release/config/` and `target/config/`, not the repository root.
-3. `config/default.toml` in the working directory.
-4. The built-in defaults.
+3. **`config/default.toml` in the working directory**.
+4. **The built-in defaults**.
 
-It writes the choice to stderr at startup, for example
-`config loaded from RAVEN_CONFIG=/etc/raven-nest/config.toml`, or
-`no config found, using built-in defaults`.
+**How to see which one it took:**
+The server writes the choice to stderr at startup, for example
+- `config loaded from RAVEN_CONFIG=/etc/raven-nest/config.toml`, or
+- `no config found, using built-in defaults`.
 
+**Watch out:**
 If the file in `RAVEN_CONFIG` is missing or does not parse, the server logs a
-warning and moves on to the next step. It does not stop. Check that first log
-line whenever your config carries a scope.
+warning and moves on to the next step. ***It does not stop***. Check that
+first log line whenever your config carries a scope.
 
 The full reference for every section is in
 [USAGE.md](USAGE.md#configuration).
 
 ## Running tools that need root
 
-Outside the container, `masscan` and nmap OS detection need root. You can
-grant that per tool without running the whole server as root:
+Outside the container, `masscan` and nmap OS detection need root.
 
-1. Install `config/sudoers-raven-nest` to `/etc/sudoers.d/raven-nest` after
-   replacing `CHANGE_ME` with your user name.
-2. List the tools in `[safety] sudo_tools`.
+You can grant that per tool ***without running the whole server as root***:
+
+1. **Install `config/sudoers-raven-nest`** to `/etc/sudoers.d/raven-nest`
+   after replacing `CHANGE_ME` with your user name.
+2. **List the tools** in `[safety] sudo_tools`.
 
 Details are in [USAGE.md](USAGE.md#sudo_tools---privilege-escalation).
 
