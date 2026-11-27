@@ -22,7 +22,15 @@ async fn main() -> Result<()> {
 
     tracing::info!("Raven Nest MCP server starting");
 
-    let config = raven_core::config::RavenConfig::load_with_fallback();
+    // A config file that exists but does not load stops the server: starting on
+    // other settings than the operator wrote could run with the scope off.
+    let config = match raven_core::config::RavenConfig::load_with_fallback() {
+        Ok(config) => config,
+        Err(e) => {
+            tracing::error!("{e}");
+            std::process::exit(1);
+        }
+    };
 
     if let Err(e) = config.validate() {
         tracing::error!("invalid configuration: {e}");

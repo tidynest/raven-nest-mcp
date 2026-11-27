@@ -18,16 +18,39 @@ minor versions may carry feature additions and refinements).
 - Corrections where the docs disagreed with the code: the Metasploit module
   blocklist matches at path boundaries, not substrings, so a bare word such
   as `eternalblue` blocks nothing. The audit log does not cover rejected
-  calls, timed-out runs, `ping_target` or Metasploit RPC. The built-in
-  defaults leave `gitleaks` and `trufflehog` out of the allowlist. A source
-  build does not find the repository's `config/default.toml` unless it runs
-  from the repository root. `SECURITY.md` now names 0.4.x as supported.
+  calls, timed-out runs, `ping_target` or Metasploit RPC. `SECURITY.md` now
+  names 0.4.x as supported.
 - The ollmcp and mcphost links in `docs/LOCAL_AI_INTEGRATION.md` pointed at
   repositories that do not exist and now point at the real ones.
 - `docs/assets/social-preview.png` is a 1280x640 image for the repository's
   social preview setting.
 
+### Added
+- Two standard config locations, checked after `RAVEN_CONFIG` and before the
+  paths near the executable: `$XDG_CONFIG_HOME/raven-nest/config.toml`, which
+  is `~/.config/raven-nest/config.toml` by default, and
+  `/etc/raven-nest/config.toml`. An installed binary no longer needs an
+  environment variable to find its config.
+
+### Changed
+- **A config file that exists but fails to load now stops the server.**
+  Before, a `RAVEN_CONFIG` that was missing or did not parse was skipped with
+  a warning, and so was a broken `config/default.toml`. The server then
+  started on the next config it found, often the built-in defaults with the
+  scope off. It now exits with an error that names the file. If you relied on
+  a stale `RAVEN_CONFIG` being ignored, unset it.
+
 ### Fixed
+- `run_gitleaks` and `run_trufflehog` work without a config file. The
+  built-in default allowlist left both out, so the container image and any
+  other install that ran on built-in defaults answered "tool not allowed". A
+  new test compares the built-in list with `config/default.toml` so the two
+  cannot drift apart again.
+- A source build finds the repository's `config/default.toml`. The lookup
+  beside the executable stopped at `target/`, one directory short of the
+  repository root, so `target/release/raven-server` started on built-in
+  defaults unless it ran from the repository root or had `RAVEN_CONFIG` set.
+  It now checks one directory further up.
 - The AUR recipe builds again. It still packaged v0.2.0, and with a current
   source it failed at the final link: makepkg's default `lto` option compiles
   the C half of aws-lc-sys as GCC bitcode, which the Rust linker cannot read.

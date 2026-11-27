@@ -142,6 +142,7 @@ of processes***.
 ### Startup checks
 
 The server ***exits at startup*** if
+- a config file exists and cannot be read or parsed, in versions after 0.4.2,
 - a safety limit is out of range,
 - a scope entry is not a valid CIDR or IP,
 - Metasploit is enabled with the password still set to `changeme`.
@@ -411,8 +412,9 @@ For real work, ***point `output_dir` at a directory you own***.
 4. **Leave Metasploit and NetExec off** unless the engagement calls for them.
 5. **Keep your MCP client's approval prompt on** for the destructive tools.
 6. **Read the first lines of the server's stderr log** and confirm it says
-   `config loaded from` followed by your file. If the file named in
-   `RAVEN_CONFIG` is missing or does not parse, the server logs a warning and
-   carries on with the next config it finds, which may be ***the built-in
-   defaults with the scope off***.
+   `config loaded from` followed by your file. In version 0.4.2 and earlier,
+   a file named in `RAVEN_CONFIG` that is missing or does not parse is
+   skipped with a warning, and the server carries on with the next config it
+   finds, which may be ***the built-in defaults with the scope off***. Later
+   versions refuse to start.
 7. **Copy `audit.log` out** when the engagement ends.

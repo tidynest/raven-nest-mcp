@@ -175,24 +175,35 @@ The config file has these sections:
 The server searches for config in this order, using the first one found:
 
 1. **`RAVEN_CONFIG` env var**. An explicit file path, such as
-   `RAVEN_CONFIG=/etc/raven.toml`.
-2. **Exe-relative**. `config/default.toml` in the binary's directory or one
-   directory above it. For `target/release/raven-server` that is
-   `target/release/config/` and `target/config/`, so ***a source build does
-   not find the repository's `config/` this way***. Set `RAVEN_CONFIG` or run
-   with the repository as the working directory.
-3. **CWD**. `config/default.toml` in the current working directory.
-4. **Built-in defaults**. A hardcoded fallback if nothing else is found.
+   `RAVEN_CONFIG=/srv/engagement/raven.toml`.
+2. **Per-user file**. `$XDG_CONFIG_HOME/raven-nest/config.toml`, which is
+   `~/.config/raven-nest/config.toml` unless you have set that variable.
+3. **System-wide file**. `/etc/raven-nest/config.toml`.
+4. **Exe-relative**. `config/default.toml` in the binary's directory, or up
+   to two directories above it. For `target/release/raven-server` the third
+   place checked is the repository's own `config/`. Version 0.4.2 and earlier
+   stopped one level short of that. A build that writes outside the
+   repository, for example through `CARGO_TARGET_DIR`, ***still needs
+   `RAVEN_CONFIG`*** or the repository as the working directory.
+5. **CWD**. `config/default.toml` in the current working directory.
+6. **Built-in defaults**. A hardcoded fallback if no file exists in any of
+   those places.
+
+Steps 2 and 3 are new after version 0.4.2.
 
 If all fail, the server starts with the built-in defaults:
 - a 600s timeout,
 - output at `/tmp/raven-nest`,
 - the scope off,
-- every wrapped tool allowed except `gitleaks` and `trufflehog`, which the
-  built-in allowlist leaves out.
+- every wrapped tool allowed. Version 0.4.2 and earlier left `gitleaks` and
+  `trufflehog` out of the built-in allowlist.
 
-A `RAVEN_CONFIG` file that is missing or does not parse is ***skipped with a
-warning on stderr***, and the search continues down this list.
+**A config file that fails to load:**
+- **After version 0.4.2**, any config file that exists but cannot be read or
+  parsed ***stops the server*** with an error that names the file. So does a
+  `RAVEN_CONFIG` that points at a missing file.
+- **In version 0.4.2 and earlier**, such a file is skipped with a warning on
+  stderr, and the search continues down this list.
 
 ### `[safety]` - Tool Allowlisting and Limits
 
@@ -230,7 +241,7 @@ max_output_chars = 50000
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `allowed_tools` | string list | every wrapped tool except `gitleaks` and `trufflehog` | Allowlisted tool binaries. Calls for unlisted tools are rejected before execution. Remove tools to restrict what the AI can invoke. |
+| `allowed_tools` | string list | every wrapped tool | Allowlisted tool binaries. Calls for unlisted tools are rejected before execution. Remove tools to restrict what the AI can invoke. |
 | `max_output_chars` | integer | 50000 | Truncation limit for subprocess output. When exceeded, keeps 70% from the start and 30% from the end with a marker in between. Uses char boundaries for UTF-8 safety. Overridden by `context_budget` when set. |
 | `context_budget` | integer | 0 (disabled) | Model context window size in characters. When > 0, derives output caps automatically so ~4 tool outputs fit in the context. See table below. |
 | `sqlmap_max_level` | integer (1-5) | 2 | Caps sqlmap `--level`. Higher levels add more injection vectors but are slower and noisier. |

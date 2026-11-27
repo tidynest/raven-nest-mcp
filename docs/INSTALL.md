@@ -72,9 +72,10 @@ defaults compiled into the binary.
 - **The engagement scope** is ***off***.
 - **The context budget** is off.
 - **`sudo_tools`** is empty, which is what you need in the container.
-- **`gitleaks` and `trufflehog`** are missing from the built-in allowlist, so
-  both tools answer ***"tool not allowed"*** until you supply a config that
-  lists them.
+- **`gitleaks` and `trufflehog`** are missing from the built-in allowlist ***in
+  version 0.4.2 and earlier***. On those images both tools answer "tool not
+  allowed" until you supply a config that lists them. Later versions allow
+  them by default.
 
 ### 2. Pass your own config
 
@@ -210,9 +211,12 @@ cargo build --release
 
 The binary is `target/release/raven-server`.
 
-It finds the repository's `config/default.toml` ***only when its working
-directory is the repository root***, so name the config in the client entry
-and do not depend on that:
+With cargo's default `target/` directory, the server finds the repository's
+`config/default.toml` on its own. Version 0.4.2 and earlier did not.
+
+It ***does not find it*** if your build output goes somewhere else, for
+example through `CARGO_TARGET_DIR`. Naming the config in the client entry
+works in every case:
 
 ```json
 {
@@ -226,8 +230,8 @@ and do not depend on that:
 }
 ```
 
-Without `RAVEN_CONFIG` or a matching working directory the server starts on
-***the built-in defaults***.
+If the server finds no config at all, it starts on ***the built-in
+defaults***.
 
 **Local model?**
 Name the server `raven` with no hyphen.
@@ -255,12 +259,21 @@ so.
 The server takes ***the first of these that loads***:
 
 1. **The file named in the `RAVEN_CONFIG` environment variable**.
-2. **`config/default.toml` in the directory of the binary**, or one directory
-   up.
+2. **`~/.config/raven-nest/config.toml`**, or the same path under
+   `$XDG_CONFIG_HOME` if you have set it.
+3. **`/etc/raven-nest/config.toml`**.
+4. **`config/default.toml` in the directory of the binary**, or up to two
+   directories above it.
    For a binary at `target/release/raven-server` that means
-   `target/release/config/` and `target/config/`, not the repository root.
-3. **`config/default.toml` in the working directory**.
-4. **The built-in defaults**.
+   `target/release/config/`, `target/config/` and the repository's own
+   `config/`. Version 0.4.2 and earlier stopped one level short of the
+   repository root.
+5. **`config/default.toml` in the working directory**.
+6. **The built-in defaults**.
+
+Steps 2 and 3 are new after version 0.4.2. They are the simplest place to put
+a config: copy the reference file there and the server finds it wherever the
+binary lives.
 
 **How to see which one it took:**
 The server writes the choice to stderr at startup, for example
@@ -268,9 +281,11 @@ The server writes the choice to stderr at startup, for example
 - `no config found, using built-in defaults`.
 
 **Watch out:**
-If the file in `RAVEN_CONFIG` is missing or does not parse, the server logs a
-warning and moves on to the next step. ***It does not stop***. Check that
-first log line whenever your config carries a scope.
+- **After version 0.4.2**, a config file that exists but does not load
+  ***stops the server***, and the error names the file.
+- **In version 0.4.2 and earlier**, a file in `RAVEN_CONFIG` that is missing
+  or does not parse is skipped with a warning, and the server moves on to the
+  next step. Check that first log line whenever your config carries a scope.
 
 The full reference for every section is in
 [USAGE.md](USAGE.md#configuration).

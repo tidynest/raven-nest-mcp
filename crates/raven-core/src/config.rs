@@ -10,10 +10,49 @@
 //!   tool subprocesses by [`executor::run`](crate::executor::run).
 //!
 //! Configuration resolves through a fallback chain:
-//! `RAVEN_CONFIG` env var → exe-relative `config/default.toml` → CWD fallback → built-in defaults.
+//! `RAVEN_CONFIG` env var → per-user and system config files → exe-relative
+//! `config/default.toml` → CWD fallback → built-in defaults.
+//! See [`RavenConfig::load_with_fallback`].
 
+use crate::error::PentestError;
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+
+/// File name of the config under a per-user or system config directory.
+const STANDARD_CONFIG_FILE: &str = "raven-nest/config.toml";
+
+/// Per-user and system-wide config locations, most specific first:
+/// `$XDG_CONFIG_HOME/raven-nest/config.toml`, falling back to
+/// `$HOME/.config/raven-nest/config.toml`, then `/etc/raven-nest/config.toml`.
+///
+/// Takes the environment values as arguments so it stays a pure function.
+/// A relative `XDG_CONFIG_HOME` is ignored, as the XDG base directory
+/// specification requires.
+fn standard_config_paths(xdg_config_home: Option<&str>, home: Option<&str>) -> Vec<PathBuf> {
+    let user_dir = xdg_config_home
+        .map(Path::new)
+        .filter(|dir| dir.is_absolute())
+        .map(Path::to_path_buf)
+        .or_else(|| {
+            home.filter(|h| !h.is_empty())
+                .map(|h| Path::new(h).join(".config"))
+        });
+    user_dir
+        .into_iter()
+        .chain(std::iter::once(PathBuf::from("/etc")))
+        .map(|dir| dir.join(STANDARD_CONFIG_FILE))
+        .collect()
+}
+
+/// Put the config source in front of a [`PentestError::ConfigError`] message,
+/// so the operator sees which file failed.
+fn name_config_source(source: &str, err: PentestError) -> PentestError {
+    match err {
+        PentestError::ConfigError(msg) => PentestError::ConfigError(format!("{source}: {msg}")),
+        other => other,
+    }
+}
 
 /// Top-level configuration, deserialized from `config/default.toml`.
 ///
@@ -423,44 +462,65 @@ impl RavenConfig {
         Ok(())
     }
 
-    /// Load configuration using a fallback chain:
-    /// 1. `RAVEN_CONFIG` environment variable
-    /// 2. `config/default.toml` relative to the executable (checks parent dir too)
-    /// 3. `config/default.toml` in the current working directory
-    /// 4. Built-in defaults (if all else fails)
-    pub fn load_with_fallback() -> Self {
-        // 1. Environment variable
-        if let Ok(path) = std::env::var("RAVEN_CONFIG") {
-            match Self::load(&path) {
-                Ok(config) => {
-                    tracing::info!("config loaded from RAVEN_CONFIG={path}");
-                    return config;
-                }
-                Err(e) => tracing::warn!("RAVEN_CONFIG={path} failed: {e}"),
-            }
+    /// Load the config at `path` if a file is there.
+    ///
+    /// `Ok(None)` means no file exists at `path`. A file that exists but cannot
+    /// be read or parsed is an error: skipping it would start the server on
+    /// settings the operator did not write, possibly with the scope off.
+    fn load_if_present(path: &Path) -> Result<Option<Self>, PentestError> {
+        if !path.exists() {
+            return Ok(None);
+        }
+        Self::load(&path.to_string_lossy())
+            .map(Some)
+            .map_err(|e| name_config_source(&path.display().to_string(), e))
+    }
+
+    /// Load configuration using a fallback chain. The first file found wins:
+    /// 1. The file named in the `RAVEN_CONFIG` environment variable
+    /// 2. `$XDG_CONFIG_HOME/raven-nest/config.toml`, or `~/.config/raven-nest/config.toml`
+    /// 3. `/etc/raven-nest/config.toml`
+    /// 4. `config/default.toml` next to the executable, or up to two directories above it
+    /// 5. `config/default.toml` in the current working directory
+    /// 6. Built-in defaults, when no file exists in any of those places
+    ///
+    /// A config file that exists but fails to load is an error, never a reason
+    /// to fall through to the next step. The same goes for a `RAVEN_CONFIG`
+    /// that names a missing file.
+    pub fn load_with_fallback() -> Result<Self, PentestError> {
+        // 1. RAVEN_CONFIG names the file outright, so it has to load.
+        if let Some(path) = std::env::var("RAVEN_CONFIG").ok().filter(|p| !p.is_empty()) {
+            let source = format!("RAVEN_CONFIG={path}");
+            let config = Self::load(&path).map_err(|e| name_config_source(&source, e))?;
+            tracing::info!("config loaded from {source}");
+            return Ok(config);
         }
 
-        // 2. Relative to executable (exe_dir/../config/ or exe_dir/config/)
-        if let Ok(exe) = std::env::current_exe() {
-            for ancestor in exe.ancestors().skip(1).take(2) {
-                let candidate = ancestor.join("config/default.toml");
-                if candidate.exists()
-                    && let Ok(config) = Self::load(&candidate.to_string_lossy())
-                {
-                    tracing::info!("config loaded from {}", candidate.display());
-                    return config;
-                }
-            }
-        }
+        // 2-3. Per-user, then system-wide.
+        let xdg_config_home = std::env::var("XDG_CONFIG_HOME").ok();
+        let home = std::env::var("HOME").ok();
+        let standard = standard_config_paths(xdg_config_home.as_deref(), home.as_deref());
 
-        // 3. Current directory (legacy behaviour)
-        if let Ok(config) = Self::load("config/default.toml") {
-            tracing::info!("config loaded from config/default.toml");
-            return config;
+        // 4. Relative to executable: exe_dir/config/, then one and two levels up.
+        //    Two levels up is the repository root for a target/release/ build.
+        let exe = std::env::current_exe().ok();
+        let exe_relative = exe
+            .iter()
+            .flat_map(|exe| exe.ancestors().skip(1).take(3))
+            .map(|dir| dir.join("config/default.toml"));
+
+        // 5. Current directory (legacy behaviour)
+        let cwd_relative = std::iter::once(PathBuf::from("config/default.toml"));
+
+        for candidate in standard.into_iter().chain(exe_relative).chain(cwd_relative) {
+            if let Some(config) = Self::load_if_present(&candidate)? {
+                tracing::info!("config loaded from {}", candidate.display());
+                return Ok(config);
+            }
         }
 
         tracing::warn!("no config found, using built-in defaults");
-        Self::default()
+        Ok(Self::default())
     }
 }
 
@@ -490,6 +550,8 @@ impl Default for RavenConfig {
                     "dnsx".into(),
                     "katana".into(),
                     "nxc".into(),
+                    "gitleaks".into(),
+                    "trufflehog".into(),
                 ],
                 max_output_chars: 50_000,
                 tool_paths: HashMap::new(),
@@ -604,6 +666,64 @@ mod tests {
     }
 
     #[test]
+    fn load_if_present_is_none_for_a_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let loaded = RavenConfig::load_if_present(&dir.path().join("config.toml")).unwrap();
+        assert!(loaded.is_none());
+    }
+
+    #[test]
+    fn load_if_present_reads_an_existing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, include_str!("../../../config/default.toml")).unwrap();
+        let loaded = RavenConfig::load_if_present(&path).unwrap();
+        assert!(loaded.is_some());
+    }
+
+    #[test]
+    fn load_if_present_fails_on_a_broken_file_and_names_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("config.toml");
+        std::fs::write(&path, "this is not [valid toml = ").unwrap();
+        let err = RavenConfig::load_if_present(&path).unwrap_err();
+        assert!(err.to_string().contains(&path.display().to_string()));
+    }
+
+    #[test]
+    fn standard_paths_prefer_xdg_config_home() {
+        let paths = standard_config_paths(Some("/xdg"), Some("/home/user"));
+        assert_eq!(
+            paths,
+            [
+                PathBuf::from("/xdg/raven-nest/config.toml"),
+                PathBuf::from("/etc/raven-nest/config.toml"),
+            ]
+        );
+    }
+
+    #[test]
+    fn standard_paths_fall_back_to_home_when_xdg_is_unset_or_relative() {
+        let expected = [
+            PathBuf::from("/home/user/.config/raven-nest/config.toml"),
+            PathBuf::from("/etc/raven-nest/config.toml"),
+        ];
+        assert_eq!(standard_config_paths(None, Some("/home/user")), expected);
+        assert_eq!(
+            standard_config_paths(Some("relative/dir"), Some("/home/user")),
+            expected
+        );
+    }
+
+    #[test]
+    fn standard_paths_keep_the_system_file_without_a_home() {
+        assert_eq!(
+            standard_config_paths(None, None),
+            [PathBuf::from("/etc/raven-nest/config.toml")]
+        );
+    }
+
+    #[test]
     fn default_config_has_expected_tools() {
         let cfg = RavenConfig::default();
         assert!(cfg.safety.allowed_tools.contains(&"nmap".to_string()));
@@ -611,6 +731,17 @@ mod tests {
         assert_eq!(cfg.execution.default_timeout_secs, 600);
         assert!(cfg.safety.tool_paths.is_empty());
         assert!(cfg.execution.timeouts.is_empty());
+    }
+
+    #[test]
+    fn default_allowlist_matches_shipped_config() {
+        let shipped: RavenConfig =
+            toml::from_str(include_str!("../../../config/default.toml")).unwrap();
+        let mut built_in = RavenConfig::default().safety.allowed_tools;
+        let mut from_file = shipped.safety.allowed_tools;
+        built_in.sort();
+        from_file.sort();
+        assert_eq!(built_in, from_file);
     }
 
     #[test]
