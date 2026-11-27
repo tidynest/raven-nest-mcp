@@ -19,7 +19,11 @@ sys.stderr.reconfigure(line_buffering=True)
 # ─── Terminal colours ────────────────────────────────────────────
 G = "\033[92m"; R = "\033[91m"; Y = "\033[93m"; C = "\033[96m"; B = "\033[1m"; Z = "\033[0m"
 
-SERVER = str(Path(__file__).resolve().parent.parent / "target" / "release" / "raven-server")
+# RAVEN_SERVER overrides the default path, for builds that do not land in the
+# repository's own target/ directory (a shared CARGO_TARGET_DIR, for example).
+SERVER = os.environ.get("RAVEN_SERVER") or str(
+    Path(__file__).resolve().parent.parent / "target" / "release" / "raven-server"
+)
 CWD    = str(Path(__file__).resolve().parent.parent)
 
 
