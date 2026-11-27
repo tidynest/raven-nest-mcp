@@ -20,6 +20,22 @@ Nothing else is built or tested.
 The code uses Unix file modes and ***will not compile for Windows*** as it
 stands.
 
+## Contents
+
+- [Container image](#container-image)
+  - [1. Without a config file, the container uses the built-in defaults](#1-without-a-config-file-the-container-uses-the-built-in-defaults)
+  - [2. Pass your own config](#2-pass-your-own-config)
+  - [3. Keep the output](#3-keep-the-output)
+  - [4. Raw sockets](#4-raw-sockets)
+  - [Pin the version](#pin-the-version)
+  - [Reading the docs offline](#reading-the-docs-offline)
+- [Prebuilt binary](#prebuilt-binary)
+- [Build from source](#build-from-source)
+- [Arch Linux PKGBUILD](#arch-linux-pkgbuild)
+- [Where the config comes from](#where-the-config-comes-from)
+- [Running tools that need root](#running-tools-that-need-root)
+- [Metasploit](#metasploit)
+
 ## Container image
 
 The image is `ghcr.io/tidynest/raven-nest-mcp`. It

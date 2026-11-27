@@ -10,6 +10,25 @@ is where these go:
 
 Issues are kept for ***bugs that someone can reproduce***.
 
+## Contents
+
+- [Where things go](#where-things-go)
+- [Categories](#categories)
+  - [Announcements](#announcements)
+  - [Q&A](#qa)
+  - [Ideas](#ideas)
+  - [Tool proposals](#tool-proposals)
+  - [Local models](#local-models)
+  - [Show and tell](#show-and-tell)
+  - [General](#general)
+- [House rules](#house-rules)
+- [What to expect](#what-to-expect)
+- [Maintainer setup](#maintainer-setup)
+  - [1. Enable Discussions](#1-enable-discussions)
+  - [2. Set up the categories](#2-set-up-the-categories)
+  - [3. Replace the welcome thread](#3-replace-the-welcome-thread)
+  - [4. Check the links](#4-check-the-links)
+
 ## Where things go
 
 | You have | Put it in |

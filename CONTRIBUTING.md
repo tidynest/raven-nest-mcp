@@ -18,6 +18,23 @@ This page explains
 ***Do not open an issue or a pull request***. Report it privately as described
 in [SECURITY.md](SECURITY.md).
 
+## Contents
+
+- [Before you start](#before-you-start)
+- [Build](#build)
+- [Layout](#layout)
+- [Checks](#checks)
+  - [Testing against real tools](#testing-against-real-tools)
+- [Ground rules for code](#ground-rules-for-code)
+- [Proposing a new tool wrapper](#proposing-a-new-tool-wrapper)
+  - [Handler checklist](#handler-checklist)
+  - [Wiring checklist](#wiring-checklist)
+  - [Tests a wrapper needs](#tests-a-wrapper-needs)
+- [Changing a safety control](#changing-a-safety-control)
+- [What a good pull request looks like](#what-a-good-pull-request-looks-like)
+- [Docs-only changes](#docs-only-changes)
+- [Licence](#licence)
+
 ## Before you start
 
 - **For anything larger than a small fix**, open a thread in

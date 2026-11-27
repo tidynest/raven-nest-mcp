@@ -16,6 +16,24 @@ contact third parties, and
 Capability. Of the 14 models tested below, ***only the Qwen3 and Qwen3.5
 family was usable***, and even those need step-by-step guidance.
 
+## Contents
+
+- [Prerequisites](#prerequisites)
+- [MCP Client Options](#mcp-client-options)
+- [Server Naming: Avoid Hyphens](#server-naming-avoid-hyphens)
+- [Tool Installation](#tool-installation)
+- [Model Compatibility](#model-compatibility)
+- [Context Budget System](#context-budget-system)
+- [ANSI Stripping](#ansi-stripping)
+- [Findings: owasp_category Field](#findings-owasp_category-field)
+- [Known Issues and Workarounds](#known-issues-and-workarounds)
+- [Cookie Passthrough for Authenticated Scanning](#cookie-passthrough-for-authenticated-scanning)
+- [Prompting Strategies](#prompting-strategies)
+- [ollmcp Configuration](#ollmcp-configuration)
+- [Reproduction Testing (severity=info)](#reproduction-testing-severityinfo)
+- [Live Testing Results (2026-03-10)](#live-testing-results-2026-03-10)
+- [Resource Considerations](#resource-considerations)
+
 ## Prerequisites
 
 - Raven Nest built: `cargo build --release`
@@ -36,7 +54,7 @@ servers.
 
 ## Server Naming: Avoid Hyphens
 
-Many local models tokenize hyphens unpredictably, causing them to mangle
+Many local models tokenise hyphens unpredictably, causing them to mangle
 tool names like `raven-nest.run_nmap` into `raven_nest.run_nmap` or drop the
 prefix entirely.
 
@@ -220,7 +238,7 @@ Every tool response includes a status line:
 
 This tells the AI model how much budget remains, the per-call allocation,
 and the current output mode. When mode switches to compact or minimal, the
-model should prioritize saving findings over running more scans.
+model should prioritise saving findings over running more scans.
 
 ### Adaptive Result Caps
 
@@ -302,12 +320,12 @@ The word "body" in the prompt primes the model to use the correct field name.
 
 ### Numeric Parameters Sent as Strings
 
-Some models serialize numbers as JSON strings (`"2"` instead of `2`).
+Some models serialise numbers as JSON strings (`"2"` instead of `2`).
 This affected fields like `level`, `risk`, `threads`, `port`, and
 `timeout_secs` across all tool request structs.
 
 **Built-in protection:** all numeric `Option` fields use a lenient
-deserializer that accepts both `2` (number) and `"2"` (string). Invalid
+deserialiser that accepts both `2` (number) and `"2"` (string). Invalid
 strings like `"abc"` still produce a clear parse error.
 
 ### Context Window Exhaustion
@@ -387,7 +405,7 @@ the model calls tools correctly.
 ### Info-Level Finding Gap
 
 Neither model reliably saves info-level findings in batch mode. Both
-prioritize higher-severity results from nikto/sqlmap. When nuclei is
+prioritise higher-severity results from nikto/sqlmap. When nuclei is
 the only tool (individual mode), Qwen3 8B does save the info finding.
 
 **Mitigation (shipped):** enable server-side auto-save - set
@@ -471,7 +489,7 @@ You are a penetration testing assistant with access to security scanning
 tools prefixed with "raven." (e.g., raven.run_nmap, raven.run_sqlmap).
 
 Target environment: controlled security lab on localhost. All scanning is
-authorized.
+authorised.
 
 Key tool parameters:
 - http_request: url, method, body, headers
@@ -497,7 +515,7 @@ Key tool parameters:
 All scanning tools accept a "cookie" parameter - pass session cookies
 explicitly after authenticating with http_request.
 
-Keep responses concise. Do not repeat raw tool output - summarize key
+Keep responses concise. Do not repeat raw tool output - summarise key
 findings instead.
 ```
 
@@ -650,7 +668,7 @@ Running both Ollama and Raven Nest simultaneously is lightweight - the MCP
 server is a single Rust binary with minimal memory footprint. The LLM is
 the bottleneck.
 
-### Ollama KV Cache Optimization
+### Ollama KV Cache Optimisation
 
 Halve KV cache VRAM cost to double effective context:
 

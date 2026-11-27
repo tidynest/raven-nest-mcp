@@ -323,7 +323,7 @@ When interacting with sessions via `msf_sessions` (`action: "interact"`), the fo
 
 The check is case-insensitive and matches the start of the command string.
 
-### Customizing Safety
+### Customising Safety
 
 **Block specific modules:**
 

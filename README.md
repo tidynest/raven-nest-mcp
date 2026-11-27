@@ -1,6 +1,6 @@
 # Raven Nest MCP
 
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Licence: Apache-2.0](https://img.shields.io/badge/Licence-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![CI](https://github.com/tidynest/raven-nest-mcp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/tidynest/raven-nest-mcp/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/badge/release-v0.4.2-blue.svg)](https://github.com/tidynest/raven-nest-mcp/releases)
 [![MCP tools: 46](https://img.shields.io/badge/MCP%20tools-46-5A45FF.svg)](docs/MCP_TOOLS.md)
@@ -44,10 +44,10 @@ typed fields. The server then
 - **Findings become a report**. Save findings as you go and export Markdown,
   HTML, JSON or SARIF.
 
-> **Authorized use only.** Raven Nest is an offensive-security tool intended
+> **Authorised use only.** Raven Nest is an offensive-security tool intended
 > solely for testing systems you own or have explicit written permission to
-> assess. Unauthorized scanning, enumeration or exploitation may be illegal.
-> You are solely responsible for obtaining authorization and complying with
+> assess. Unauthorised scanning, enumeration or exploitation may be illegal.
+> You are solely responsible for obtaining authorisation and complying with
 > all applicable laws. The software is provided "as is", without warranty of
 > any kind. See [LICENSE](LICENSE).
 
@@ -453,6 +453,6 @@ output_dir = "/var/lib/raven-nest"
   [raven-nest-client](https://github.com/tidynest/raven-nest-client) is
   released together with the server.
 
-## License
+## Licence
 
 [Apache-2.0](LICENSE)

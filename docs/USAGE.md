@@ -313,7 +313,7 @@ When a tool is listed in `sudo_tools`, the executor invokes it as
 `sudo /usr/bin/nmap <args>` instead of `nmap <args>`. The tool handlers skip
 their root-privilege check when sudo is configured.
 
-### `[scope]` - Engagement Authorization
+### `[scope]` - Engagement Authorisation
 
 Off by default - any syntactically valid target may be scanned. When
 `enabled = true`, `validate_target` (the chokepoint every tool and the scan
@@ -1170,12 +1170,12 @@ The `validate_target` function accepts targets in these formats:
 URL query strings are allowed to contain `&` - it is safe because tool
 arguments are passed directly to `Command::arg()`, not through a shell.
 
-### Lenient Deserialization
+### Lenient Deserialisation
 
 All optional numeric parameters accept both JSON numbers and string-encoded
-numbers. This handles a common LLM quirk where models serialize `2` as `"2"`.
+numbers. This handles a common LLM quirk where models serialise `2` as `"2"`.
 
-Fields with lenient deserialization: `count` (ping), `port` (nikto, hydra,
+Fields with lenient deserialisation: `count` (ping), `port` (nikto, hydra,
 msf_exploit, msf_auxiliary), `threads` (feroxbuster, ffuf), `rate` (masscan),
 `level` (sqlmap), `risk` (sqlmap), `tasks` (hydra), `timeout_secs` (nikto,
 http_request, launch_scan, subfinder, enum4linux-ng, dalfox, dnsrecon, httpx,
@@ -1232,7 +1232,7 @@ is spawned:
    which rejects any parameter the tool doesn't recognise. This catches LLM
    parameter hallucination with clear error messages (e.g. "unknown field
    `verbosity`"). Numeric parameters also accept string-encoded numbers
-   (e.g. `"2"` instead of `2`) via a lenient deserializer, handling a common
+   (e.g. `"2"` instead of `2`) via a lenient deserialiser, handling a common
    LLM serialisation quirk.
 
 5. **Safety caps** - dangerous tools have configurable upper limits that the

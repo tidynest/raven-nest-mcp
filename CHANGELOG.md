@@ -114,11 +114,11 @@ minor versions may carry feature additions and refinements).
   construction (`RawResource`/`AnnotateAble` removed; `Resource` builders
   carry annotations inline), and removed the `.raw` accessor on content.
   Server capabilities no longer advertise logging: SEP-2577 deprecates MCP
-  logging in favor of stderr/OpenTelemetry, and server operational logging
+  logging in favour of stderr/OpenTelemetry, and server operational logging
   already goes to stderr via `tracing`. The 15-second in-flight ticker now
   sends `notifications/progress` carrying the client-supplied `progressToken`
   instead of logging notifications; clients that do not pass a token receive
-  no updates, per the protocol. Stdio transport and all tool behavior are
+  no updates, per the protocol. Stdio transport and all tool behaviour are
   unchanged.
 
 ### Security
@@ -177,7 +177,7 @@ minor versions may carry feature additions and refinements).
   services, versions, OS guesses, first/last-seen - persisted as
   `{output_dir}/targets/{host}.json` (engagement-scoped, restart-safe). Re-scans
   merge rather than overwrite. New tools: `list_targets`, `get_target_info`.
-  Host keys are strictly sanitized before use as filenames (scan output is
+  Host keys are strictly sanitised before use as filenames (scan output is
   target-controlled).
 - **Scan diffing.** New tool `diff_scans` compares two completed nmap background
   scans: added/removed hosts and ports, plus per-port state/service/version
@@ -186,7 +186,7 @@ minor versions may carry feature additions and refinements).
   machine-readable `structured_content` alongside their text output (hosts,
   ports, CVEs; findings list), uncapped by the context budget, so clients can
   process results without parsing prose.
-- **CI: cargo-deny** now runs alongside cargo-audit (advisories, license
+- **CI: cargo-deny** now runs alongside cargo-audit (advisories, licence
   allowlist, bans, sources per `deny.toml`), and an **MSRV 1.93** check job
   verifies the declared `rust-version` on every push.
 
@@ -221,7 +221,7 @@ minor versions may carry feature additions and refinements).
   1429 was flagged "target may be rate-limiting". HTTP 429 is now matched only
   as a complete number.
 - **Unbounded `get_scan_results` limit.** A client-supplied limit (up to
-  `usize::MAX`) was honored as-is and the whole spilled output was materialised
+  `usize::MAX`) was honoured as-is and the whole spilled output was materialised
   as `Vec<char>` before slicing. The limit is now clamped to 100,000 chars
   (default 10,000) and slicing walks char boundaries without the intermediate
   allocation.
@@ -258,7 +258,7 @@ minor versions may carry feature additions and refinements).
   strips terminal colour, hoists the authentication verdict (including
   privileged `Pwn3d!` access) to the top, and keeps the per-host banner and
   enumeration rows without duplicates, falling back to raw output when
-  unrecognized. Completes structured-output parser coverage across all 22 tools.
+  unrecognised. Completes structured-output parser coverage across all 22 tools.
 
 ### Changed
 - **Server identity matches the registry name.** The MCP handshake now
@@ -327,7 +327,7 @@ Metasploit auxiliary output fix and documentation.
 
 ### Documentation
 - README demo GIFs (recon, scan-to-report, and a live Metasploit scan).
-- Text normalized to plain ASCII punctuation across docs, config, and source.
+- Text normalised to plain ASCII punctuation across docs, config, and source.
 
 ## [0.2.5] - 2026-07-01
 
@@ -353,7 +353,7 @@ Container image and logging fixes.
   The PD binary (`httpx-toolkit`) is now symlinked into `/usr/local/bin/httpx`, which
   precedes `/usr/bin` on PATH.
 - Logging: the server forced `DEBUG` and ignored `RUST_LOG` (a bare-level directive
-  overrode the env filter). It now honors `RUST_LOG` and defaults to `info`, so
+  overrode the env filter). It now honours `RUST_LOG` and defaults to `info`, so
   `RUST_LOG=off` silences output and `RUST_LOG=debug` restores verbose logs.
 - Bumped `anyhow` to 1.0.103 to patch RUSTSEC-2026-0190 (`Error::downcast_mut`
   unsoundness).
@@ -390,7 +390,7 @@ Maintenance and packaging release - no API or tool changes.
 - Release workflow: pushing a `vX.Y.Z` tag builds `raven-server` and attaches a
   prebuilt binary + SHA256 checksum to the GitHub release.
 - AUR source PKGBUILD under `packaging/aur/` (every scanner is an `optdepends`).
-- Authorized-use disclaimer in the README, and `rust-toolchain.toml` pinning the
+- Authorised-use disclaimer in the README, and `rust-toolchain.toml` pinning the
   stable channel for reproducible builds.
 - Test coverage: `validate_target` injection-invariant fuzzing, the background
   scan spawn/cancel lifecycle, and the Metasploit module block-list and msgpack
@@ -416,7 +416,7 @@ MCP endpoints. Highlights accumulated since the initial 0.1.0 state:
   echoed in parsed output or persisted findings. trufflehog never passes
   `--trust-local-git-config` (CVE-2025-41390).
 - **Recon tools** - `run_httpx`, `run_dnsx`, `run_katana`.
-- **Engagement scope** - optional `[scope]` authorization allowlist
+- **Engagement scope** - optional `[scope]` authorisation allowlist
   (CIDRs/domains, deny-wins, loopback-aware); off by default.
 - **Engagements** - `set_engagement` / `list_engagements`; each scopes its own
   findings and reports directory.
