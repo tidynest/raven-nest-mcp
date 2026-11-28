@@ -303,7 +303,7 @@ pub async fn run_unmetered(
     run_inner(config, tool, target, args, timeout).await
 }
 
-/// The standard tool execution pipeline; `ping_target` uses a direct probe:
+/// The actual execution pipeline - the **only** function that spawns subprocesses:
 /// 1. Allowlist gate
 /// 2. Timeout resolution (explicit → per-tool config → global default)
 /// 3. Binary path resolution (custom path → `$PATH`)

@@ -41,9 +41,7 @@ fn success_with(text: impl Into<String>, structured: serde_json::Value) -> CallT
 #[derive(Debug, serde::Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LaunchScanRequest {
-    #[schemars(
-        description = "Tool to run: 'nmap', 'nuclei', 'nikto', 'whatweb', 'testssl.sh', 'feroxbuster', 'sqlmap', or 'masscan'"
-    )]
+    #[schemars(description = "Tool to run: 'nmap', 'nuclei', 'nikto', 'whatweb'")]
     pub tool: String,
     #[schemars(description = "Target IP, hostname, or URL")]
     pub target: String,

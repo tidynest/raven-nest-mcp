@@ -1168,14 +1168,12 @@ Raven Nest - pentesting toolkit.
 1. ping_target first to verify connectivity.
 2. Recon: nmap, masscan (root), whatweb, httpx (HTTP probe/fingerprint), subfinder (subdomains), dnsx (DNS records), enum4linux-ng (SMB/AD), dnsrecon (DNS).
 3. Web: katana (crawl/endpoints), nuclei, nikto, feroxbuster, ffuf, wpscan (WordPress), dalfox (XSS), sqlmap, hydra. testssl for TLS.
-4. Secrets: run_gitleaks (repository and directory secret scans) and run_trufflehog (secret scans, optional live verification).
-5. Password: john (hash cracking).
-6. Exploit: msf_search > msf_module_info > msf_exploit (if Metasploit enabled).
-7. Credentialed enumeration: run_netexec (only when enabled and with explicit authorization).
-8. Targets: bare hostnames/IPs for nmap/ping/masscan; full URLs for web tools.
-9. Start with less aggressive scans. Check output for empty/rate-limited results.
-10. save_finding for each vuln (pass scan_id to link it to a launched scan; list_findings_by_scan recalls them), then generate_report.
-11. Discovery: nmap results accumulate per host - list_targets / get_target_info recall ports, services, versions. diff_scans compares two completed nmap scans (launch_scan + get_scan_status) for changes.
+4. Password: john (hash cracking).
+5. Exploit: msf_search > msf_module_info > msf_exploit (if Metasploit enabled).
+6. Targets: bare hostnames/IPs for nmap/ping/masscan; full URLs for web tools.
+7. Start with less aggressive scans. Check output for empty/rate-limited results.
+8. save_finding for each vuln (pass scan_id to link it to a launched scan; list_findings_by_scan recalls them), then generate_report.
+9. Discovery: nmap results accumulate per host - list_targets / get_target_info recall ports, services, versions. diff_scans compares two completed nmap scans (launch_scan + get_scan_status) for changes.
 
 ## Tool Timing
 - Fast (1-5s): ping_target, run_whatweb, http_request, run_ffuf, run_masscan, run_subfinder, run_httpx, run_dnsx, run_dalfox

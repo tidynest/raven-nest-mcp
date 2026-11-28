@@ -75,8 +75,7 @@ pub struct SafetyConfig {
     /// Default 10 - typical pentest workflow is 6-12 tool calls.
     #[serde(default = "default_expected_tool_calls")]
     pub expected_tool_calls: usize,
-    /// Auto-save findings extracted from nuclei, nikto, dalfox, nmap, sqlmap,
-    /// testssl.sh, gitleaks, and trufflehog scan output.
+    /// Auto-save findings extracted from scan output (currently nuclei only).
     /// Off by default - the operator opts in. When true, qualifying findings
     /// are deduplicated and persisted with `source = AutoExtracted`.
     #[serde(default)]
@@ -188,7 +187,7 @@ pub struct NetworkConfig {
 #[derive(Clone, Debug, Deserialize)]
 #[serde(default)]
 pub struct MetasploitConfig {
-    /// Master switch for MSF RPC calls; the registered tools refuse calls when false.
+    /// Master switch - MSF tools only registered when true.
     pub enabled: bool,
     /// msfrpcd host (default 127.0.0.1).
     pub host: String,
@@ -204,7 +203,7 @@ pub struct MetasploitConfig {
     pub max_search_results: usize,
     /// Max concurrent exploit executions.
     pub max_concurrent_exploits: usize,
-    /// MSF module paths blocked on exact or path-component-boundary matches.
+    /// Regex patterns for blocked MSF modules.
     #[serde(default)]
     pub blocked_modules: Vec<String>,
     /// Require double-call confirmation for exploit execution.
