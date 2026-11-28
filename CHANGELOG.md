@@ -10,6 +10,14 @@ minor versions may carry feature additions and refinements).
 ### Changed
 - `packaging/aur/PKGBUILD` targets 0.4.3.
 
+### Fixed
+- `tests/manual_test_harness.py` no longer scans `10.0.0.0/8`. Test V.3 now
+  uses `127.0.0.0/30`. The harness also runs the server on a copy of the
+  config with the context budget off, creates the list files its hydra tests
+  need, accepts either outcome for tests that need raw sockets, and runs the
+  HTTP phase before the fuzzers that can knock the lab target over. This
+  finishes the first pass merged in #44.
+
 ## [0.4.3] - 2026-11-28
 
 nmap works in the container image again, the server finds its config in the
