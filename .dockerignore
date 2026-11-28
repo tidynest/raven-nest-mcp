@@ -1,0 +1,14 @@
+target/
+.git/
+.github/
+.idea/
+.zcode/
+.worktrees/
+docs/archive/
+docs/plans/
+docs/assets/*.gif
+logs/
+reports/
+scans/
+findings/
+tests/__pycache__/
