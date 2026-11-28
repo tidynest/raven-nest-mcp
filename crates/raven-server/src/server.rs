@@ -1169,6 +1169,7 @@ Raven Nest - pentesting toolkit.
 2. Recon: nmap, masscan (root), whatweb, httpx (HTTP probe/fingerprint), subfinder (subdomains), dnsx (DNS records), enum4linux-ng (SMB/AD), dnsrecon (DNS).
 3. Web: katana (crawl/endpoints), nuclei, nikto, feroxbuster, ffuf, wpscan (WordPress), dalfox (XSS), sqlmap, hydra. testssl for TLS.
 4. Password: john (hash cracking).
+Also available: run_gitleaks and run_trufflehog (secret scanning), run_netexec (network authentication).
 5. Exploit: msf_search > msf_module_info > msf_exploit (if Metasploit enabled).
 6. Targets: bare hostnames/IPs for nmap/ping/masscan; full URLs for web tools.
 7. Start with less aggressive scans. Check output for empty/rate-limited results.

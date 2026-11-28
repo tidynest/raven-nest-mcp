@@ -303,7 +303,9 @@ pub async fn run_unmetered(
     run_inner(config, tool, target, args, timeout).await
 }
 
-/// The actual execution pipeline - the **only** function that spawns subprocesses:
+/// The actual execution pipeline for tools routed through the executor. It is not the
+/// only subprocess entry point: `ping_target` bypasses the executor and spawns `ping`
+/// directly (see `tools::ping`).
 /// 1. Allowlist gate
 /// 2. Timeout resolution (explicit → per-tool config → global default)
 /// 3. Binary path resolution (custom path → `$PATH`)
