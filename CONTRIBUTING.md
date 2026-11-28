@@ -254,9 +254,10 @@ existing wrappers.
 - [ ] `#[tool]` method in `crates/raven-server/src/server.rs`, wrapped in
       `self.wrap_result(...)`.
 - [ ] `TOOL_COUNT` in `server.rs`.
-- [ ] The binary name in `allowed_tools` in `config/default.toml` and in
+- [ ] The binary name in `allowed_tools` in three places:
+      `config/default.toml`, `config/container.toml`, and
       `RavenConfig::default()` in `crates/raven-core/src/config.rs`. They are
-      two separate lists.
+      separate lists, and a test fails when they differ.
 - [ ] The description in [docs/MCP_TOOLS.md](docs/MCP_TOOLS.md), copied
       exactly.
 - [ ] The parameter table in [docs/USAGE.md](docs/USAGE.md) and the tool

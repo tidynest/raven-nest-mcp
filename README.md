@@ -152,7 +152,7 @@ The entry above runs on built-in defaults, which means
 - mount your own config,
 - keep findings and the audit log on a volume,
 - add wordlists,
-- grant raw sockets to `masscan`.
+- get nmap working on images up to 0.4.2, where it needs root.
 
 **No agent?**
 If you would sooner drive the tools by hand,
@@ -181,10 +181,11 @@ container.
    client's own approval prompt is what puts a person in the loop.
 3. **The audit log has gaps**. Rejected calls, timed-out runs, `ping_target`
    and Metasploit RPC calls are ***not in it today***.
-4. **A config that fails to load is skipped, not fatal**. If the file in
-   `RAVEN_CONFIG` is missing or broken, the server warns on stderr and starts
-   on the next config it finds, which can mean ***built-in defaults with the
-   scope off***. Check the first log line.
+4. **In version 0.4.2 and earlier, a config that fails to load is skipped**.
+   If the file in `RAVEN_CONFIG` is missing or broken, those versions warn on
+   stderr and start on the next config they find, which can mean ***built-in
+   defaults with the scope off***. Check the first log line. Later versions
+   refuse to start.
 
 **Also worth knowing:**
 
@@ -386,9 +387,14 @@ Configuration is ***one TOML file***.
 
 The server looks for it in this order:
 1. the file named in `RAVEN_CONFIG`,
-2. `config/default.toml` near the binary,
-3. `config/default.toml` in the working directory,
-4. the built-in defaults.
+2. `~/.config/raven-nest/config.toml`,
+3. `/etc/raven-nest/config.toml`,
+4. `config/default.toml` near the binary,
+5. `config/default.toml` in the working directory,
+6. the built-in defaults.
+
+Steps 2 and 3 are new after version 0.4.2. A file that exists and fails to
+load ***stops the server***.
 
 **The settings most people touch:**
 
@@ -419,7 +425,7 @@ output_dir = "/var/lib/raven-nest"
 
 | Document | What is in it |
 |----------|---------------|
-| [docs/INSTALL.md](docs/INSTALL.md) | container, binary, source and Arch installs, config lookup, volumes, raw sockets |
+| [docs/INSTALL.md](docs/INSTALL.md) | container, binary, source and Arch installs, config lookup, volumes, nmap in the image |
 | [docs/USAGE.md](docs/USAGE.md) | client setup, the configuration reference, every tool parameter, troubleshooting |
 | [docs/SAFETY.md](docs/SAFETY.md) | each control, what it does not cover, the audit log format, a hardening checklist |
 | [docs/LOCAL_AI_INTEGRATION.md](docs/LOCAL_AI_INTEGRATION.md) | running with Ollama or LM Studio, tested models, context budgets, prompting |

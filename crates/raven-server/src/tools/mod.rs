@@ -13,6 +13,31 @@
 use raven_core::{config::RavenConfig, executor};
 use rmcp::model::{CallToolResult, ContentBlock};
 
+/// Refuse a scan that needs raw sockets unless something provides them: the
+/// server runs as root, the tool goes through `sudo`, or the operator listed
+/// the binary in `raw_socket_tools` because it carries file capabilities.
+///
+/// `what` names the thing being refused in the error, for example `masscan` or
+/// `scan_type 'os'`.
+pub(crate) fn require_raw_sockets(
+    config: &RavenConfig,
+    tool: &str,
+    what: &str,
+) -> Result<(), rmcp::ErrorData> {
+    // SAFETY: geteuid is a trivial read-only syscall with no invariants
+    let is_root = unsafe { libc::geteuid() } == 0;
+    if is_root || config.safety.has_raw_socket_access(tool) {
+        return Ok(());
+    }
+    Err(rmcp::ErrorData::invalid_params(
+        format!(
+            "{what} requires root privileges - either run the server as root or add \"{tool}\" to \
+             sudo_tools in config (or to raw_socket_tools if the binary has raw-socket file capabilities)"
+        ),
+        None,
+    ))
+}
+
 /// Run a subprocess tool and format the MCP response.
 ///
 /// Collapses the ~12-line skeleton every `run_*` handler repeated: execute via

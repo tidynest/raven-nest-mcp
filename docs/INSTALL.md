@@ -23,10 +23,10 @@ stands.
 ## Contents
 
 - [Container image](#container-image)
-  - [1. Without a config file, the container uses the built-in defaults](#1-without-a-config-file-the-container-uses-the-built-in-defaults)
+  - [1. The config the container starts on](#1-the-config-the-container-starts-on)
   - [2. Pass your own config](#2-pass-your-own-config)
   - [3. Keep the output](#3-keep-the-output)
-  - [4. Raw sockets](#4-raw-sockets)
+  - [4. nmap and masscan in the image](#4-nmap-and-masscan-in-the-image)
   - [Pin the version](#pin-the-version)
   - [Reading the docs offline](#reading-the-docs-offline)
 - [Prebuilt binary](#prebuilt-binary)
@@ -62,34 +62,43 @@ That is enough to try it.
 
 Before you use it on real work, ***read the next four points***.
 
-### 1. Without a config file, the container uses the built-in defaults
+### 1. The config the container starts on
 
-The image carries no config in a place the server looks, so it starts on the
-defaults compiled into the binary.
+**After version 0.4.2,** the image carries its own config at
+`/etc/raven-nest/config.toml`, and the server logs `config loaded from
+/etc/raven-nest/config.toml` at startup. In that file
 
-**Those differ from `config/default.toml` in this repository:**
+- **the engagement scope** is ***off***,
+- **the context budget** is off,
+- **`sudo_tools`** is empty, because the image has no `sudo`,
+- **`raw_socket_tools`** lists nmap and masscan, see point 4.
 
-- **The engagement scope** is ***off***.
-- **The context budget** is off.
-- **`sudo_tools`** is empty, which is what you need in the container.
-- **`gitleaks` and `trufflehog`** are missing from the built-in allowlist, so
-  both tools answer ***"tool not allowed"*** until you supply a config that
-  lists them.
+Its source is `config/container.toml` in this repository.
+
+**In version 0.4.2 and earlier,** the image has no config in a place the
+server looks, so it starts on the defaults compiled into the binary. They
+match the list above, with two differences:
+- there is no `raw_socket_tools` setting,
+- `gitleaks` and `trufflehog` are missing from the allowlist, so both tools
+  answer "tool not allowed" until you supply a config that lists them.
 
 ### 2. Pass your own config
 
-**Step 1.** Copy the reference config out of the image:
+**Step 1.** Copy the image's config out of it:
 
 ```bash
-docker run --rm --entrypoint cat ghcr.io/tidynest/raven-nest-mcp:latest /usr/share/doc/raven-nest-mcp/default.toml > raven.toml
+docker run --rm --entrypoint cat ghcr.io/tidynest/raven-nest-mcp:latest /etc/raven-nest/config.toml > raven.toml
 ```
 
+On 0.4.2 and earlier that file does not exist. Copy
+`/usr/share/doc/raven-nest-mcp/default.toml` instead, and set
+`sudo_tools = []` in it, because ***the container has no `sudo`***.
+
 **Step 2.** Edit `raven.toml`:
-- set `sudo_tools = []`, because ***the container has no `sudo`***,
 - turn on `[scope]`,
 - set `output_dir` as described below.
 
-**Step 3.** Mount it back and name it in `RAVEN_CONFIG`:
+**Step 3.** Mount it over the image's config:
 
 ```json
 {
@@ -107,6 +116,9 @@ docker run --rm --entrypoint cat ghcr.io/tidynest/raven-nest-mcp:latest /usr/sha
   }
 }
 ```
+
+The `RAVEN_CONFIG` line is only needed on 0.4.2 and earlier, which do not look
+in `/etc/raven-nest/`. It does no harm on later versions.
 
 ### 3. Keep the output
 
@@ -142,17 +154,47 @@ that sits under `output_dir`.
 The same applies to a repository you would like gitleaks or trufflehog to
 scan.
 
-### 4. Raw sockets
+### 4. nmap and masscan in the image
 
-`masscan` and nmap OS detection ***need raw sockets***.
+**In short:**
+- **After version 0.4.2**, `run_nmap` works as the default user with no extra
+  flags, for every scan type, OS detection included.
+- **`run_masscan`** is no longer refused. It has not yet been seen to find a
+  port from inside the image. See below.
+- **In version 0.4.2 and earlier**, no nmap scan works as the default user.
+  Add `"-u", "0"` before the image name to run the container as root.
 
-Add these two arguments before the image name:
+**Why it needed fixing:**
+Both tools open raw sockets. The image runs as uid 10001, and a non-root
+process in a container holds no capabilities, so `--cap-add=NET_RAW` and
+`--cap-add=NET_ADMIN` never reach it. Earlier versions of this page and the
+Dockerfile said those flags were enough. They were not: nmap printed "Couldn't
+open a raw socket" and quit, and the server still reported the call as a
+success with no hosts.
 
-```
-"--cap-add=NET_RAW", "--cap-add=NET_ADMIN"
-```
+**How it works now:**
+- The nmap and masscan binaries in the image carry the `NET_RAW` file
+  capability. Docker grants `NET_RAW` to containers by default, so they get
+  their raw socket without any flag from you.
+- The image's config lists both tools in `[safety] raw_socket_tools`. That
+  tells the server they need neither root nor `sudo`, so it no longer refuses
+  `run_masscan` or `scan_type: "os"`.
 
-The capabilities go to the container process, so the tools work without root.
+**What is not confirmed, masscan:**
+In the image masscan starts and sends as the default user, with no permission
+error. Against another container on Docker's bridge network it reported no
+open ports, and it reported none as root either, where nmap found the port at
+once. So the privilege problem is solved, and masscan's results on a bridge
+network are not to be trusted. It has not been tested against a routed
+target.
+
+**Two container options that break it:**
+- **`--cap-drop=NET_RAW`**, or `--cap-drop=ALL`. nmap and masscan then
+  ***do not start at all***.
+- **`--security-opt no-new-privileges`**. They start and cannot open raw
+  sockets.
+
+Every other tool in the image works as the default user.
 
 ### Pin the version
 
@@ -210,9 +252,12 @@ cargo build --release
 
 The binary is `target/release/raven-server`.
 
-It finds the repository's `config/default.toml` ***only when its working
-directory is the repository root***, so name the config in the client entry
-and do not depend on that:
+With cargo's default `target/` directory, the server finds the repository's
+`config/default.toml` on its own. Version 0.4.2 and earlier did not.
+
+It ***does not find it*** if your build output goes somewhere else, for
+example through `CARGO_TARGET_DIR`. Naming the config in the client entry
+works in every case:
 
 ```json
 {
@@ -226,8 +271,8 @@ and do not depend on that:
 }
 ```
 
-Without `RAVEN_CONFIG` or a matching working directory the server starts on
-***the built-in defaults***.
+If the server finds no config at all, it starts on ***the built-in
+defaults***.
 
 **Local model?**
 Name the server `raven` with no hyphen.
@@ -255,12 +300,21 @@ so.
 The server takes ***the first of these that loads***:
 
 1. **The file named in the `RAVEN_CONFIG` environment variable**.
-2. **`config/default.toml` in the directory of the binary**, or one directory
-   up.
+2. **`~/.config/raven-nest/config.toml`**, or the same path under
+   `$XDG_CONFIG_HOME` if you have set it.
+3. **`/etc/raven-nest/config.toml`**.
+4. **`config/default.toml` in the directory of the binary**, or up to two
+   directories above it.
    For a binary at `target/release/raven-server` that means
-   `target/release/config/` and `target/config/`, not the repository root.
-3. **`config/default.toml` in the working directory**.
-4. **The built-in defaults**.
+   `target/release/config/`, `target/config/` and the repository's own
+   `config/`. Version 0.4.2 and earlier stopped one level short of the
+   repository root.
+5. **`config/default.toml` in the working directory**.
+6. **The built-in defaults**.
+
+Steps 2 and 3 are new after version 0.4.2. They are the simplest place to put
+a config: copy the reference file there and the server finds it wherever the
+binary lives.
 
 **How to see which one it took:**
 The server writes the choice to stderr at startup, for example
@@ -268,9 +322,11 @@ The server writes the choice to stderr at startup, for example
 - `no config found, using built-in defaults`.
 
 **Watch out:**
-If the file in `RAVEN_CONFIG` is missing or does not parse, the server logs a
-warning and moves on to the next step. ***It does not stop***. Check that
-first log line whenever your config carries a scope.
+- **After version 0.4.2**, a config file that exists but does not load
+  ***stops the server***, and the error names the file.
+- **In version 0.4.2 and earlier**, a file in `RAVEN_CONFIG` that is missing
+  or does not parse is skipped with a warning, and the server moves on to the
+  next step. Check that first log line whenever your config carries a scope.
 
 The full reference for every section is in
 [USAGE.md](USAGE.md#configuration).

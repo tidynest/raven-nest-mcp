@@ -175,24 +175,35 @@ The config file has these sections:
 The server searches for config in this order, using the first one found:
 
 1. **`RAVEN_CONFIG` env var**. An explicit file path, such as
-   `RAVEN_CONFIG=/etc/raven.toml`.
-2. **Exe-relative**. `config/default.toml` in the binary's directory or one
-   directory above it. For `target/release/raven-server` that is
-   `target/release/config/` and `target/config/`, so ***a source build does
-   not find the repository's `config/` this way***. Set `RAVEN_CONFIG` or run
-   with the repository as the working directory.
-3. **CWD**. `config/default.toml` in the current working directory.
-4. **Built-in defaults**. A hardcoded fallback if nothing else is found.
+   `RAVEN_CONFIG=/srv/engagement/raven.toml`.
+2. **Per-user file**. `$XDG_CONFIG_HOME/raven-nest/config.toml`, which is
+   `~/.config/raven-nest/config.toml` unless you have set that variable.
+3. **System-wide file**. `/etc/raven-nest/config.toml`.
+4. **Exe-relative**. `config/default.toml` in the binary's directory, or up
+   to two directories above it. For `target/release/raven-server` the third
+   place checked is the repository's own `config/`. Version 0.4.2 and earlier
+   stopped one level short of that. A build that writes outside the
+   repository, for example through `CARGO_TARGET_DIR`, ***still needs
+   `RAVEN_CONFIG`*** or the repository as the working directory.
+5. **CWD**. `config/default.toml` in the current working directory.
+6. **Built-in defaults**. A hardcoded fallback if no file exists in any of
+   those places.
+
+Steps 2 and 3 are new after version 0.4.2.
 
 If all fail, the server starts with the built-in defaults:
 - a 600s timeout,
 - output at `/tmp/raven-nest`,
 - the scope off,
-- every wrapped tool allowed except `gitleaks` and `trufflehog`, which the
-  built-in allowlist leaves out.
+- every wrapped tool allowed. Version 0.4.2 and earlier left `gitleaks` and
+  `trufflehog` out of the built-in allowlist.
 
-A `RAVEN_CONFIG` file that is missing or does not parse is ***skipped with a
-warning on stderr***, and the search continues down this list.
+**A config file that fails to load:**
+- **After version 0.4.2**, any config file that exists but cannot be read or
+  parsed ***stops the server*** with an error that names the file. So does a
+  `RAVEN_CONFIG` that points at a missing file.
+- **In version 0.4.2 and earlier**, such a file is skipped with a warning on
+  stderr, and the search continues down this list.
 
 ### `[safety]` - Tool Allowlisting and Limits
 
@@ -230,7 +241,7 @@ max_output_chars = 50000
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `allowed_tools` | string list | every wrapped tool except `gitleaks` and `trufflehog` | Allowlisted tool binaries. Calls for unlisted tools are rejected before execution. Remove tools to restrict what the AI can invoke. |
+| `allowed_tools` | string list | every wrapped tool | Allowlisted tool binaries. Calls for unlisted tools are rejected before execution. Remove tools to restrict what the AI can invoke. |
 | `max_output_chars` | integer | 50000 | Truncation limit for subprocess output. When exceeded, keeps 70% from the start and 30% from the end with a marker in between. Uses char boundaries for UTF-8 safety. Overridden by `context_budget` when set. |
 | `context_budget` | integer | 0 (disabled) | Model context window size in characters. When > 0, derives output caps automatically so ~4 tool outputs fit in the context. See table below. |
 | `sqlmap_max_level` | integer (1-5) | 2 | Caps sqlmap `--level`. Higher levels add more injection vectors but are slower and noisier. |
@@ -239,6 +250,7 @@ max_output_chars = 50000
 | `masscan_max_rate` | integer | 1000 | Max packets/sec for masscan. High rates can disrupt networks - increase only with explicit authorisation. |
 | `tool_paths` | table | empty | Map of tool name to absolute binary path, for tools not on `$PATH`. Falls back to `$PATH` lookup if not specified. |
 | `sudo_tools` | string list | `[]` | Tools invoked via `sudo` for privilege escalation. See [sudo_tools](#sudo_tools---privilege-escalation) below. |
+| `raw_socket_tools` | string list | `[]` | Tools whose binary can already open raw sockets, for example after `setcap cap_net_raw+eip`. Skips the server's root check for `run_masscan` and nmap's `os` scan type. It grants nothing by itself. New after 0.4.2. |
 | `expected_tool_calls` | integer | 10 | Expected tool calls per session. Used by the session budget tracker to plan per-call output allocation. Higher values yield smaller per-call caps. Typical pentest: 6-12 calls. |
 | `auto_save_findings` | bool | `false` | Auto-extract findings from scan output (nmap, nuclei, nikto, dalfox, sqlmap, testssl, gitleaks, trufflehog) into the finding store. Opt-in. |
 | `auto_save_min_severity` | string | `medium` | Minimum severity an auto-extracted finding must meet to be saved (`info`-`critical`). |
@@ -360,6 +372,19 @@ When a tool is listed in `sudo_tools`, the executor invokes it as
 `sudo /usr/bin/nmap <args>` instead of `nmap <args>`.
 
 The tool handlers skip their root-privilege check when sudo is configured.
+
+**Without sudo: `raw_socket_tools`.**
+If a binary carries the `NET_RAW` file capability, it needs neither root nor
+`sudo`. List it in `raw_socket_tools`, and the handlers skip the same check:
+
+```toml
+[safety]
+raw_socket_tools = ["nmap", "masscan"]
+```
+
+The setting ***grants nothing***. It only tells the server not to refuse. A
+tool listed here without the capability fails when it runs. The container
+image is set up this way, see [INSTALL.md](INSTALL.md#4-nmap-and-masscan-in-the-image).
 
 ### `[scope]` - Engagement Authorisation
 
@@ -601,8 +626,8 @@ CVEs by CVSS score***. Other scripts are summarised to single-line entries.
 - **quick** runs `-T4 -F`, the top 100 ports with aggressive timing. When
   `ports` is specified, `-F` is omitted.
 - **service** runs `-sV` for version detection.
-- **os** runs `-O` for OS fingerprinting. It ***requires root or the
-  `sudo_tools` config***.
+- **os** runs `-O` for OS fingerprinting. It ***requires root, the
+  `sudo_tools` config or the `raw_socket_tools` config***.
 - **vuln** runs `-sV --script=vuln`, the vulnerability scripts.
 
 #### `run_whatweb`
@@ -620,8 +645,8 @@ bracket-notation tags.
 #### `run_masscan`
 High-speed port scanning.
 
-It ***requires root or the `sudo_tools` config*** and returns an error if
-neither is available.
+It ***requires root, the `sudo_tools` config or the `raw_socket_tools`
+config*** and returns an error if none is available.
 
 Output is parsed to extract discovered open ports.
 
@@ -1504,7 +1529,7 @@ When the server rejects a request, errors follow predictable formats:
 | Shell metachar | `invalid target: forbidden character: ';'` |
 | Tool not allowed | `tool not allowed: burpsuite` |
 | Invalid CIDR | `invalid target: 192.168.1.0/33` |
-| Root required | `masscan requires root privileges - either run the server as root or add "masscan" to sudo_tools in config` |
+| Root required | `masscan requires root privileges - either run the server as root or add "masscan" to sudo_tools in config (or to raw_socket_tools if the binary has raw-socket file capabilities)` |
 | Timeout | `command timed out: nmap after 600s` |
 | Tool exit error | `nmap failed (exit exit status: 1): <stderr output>` |
 | FUZZ keyword missing | `URL must contain the FUZZ keyword (e.g. http://example.com/FUZZ)` |

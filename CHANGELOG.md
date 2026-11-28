@@ -18,16 +18,66 @@ minor versions may carry feature additions and refinements).
 - Corrections where the docs disagreed with the code: the Metasploit module
   blocklist matches at path boundaries, not substrings, so a bare word such
   as `eternalblue` blocks nothing. The audit log does not cover rejected
-  calls, timed-out runs, `ping_target` or Metasploit RPC. The built-in
-  defaults leave `gitleaks` and `trufflehog` out of the allowlist. A source
-  build does not find the repository's `config/default.toml` unless it runs
-  from the repository root. `SECURITY.md` now names 0.4.x as supported.
+  calls, timed-out runs, `ping_target` or Metasploit RPC. `SECURITY.md` now
+  names 0.4.x as supported.
 - The ollmcp and mcphost links in `docs/LOCAL_AI_INTEGRATION.md` pointed at
   repositories that do not exist and now point at the real ones.
 - `docs/assets/social-preview.png` is a 1280x640 image for the repository's
   social preview setting.
+- `docs/INSTALL.md` no longer claims that `--cap-add=NET_RAW` and
+  `--cap-add=NET_ADMIN` let nmap and masscan run as the image's default user.
+  See the nmap entry under Fixed.
+
+### Added
+- `[safety] raw_socket_tools`. It lists tools whose binary can already open
+  raw sockets, for example through the `NET_RAW` file capability. For those,
+  the server skips the root check that otherwise refuses `run_masscan` and
+  nmap's `os` scan type. The setting grants nothing by itself.
+- The container image ships its own config at `/etc/raven-nest/config.toml`,
+  from `config/container.toml`. Before, the image had no config where the
+  server looked and always ran on built-in defaults. The shipped file keeps
+  those defaults, with the scope and the context budget off, and adds
+  `raw_socket_tools` for nmap and masscan. Mount your own file over it to
+  change settings.
+- Two standard config locations, checked after `RAVEN_CONFIG` and before the
+  paths near the executable: `$XDG_CONFIG_HOME/raven-nest/config.toml`, which
+  is `~/.config/raven-nest/config.toml` by default, and
+  `/etc/raven-nest/config.toml`. An installed binary no longer needs an
+  environment variable to find its config.
+
+### Changed
+- **A config file that exists but fails to load now stops the server.**
+  Before, a `RAVEN_CONFIG` that was missing or did not parse was skipped with
+  a warning, and so was a broken `config/default.toml`. The server then
+  started on the next config it found, often the built-in defaults with the
+  scope off. It now exits with an error that names the file. If you relied on
+  a stale `RAVEN_CONFIG` being ignored, unset it.
 
 ### Fixed
+- **nmap works in the container image again.** Since the image went non-root
+  in 0.3.0, every `run_nmap` call in it failed: Kali's wrapper runs nmap with
+  `--privileged` for a non-root user, a non-root process in a container holds
+  no capabilities, and `--cap-add` does not change that. nmap quit with
+  "Couldn't open a raw socket" and the server reported a success with no
+  hosts. The Dockerfile now gives the nmap and masscan binaries the `NET_RAW`
+  file capability, which Docker grants by default, so `run_nmap` works as the
+  default user with no extra flags. `NET_ADMIN` is left out on purpose: a
+  binary with a file capability the container lacks does not start. Checked
+  by building the image and running `run_nmap` over stdio as uid 10001.
+  With `raw_socket_tools` set in the image's config, nmap's `os` scan type
+  works there too, checked the same way against another container.
+  `run_masscan` is no longer refused. It found no open port on Docker's
+  bridge network, as root or not, so its results there are unconfirmed.
+- `run_gitleaks` and `run_trufflehog` work without a config file. The
+  built-in default allowlist left both out, so the container image and any
+  other install that ran on built-in defaults answered "tool not allowed". A
+  new test compares the built-in list with `config/default.toml` so the two
+  cannot drift apart again.
+- A source build finds the repository's `config/default.toml`. The lookup
+  beside the executable stopped at `target/`, one directory short of the
+  repository root, so `target/release/raven-server` started on built-in
+  defaults unless it ran from the repository root or had `RAVEN_CONFIG` set.
+  It now checks one directory further up.
 - The AUR recipe builds again. It still packaged v0.2.0, and with a current
   source it failed at the final link: makepkg's default `lto` option compiles
   the C half of aws-lc-sys as GCC bitcode, which the Rust linker cannot read.
