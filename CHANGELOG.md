@@ -24,12 +24,9 @@ minor versions may carry feature additions and refinements).
   repositories that do not exist and now point at the real ones.
 - `docs/assets/social-preview.png` is a 1280x640 image for the repository's
   social preview setting.
-- `docs/INSTALL.md` now says that nmap and masscan do not work as the default
-  user in the container image, and gives `-u 0` as the workaround. The docs
-  and the Dockerfile comments claimed `--cap-add=NET_RAW` and
-  `--cap-add=NET_ADMIN` were enough. A non-root process in a container holds
-  no capabilities, so those flags change nothing for it. Found by building
-  the image and driving it over stdio. The image itself is not fixed yet.
+- `docs/INSTALL.md` no longer claims that `--cap-add=NET_RAW` and
+  `--cap-add=NET_ADMIN` let nmap and masscan run as the image's default user.
+  See the nmap entry under Fixed.
 
 ### Added
 - Two standard config locations, checked after `RAVEN_CONFIG` and before the
@@ -47,6 +44,18 @@ minor versions may carry feature additions and refinements).
   a stale `RAVEN_CONFIG` being ignored, unset it.
 
 ### Fixed
+- **nmap works in the container image again.** Since the image went non-root
+  in 0.3.0, every `run_nmap` call in it failed: Kali's wrapper runs nmap with
+  `--privileged` for a non-root user, a non-root process in a container holds
+  no capabilities, and `--cap-add` does not change that. nmap quit with
+  "Couldn't open a raw socket" and the server reported a success with no
+  hosts. The Dockerfile now gives the nmap and masscan binaries the `NET_RAW`
+  file capability, which Docker grants by default, so `run_nmap` works as the
+  default user with no extra flags. `NET_ADMIN` is left out on purpose: a
+  binary with a file capability the container lacks does not start. Checked
+  by building the image and running `run_nmap` over stdio as uid 10001.
+  `run_masscan` and nmap's `os` scan type are still refused in the image by
+  the server's own root check, and still need `-u 0`.
 - `run_gitleaks` and `run_trufflehog` work without a config file. The
   built-in default allowlist left both out, so the container image and any
   other install that ran on built-in defaults answered "tool not allowed". A

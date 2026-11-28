@@ -26,7 +26,7 @@ stands.
   - [1. Without a config file, the container uses the built-in defaults](#1-without-a-config-file-the-container-uses-the-built-in-defaults)
   - [2. Pass your own config](#2-pass-your-own-config)
   - [3. Keep the output](#3-keep-the-output)
-  - [4. nmap and masscan need root in the image](#4-nmap-and-masscan-need-root-in-the-image)
+  - [4. nmap and masscan in the image](#4-nmap-and-masscan-in-the-image)
   - [Pin the version](#pin-the-version)
   - [Reading the docs offline](#reading-the-docs-offline)
 - [Prebuilt binary](#prebuilt-binary)
@@ -143,34 +143,45 @@ that sits under `output_dir`.
 The same applies to a repository you would like gitleaks or trufflehog to
 scan.
 
-### 4. nmap and masscan need root in the image
+### 4. nmap and masscan in the image
 
-**Watch out:**
-In the image, `run_nmap` and `run_masscan` ***do not work as the default
-user***. This holds for every image since it went non-root, 0.4.2 included,
-and for every nmap scan type, not only OS detection.
+**In short:**
+- **After version 0.4.2**, `run_nmap` works as the default user with no extra
+  flags, for the `quick`, `service` and `vuln` scan types.
+- **`run_masscan` and nmap's `os` scan type** are still refused in the image.
+  Run as root for those, as shown below.
+- **In version 0.4.2 and earlier**, no nmap scan works as the default user.
 
-**Why:**
+**Why it needed fixing:**
 Both tools open raw sockets. The image runs as uid 10001, and a non-root
 process in a container holds no capabilities, so `--cap-add=NET_RAW` and
-`--cap-add=NET_ADMIN` have no effect on it. Earlier versions of this page and
-the Dockerfile comments said those flags were enough. They are not.
+`--cap-add=NET_ADMIN` never reach it. Earlier versions of this page and the
+Dockerfile said those flags were enough. They were not: nmap printed "Couldn't
+open a raw socket" and quit, and the server still reported the call as a
+success with no hosts.
 
-**What you see:**
-- nmap prints "Couldn't open a raw socket" and quits. The server still
-  reports the call as a success, with no hosts and a nonsense host count.
-- masscan prints "permission denied".
+**How it works now:**
+The nmap and masscan binaries in the image carry the `NET_RAW` file
+capability. Docker grants `NET_RAW` to containers by default, so nmap gets
+its raw socket without any flag from you.
 
-**Until the image is fixed,** run the container as root by adding this
-before the image name:
+**What still needs root:**
+The server itself refuses `run_masscan` and `scan_type: "os"` unless it runs
+as root or the tool is in `sudo_tools`. That check does not know about file
+capabilities yet. For those two, add this before the image name:
 
 ```
 "-u", "0"
 ```
 
-That gives up the non-root user for the whole server. Root in a container
-holds `NET_RAW` by default, which covers nmap. Add `"--cap-add=NET_ADMIN"` as
-well if masscan needs it on your setup.
+That gives up the non-root user for the whole server. Use it for 0.4.2 and
+earlier as well, where it is the only way to get nmap working.
+
+**Two container options that break it:**
+- **`--cap-drop=NET_RAW`**, or `--cap-drop=ALL`. nmap and masscan then
+  ***do not start at all***.
+- **`--security-opt no-new-privileges`**. They start and cannot open raw
+  sockets.
 
 Every other tool in the image works as the default user.
 

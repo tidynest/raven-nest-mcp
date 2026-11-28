@@ -33,18 +33,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       nmap masscan nuclei nikto sqlmap hydra john ffuf feroxbuster wpscan \
       whatweb subfinder httpx-toolkit dnsx dnsrecon \
       enum4linux-ng netexec gitleaks trufflehog testssl.sh \
-      iputils-ping ca-certificates \
+      iputils-ping ca-certificates libcap2-bin \
     && ln -sf /usr/bin/httpx-toolkit /usr/local/bin/httpx \
+    && setcap cap_net_raw,cap_net_bind_service+eip /usr/lib/nmap/nmap \
+    && setcap cap_net_raw+eip /usr/bin/masscan \
     && rm -rf /var/lib/apt/lists/*
 
 # Dedicated non-root runtime user (fixed uid, no --system: 10001 is outside the
 # SYS_UID_MAX range so --system would warn on every build). The server needs no
 # privilege for its own state (it creates its output dir 0700 on startup).
-# Raw-socket tools (masscan, nmap -O) still work for this user when the
-# container is run with --cap-add=NET_RAW/--cap-add=NET_ADMIN: the runtime
-# grants capabilities to the container process directly, independent of its
-# uid. The server's built-in config defaults keep sudo_tools empty, so nothing
-# tries to escalate in-image.
+#
+# Raw sockets: a non-root process in a container holds no capabilities, so
+# --cap-add does nothing for this user. nmap and masscan therefore carry file
+# capabilities, set with setcap in the apt layer above. Kali's /usr/bin/nmap
+# wrapper runs /usr/lib/nmap/nmap --privileged for any non-root user, so
+# without them nmap quits on every scan type.
+#
+# Only NET_RAW (and NET_BIND_SERVICE for nmap) is granted, both of which are in
+# Docker's default capability set. Do NOT add NET_ADMIN here: a binary whose
+# file capabilities are not all available to the container fails to exec at
+# all, so nmap would stop working unless every user passed --cap-add=NET_ADMIN.
+# For the same reason both tools fail under --cap-drop=NET_RAW, and they lose
+# raw sockets under --security-opt no-new-privileges.
+#
+# The server's built-in config defaults keep sudo_tools empty, so nothing tries
+# to escalate in-image.
 RUN useradd --uid 10001 --create-home --home-dir /var/lib/raven-nest raven
 
 COPY --from=gobuild /go/bin/katana /go/bin/dalfox /usr/local/bin/
@@ -71,8 +84,9 @@ LABEL org.opencontainers.image.source="https://github.com/tidynest/raven-nest-mc
       org.opencontainers.image.licenses="Apache-2.0" \
       io.modelcontextprotocol.server.name="io.github.tidynest/raven-nest-mcp"
 
-# Run as the dedicated non-root user. Override with `-u 0` if a workflow truly
-# needs root; prefer --cap-add=NET_RAW/NET_ADMIN for raw sockets instead.
+# Run as the dedicated non-root user. nmap and masscan get raw sockets through
+# the file capabilities set above. Override with `-u 0` only if a workflow
+# truly needs root.
 USER raven
 
 ENTRYPOINT ["raven-server"]
