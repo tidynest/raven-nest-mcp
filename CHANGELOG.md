@@ -7,6 +7,9 @@ minor versions may carry feature additions and refinements).
 
 ## [Unreleased]
 
+### Changed
+- `packaging/aur/PKGBUILD` targets 0.4.3.
+
 ## [0.4.3] - 2026-11-28
 
 nmap works in the container image again, the server finds its config in the
