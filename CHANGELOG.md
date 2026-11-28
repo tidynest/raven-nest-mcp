@@ -24,6 +24,12 @@ minor versions may carry feature additions and refinements).
   repositories that do not exist and now point at the real ones.
 - `docs/assets/social-preview.png` is a 1280x640 image for the repository's
   social preview setting.
+- `docs/INSTALL.md` now says that nmap and masscan do not work as the default
+  user in the container image, and gives `-u 0` as the workaround. The docs
+  and the Dockerfile comments claimed `--cap-add=NET_RAW` and
+  `--cap-add=NET_ADMIN` were enough. A non-root process in a container holds
+  no capabilities, so those flags change nothing for it. Found by building
+  the image and driving it over stdio. The image itself is not fixed yet.
 
 ### Added
 - Two standard config locations, checked after `RAVEN_CONFIG` and before the

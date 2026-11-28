@@ -26,7 +26,7 @@ stands.
   - [1. Without a config file, the container uses the built-in defaults](#1-without-a-config-file-the-container-uses-the-built-in-defaults)
   - [2. Pass your own config](#2-pass-your-own-config)
   - [3. Keep the output](#3-keep-the-output)
-  - [4. Raw sockets](#4-raw-sockets)
+  - [4. nmap and masscan need root in the image](#4-nmap-and-masscan-need-root-in-the-image)
   - [Pin the version](#pin-the-version)
   - [Reading the docs offline](#reading-the-docs-offline)
 - [Prebuilt binary](#prebuilt-binary)
@@ -143,17 +143,36 @@ that sits under `output_dir`.
 The same applies to a repository you would like gitleaks or trufflehog to
 scan.
 
-### 4. Raw sockets
+### 4. nmap and masscan need root in the image
 
-`masscan` and nmap OS detection ***need raw sockets***.
+**Watch out:**
+In the image, `run_nmap` and `run_masscan` ***do not work as the default
+user***. This holds for every image since it went non-root, 0.4.2 included,
+and for every nmap scan type, not only OS detection.
 
-Add these two arguments before the image name:
+**Why:**
+Both tools open raw sockets. The image runs as uid 10001, and a non-root
+process in a container holds no capabilities, so `--cap-add=NET_RAW` and
+`--cap-add=NET_ADMIN` have no effect on it. Earlier versions of this page and
+the Dockerfile comments said those flags were enough. They are not.
+
+**What you see:**
+- nmap prints "Couldn't open a raw socket" and quits. The server still
+  reports the call as a success, with no hosts and a nonsense host count.
+- masscan prints "permission denied".
+
+**Until the image is fixed,** run the container as root by adding this
+before the image name:
 
 ```
-"--cap-add=NET_RAW", "--cap-add=NET_ADMIN"
+"-u", "0"
 ```
 
-The capabilities go to the container process, so the tools work without root.
+That gives up the non-root user for the whole server. Root in a container
+holds `NET_RAW` by default, which covers nmap. Add `"--cap-add=NET_ADMIN"` as
+well if masscan needs it on your setup.
+
+Every other tool in the image works as the default user.
 
 ### Pin the version
 

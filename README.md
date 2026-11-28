@@ -152,7 +152,7 @@ The entry above runs on built-in defaults, which means
 - mount your own config,
 - keep findings and the audit log on a volume,
 - add wordlists,
-- grant raw sockets to `masscan`.
+- get nmap and masscan working, which need root in the image today.
 
 **No agent?**
 If you would sooner drive the tools by hand,
@@ -425,7 +425,7 @@ output_dir = "/var/lib/raven-nest"
 
 | Document | What is in it |
 |----------|---------------|
-| [docs/INSTALL.md](docs/INSTALL.md) | container, binary, source and Arch installs, config lookup, volumes, raw sockets |
+| [docs/INSTALL.md](docs/INSTALL.md) | container, binary, source and Arch installs, config lookup, volumes, nmap in the image |
 | [docs/USAGE.md](docs/USAGE.md) | client setup, the configuration reference, every tool parameter, troubleshooting |
 | [docs/SAFETY.md](docs/SAFETY.md) | each control, what it does not cover, the audit log format, a hardening checklist |
 | [docs/LOCAL_AI_INTEGRATION.md](docs/LOCAL_AI_INTEGRATION.md) | running with Ollama or LM Studio, tested models, context budgets, prompting |
