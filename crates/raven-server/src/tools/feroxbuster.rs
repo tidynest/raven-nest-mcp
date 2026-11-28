@@ -47,9 +47,9 @@ pub async fn run(
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
-    if let Some(ref wordlist) = req.wordlist {
-        super::validate_file_path(wordlist, &config.execution.output_dir)?;
-    }
+    // Covers the default list too: it is absent on a host without SecLists.
+    let wordlist = req.wordlist.as_deref().unwrap_or(DEFAULT_WORDLIST);
+    super::require_input_file(wordlist, &config.execution.output_dir)?;
 
     let _ticker = crate::progress::ProgressTicker::start(
         peer,
@@ -66,7 +66,6 @@ pub async fn run(
     };
     let threads = req.threads.unwrap_or(default_threads).min(200);
 
-    let wordlist = req.wordlist.as_deref().unwrap_or(DEFAULT_WORDLIST);
     let mut args = vec![
         "-u".to_string(),
         req.target.clone(),

@@ -34,9 +34,9 @@ pub async fn run(
     progress_token: Option<rmcp::model::ProgressToken>,
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     // Validate file paths - prevent reading arbitrary files
-    super::validate_file_path(&req.hash_file, &config.execution.output_dir)?;
+    super::require_input_file(&req.hash_file, &config.execution.output_dir)?;
     if let Some(ref wordlist) = req.wordlist {
-        super::validate_file_path(wordlist, &config.execution.output_dir)?;
+        super::require_input_file(wordlist, &config.execution.output_dir)?;
     }
 
     let pot_file = format!("{}/john.pot", config.execution.output_dir);
