@@ -2,8 +2,8 @@
 
 Raven Nest is an **offensive-security toolkit**. It wraps intrusive scanners and
 exploitation frameworks behind an MCP interface and is intended **only** for
-systems you own or are explicitly authorized to test. Running it against
-third-party targets without written authorization may be illegal.
+systems you own or are explicitly authorised to test. Running it against
+third-party targets without written authorisation may be illegal.
 
 ## Supported Versions
 
@@ -12,7 +12,7 @@ the default branch (`main`) receives security fixes.
 
 | Version | Supported |
 | ------- | --------- |
-| 0.2.x (latest `main`) | :white_check_mark: |
+| 0.4.x (latest `main`) | :white_check_mark: |
 | older / forks | :x: |
 
 ## Reporting a Vulnerability

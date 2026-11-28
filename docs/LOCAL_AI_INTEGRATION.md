@@ -1,21 +1,53 @@
 # Using Raven Nest with Local AI Models
 
-Guide for connecting local LLMs (via Ollama, LM Studio, etc.) to Raven Nest
-as MCP clients.
+Guide for connecting local LLMs to Raven Nest as MCP clients, through Ollama,
+LM Studio and similar runtimes.
+
+**Why do this:**
+Data control. Every tool result passes through the model, so
+- with a hosted model, your targets and findings ***go to that provider***,
+- with a model on your own machine, they stay there.
+
+The server sends nothing anywhere on its own account. Some wrapped tools do
+contact third parties, and
+[DATA_FLOW.md](DATA_FLOW.md#what-leaves-the-machine) lists which ones.
+
+**The trade:**
+Capability. Of the 14 models tested below, ***only the Qwen3 and Qwen3.5
+family was usable***, and even those need step-by-step guidance.
+
+## Contents
+
+- [Prerequisites](#prerequisites)
+- [MCP Client Options](#mcp-client-options)
+- [Server Naming: Avoid Hyphens](#server-naming-avoid-hyphens)
+- [Tool Installation](#tool-installation)
+- [Model Compatibility](#model-compatibility)
+- [Context Budget System](#context-budget-system)
+- [ANSI Stripping](#ansi-stripping)
+- [Findings: owasp_category Field](#findings-owasp_category-field)
+- [Known Issues and Workarounds](#known-issues-and-workarounds)
+- [Cookie Passthrough for Authenticated Scanning](#cookie-passthrough-for-authenticated-scanning)
+- [Prompting Strategies](#prompting-strategies)
+- [ollmcp Configuration](#ollmcp-configuration)
+- [Reproduction Testing (severity=info)](#reproduction-testing-severityinfo)
+- [Live Testing Results (2026-03-10)](#live-testing-results-2026-03-10)
+- [Resource Considerations](#resource-considerations)
 
 ## Prerequisites
 
-- Raven Nest built: `cargo build --release`
-- Ollama installed with a supported model pulled
-- An MCP client (see below)
-- Underlying security tools installed (nmap, nuclei, etc.)
+You need
+- Raven Nest built with `cargo build --release`,
+- Ollama installed with a supported model pulled,
+- an MCP client, picked from the table below,
+- the underlying security tools installed, such as nmap and nuclei.
 
 ## MCP Client Options
 
 | Client | Language | Notes |
 |--------|----------|-------|
-| [ollmcp](https://github.com/jonirrings/ollmcp) | Python | TUI with human-in-the-loop confirmation, `pipx install ollmcp` |
-| [mcphost](https://github.com/nicobailon/mcphost) | Go | CLI, `go install` from GitHub |
+| [ollmcp](https://github.com/jonigl/mcp-client-for-ollama) | Python | TUI with human-in-the-loop confirmation, `pipx install ollmcp` |
+| [mcphost](https://github.com/mark3labs/mcphost) | Go | CLI, `go install` from GitHub |
 | LM Studio | Desktop | Built-in MCP support via `.lmstudio/mcp.json` |
 
 All three use `~/.mcphost.json` or their own config file to define MCP
@@ -23,11 +55,13 @@ servers.
 
 ## Server Naming: Avoid Hyphens
 
-Many local models tokenize hyphens unpredictably, causing them to mangle
-tool names like `raven-nest.run_nmap` into `raven_nest.run_nmap` or drop the
-prefix entirely.
+Many local models ***tokenise hyphens unpredictably***.
 
-**Fix:** rename the server in your MCP config to a single unhyphenated word:
+They mangle tool names like `raven-nest.run_nmap` into
+`raven_nest.run_nmap`, or drop the prefix entirely.
+
+**Fix:**
+Rename the server in your MCP config to a single unhyphenated word:
 
 ```json
 {
@@ -40,14 +74,19 @@ prefix entirely.
 }
 ```
 
-Tools then appear as `raven.run_nmap`, `raven.list_findings`, etc. - much
-easier for smaller models to handle.
+Tools then appear as `raven.run_nmap`, `raven.list_findings` and so on,
+which is much easier for smaller models to handle.
 
 ## Tool Installation
 
-Raven Nest exposes **46 MCP endpoints** wrapping 22 security tools + 6
-Metasploit modules + ping/http + 5 scan management + 6 finding management +
-2 engagement.
+Raven Nest exposes ***46 MCP endpoints***:
+- 22 security tool wrappers,
+- 6 Metasploit tools,
+- ping and http,
+- 5 for scan management,
+- 6 for finding management,
+- 2 for engagements,
+- 3 for target discovery.
 
 ### Core Tools (likely already installed)
 
@@ -94,9 +133,15 @@ dnsrecon = "~/.local/bin/dnsrecon"
 
 ### Metasploit Integration
 
-Metasploit requires `msfrpcd` running separately. Six MCP tools are
-provided: `msf_search`, `msf_module_info`, `msf_exploit`, `msf_auxiliary`,
-`msf_sessions`, `msf_post`.
+Metasploit needs ***`msfrpcd` running separately***.
+
+Six MCP tools are provided:
+- `msf_search`,
+- `msf_module_info`,
+- `msf_exploit`,
+- `msf_auxiliary`,
+- `msf_sessions`,
+- `msf_post`.
 
 Enable in config:
 
@@ -112,17 +157,22 @@ ssl = true
 
 Start the daemon: `msfrpcd -P <password> -a 127.0.0.1 -p 55553 -n -f`
 
-See `docs/METASPLOIT.md` for full setup.
+**Read more:**
+`docs/METASPLOIT.md` has the full setup.
 
 ## Model Compatibility
 
 ### Recommended Models (by tool-calling reliability)
 
-Best-to-worst for Raven Nest tool calling. The Notes column is hands-on
-testing against this server. The Tool F1 column is not: those scores are the
+The table runs from best to worst for Raven Nest tool calling.
+
+**The Notes column** is hands-on testing against this server.
+
+**The Tool F1 column** is ***not hands-on testing***. Those scores are the
 tool-selection F1 published in the
 [Docker practical evaluation](https://www.docker.com/blog/local-llm-tool-calling-a-practical-evaluation/)
-(June 2025, 21 models, 3570 test cases), measured on Docker's own test set.
+and measured on Docker's own test set. That study dates from June 2025 and
+covers 21 models and 3570 test cases.
 
 | Model | Size | VRAM (8GB fit?) | Tool F1 (Docker eval) | Notes |
 |-------|------|-----------------|-----------------------|-------|
@@ -131,15 +181,21 @@ tool-selection F1 published in the
 | Qwen3 14B (dense) | ~10 GB | No (CPU offload) | 0.971 at Q4_K_M | Tested. Correct tool selection in batch mode. Fabricates in interactive. ~8 tok/s with partial offload. |
 
 Qwen3.5 9B was released after the Docker study, so it has no published score
-there. Its figure is my own estimate from running it against this server, not
-a measured F1.
+there.
 
-14 models tested - only the Qwen3/3.5 family produces usable results.
-Dense models outperform MoE for tool calling - all parameters participate
-in structured output generation, reducing parameter name hallucination.
-BFCL benchmark scores do not predict Ollama compatibility - models ranked
-\#3 and #4 on BFCL both failed because their tool-calling format doesn't
-match Ollama's protocol.
+Its figure is my own estimate from running it against this server, ***not a
+measured F1***.
+
+**In short:**
+14 models were tested, and ***only the Qwen3/3.5 family produces usable
+results***.
+
+**Dense models outperform MoE for tool calling**. All parameters take part
+in structured output generation, which reduces parameter name hallucination.
+
+**BFCL benchmark scores do not predict Ollama compatibility**. The models
+ranked \#3 and #4 on BFCL both failed because their tool-calling format
+doesn't match Ollama's protocol.
 
 ### Tested Models (14 total)
 
@@ -162,30 +218,37 @@ match Ollama's protocol.
 
 ### Models to Avoid
 
-- **Ministral 3B/8B** - fails silently with >2 tools attached (fatal for 46 tools)
-- **Mistral Nemo 12B** - MCP role bug breaks multi-turn tool use
-- **xLAM 8B** - F1 0.570 in the Docker evaluation (`llama-xlam:8B-Q4_K_M`), frequently misses tools
-- **xLAM-2-8B-fc-r (v2)** - despite BFCL #4, outputs JSON text instead of using Ollama tool API
-- **Phi-4-mini** - outputs pseudo-code instead of structured tool calls
-- **Dolphin 3.0** - no tool-calling support in Ollama at all
-- **DeepSeek models** - tool calling requires thinking mode disabled
-- **Any model under 3B parameters** - unreliable for structured tool calling (Granite 4.0 at 3.4B is borderline)
+- **Ministral 3B/8B** fails silently with more than 2 tools attached, which
+  is ***fatal for 46 tools***.
+- **Mistral Nemo 12B** has an MCP role bug that breaks multi-turn tool use.
+- **xLAM 8B** scored F1 0.570 in the Docker evaluation as
+  `llama-xlam:8B-Q4_K_M`, and frequently misses tools.
+- **xLAM-2-8B-fc-r**, the v2 model, outputs JSON text instead of using the
+  Ollama tool API, despite BFCL #4.
+- **Phi-4-mini** outputs pseudo-code instead of structured tool calls.
+- **Dolphin 3.0** has ***no tool-calling support in Ollama*** at all.
+- **DeepSeek models** need thinking mode disabled for tool calling.
+- **Any model under 3B parameters** is unreliable for structured tool
+  calling. Granite 4.0 at 3.4B is borderline.
 
 ## Context Budget System
 
-The server tracks cumulative output across all tool calls in a session and
-dynamically adjusts per-tool output caps to prevent context overflow.
+The server tracks cumulative output across all tool calls in a session.
+
+It dynamically adjusts the per-tool output caps to ***prevent context
+overflow***.
 
 ### How It Works
 
 On startup, the budget subtracts estimated overhead from `context_budget`:
-- Tool schema descriptions (~350 chars x 46 tools = ~16,100 chars)
-- Server instructions (~500 chars)
-- AI reasoning per turn (~1,500 chars x `expected_tool_calls`)
+- tool schema descriptions, at ~350 chars x 46 tools = ~16,100 chars,
+- server instructions, at ~500 chars,
+- AI reasoning per turn, at ~1,500 chars x `expected_tool_calls`.
 
-The remainder is the **usable budget** - divided fairly among remaining
-expected tool calls. As the session progresses, per-call caps shrink
-automatically.
+The remainder is the **usable budget**. It is divided fairly among the
+remaining expected tool calls.
+
+As the session progresses, ***per-call caps shrink automatically***.
 
 ### Output Modes
 
@@ -205,26 +268,43 @@ Every tool response includes a status line:
 [budget: 4200/38500 used | ~3430/call | mode: full]
 ```
 
-This tells the AI model how much budget remains, the per-call allocation,
-and the current output mode. When mode switches to compact or minimal, the
-model should prioritize saving findings over running more scans.
+This tells the AI model
+- how much budget remains,
+- the per-call allocation,
+- the current output mode.
+
+When the mode switches to compact or minimal, the model should ***prioritise
+saving findings*** over running more scans.
 
 ### Adaptive Result Caps
 
 Output parsers use `scale_cap()` to dynamically scale their result limits:
-- **Full mode:** 100% of the parser's default cap
-- **Compact mode:** 50% (minimum 3 results)
-- **Minimal mode:** 25% (minimum 3 results)
+- **Full mode** uses 100% of the parser's default cap,
+- **Compact mode** uses 50%, with a minimum of 3 results,
+- **Minimal mode** uses 25%, with a minimum of 3 results.
 
-Tools that use adaptive caps: nmap (10), nuclei (25), nikto (30),
-feroxbuster (40), ffuf (40), masscan (50), subfinder (50),
-enum4linux-ng (20), dnsrecon (30), wpscan (20), dalfox (20),
-httpx (30), dnsx (30), katana (40).
+These tools use adaptive caps:
+- nmap at 10,
+- nuclei at 25,
+- nikto at 30,
+- feroxbuster at 40,
+- ffuf at 40,
+- masscan at 50,
+- subfinder at 50,
+- enum4linux-ng at 20,
+- dnsrecon at 30,
+- wpscan at 20,
+- dalfox at 20,
+- httpx at 30,
+- dnsx at 30,
+- katana at 40.
 
 ### Truncation
 
-When output exceeds the per-call cap, it is truncated preserving the head
-(70%) and tail (30%) with a `--- truncated ---` marker between them.
+When output exceeds the per-call cap, ***it is truncated***.
+
+The head, 70%, and the tail, 30%, are preserved, with a `--- truncated ---`
+marker between them.
 
 ### Recommended Context Budgets
 
@@ -245,39 +325,54 @@ expected_tool_calls = 10
 
 ### Disabling the Budget
 
-Set `context_budget = 0` to disable budgeting entirely. All tools get
-`OutputMode::Full` with a generous 50,000-char cap - suitable for cloud
-models with large context windows.
+Set `context_budget = 0` to ***disable budgeting entirely***.
+
+All tools then get `OutputMode::Full` with a generous 50,000-char cap, which
+suits cloud models with large context windows.
 
 ## ANSI Stripping
 
 All tool responses pass through centralised ANSI escape code stripping in
-`wrap_result()` before being sent to the model. This covers every code
-path - parser output, raw fallback, error messages, and background scan
-results. No ANSI codes leak through regardless of which tool or mode is
-used.
+`wrap_result()` before they are sent to the model.
+
+This covers every code path:
+- parser output,
+- raw fallback,
+- error messages,
+- background scan results.
+
+***No ANSI codes leak through***, whichever tool or mode is used.
 
 ## Findings: owasp_category Field
 
-The `save_finding` tool accepts an optional `owasp_category` field for
-classifying findings by OWASP Top 10 category (e.g. `"A03:2021 Injection"`).
-This appears in generated reports alongside severity, CVSS, and CVE.
+The `save_finding` tool accepts an ***optional `owasp_category` field*** for
+classifying findings by OWASP Top 10 category, such as
+`"A03:2021 Injection"`.
+
+It appears in generated reports alongside
+- severity,
+- CVSS,
+- CVE.
 
 ## Known Issues and Workarounds
 
 ### Parameter Name Hallucination
 
-Local models may use wrong parameter names based on their training data.
-For example, Qwen 3.5 used `"data"` instead of `"body"` for
-`http_request` - likely influenced by Python's `requests.post(data=...)`.
+Local models may use ***wrong parameter names*** based on their training
+data.
 
-**Built-in protection:** every request struct uses
-`#[serde(deny_unknown_fields)]`, so misnamed parameters produce an
-explicit error message naming the invalid field instead of being silently
-ignored.
+For example, Qwen 3.5 used `"data"` instead of `"body"` for `http_request`.
+That was likely influenced by Python's `requests.post(data=...)`.
 
-**Mitigation for users:** when a tool call fails with a field error,
-check whether the model used the correct parameter names from the schema.
+**Built-in protection:**
+Every request struct uses `#[serde(deny_unknown_fields)]`. A misnamed
+parameter produces an explicit error message that names the invalid field,
+and is ***not silently ignored***.
+
+**Mitigation for users:**
+When a tool call fails with a field error, check whether the model used the
+correct parameter names from the schema.
+
 Using explicit parameter names in your prompts helps:
 
 ```
@@ -289,117 +384,179 @@ The word "body" in the prompt primes the model to use the correct field name.
 
 ### Numeric Parameters Sent as Strings
 
-Some models serialize numbers as JSON strings (`"2"` instead of `2`).
-This affected fields like `level`, `risk`, `threads`, `port`, and
-`timeout_secs` across all tool request structs.
+Some models serialise numbers as JSON strings, sending `"2"` instead of
+`2`.
 
-**Built-in protection:** all numeric `Option` fields use a lenient
-deserializer that accepts both `2` (number) and `"2"` (string). Invalid
-strings like `"abc"` still produce a clear parse error.
+This affected fields across all tool request structs, such as
+- `level`,
+- `risk`,
+- `threads`,
+- `port`,
+- `timeout_secs`.
+
+**Built-in protection:**
+All numeric `Option` fields use a lenient deserialiser that ***accepts both
+the number `2` and the string `"2"`***.
+
+Invalid strings like `"abc"` still produce a clear parse error.
 
 ### Context Window Exhaustion
 
-Local models have limited context (typically 32-64K tokens). Raven Nest
-includes several built-in mitigations to reduce context consumption:
+Local models have limited context, typically 32-64K tokens.
 
-**Context budget tracker** - automatically scales output verbosity from
-Full to Compact to Minimal as the session progresses (see Context Budget
-System above).
+Raven Nest includes several built-in mitigations to reduce context
+consumption.
 
-**Built-in output parsers** - tool outputs are parsed into compact
-summaries instead of raw verbose output:
-- **sqlmap** - extracts injection points, DBMS info; strips progress lines
-- **nuclei** - parses JSONL into `[severity] template - name @ url` table
-- **nikto** - keeps only finding lines (prefixed with `+`)
-- **feroxbuster** - extracts `status URL` pairs, filters 404s
-- **testssl** - extracts vulnerability assessments and certificate info
-- **nmap** - parses XML into structured port/service table, NSE script results (vulners top-5 CVEs by CVSS, other scripts compressed to single-line summaries), host scripts
-- **hydra** - extracts cracked credentials
-- **whatweb** - extracts technology identifications
-- **masscan** - extracts open port/protocol pairs
-- **ffuf** - extracts discovered URLs with status codes
-- **httpx** - extracts per-URL status, title, tech, TLS
-- **dnsx** - extracts resolved DNS records
-- **katana** - extracts crawled/deduplicated endpoints
+**Context budget tracker:**
+It automatically scales output verbosity from Full to Compact to Minimal as
+the session progresses. See Context Budget System above.
+
+**Built-in output parsers:**
+Tool outputs are parsed into ***compact summaries*** instead of raw verbose
+output.
+
+- **sqlmap** extracts injection points and DBMS info, and strips progress
+  lines.
+- **nuclei** parses JSONL into a `[severity] template - name @ url` table.
+- **nikto** keeps only finding lines, which are prefixed with `+`.
+- **feroxbuster** extracts `status URL` pairs and filters 404s.
+- **testssl** extracts vulnerability assessments and certificate info.
+- **nmap** parses XML into a structured port/service table, with NSE script
+  results and host scripts. In the NSE results, vulners is cut to the top-5
+  CVEs by CVSS and other scripts are compressed to single-line summaries.
+- **hydra** extracts cracked credentials.
+- **whatweb** extracts technology identifications.
+- **masscan** extracts open port/protocol pairs.
+- **ffuf** extracts discovered URLs with status codes.
+- **httpx** extracts per-URL status, title, tech and TLS.
+- **dnsx** extracts resolved DNS records.
+- **katana** extracts crawled/deduplicated endpoints.
 
 **HTTP response reduction:**
-- HTML responses are automatically stripped to plain text (scripts, styles,
-  tags removed); HTML entities (`&copy;`, `&#169;`) decoded to characters
-- HTML comments (`<!-- ... -->`) fully stripped, no residual `-->` fragments
-- Only security-relevant response headers are returned (server,
-  set-cookie, content-type, location, etc.)
-- Response body capped at 20K characters
 
-**Report generation** returns a severity breakdown summary + file path
-instead of the full report content.
+- **HTML responses are automatically stripped to plain text**. Scripts and
+  styles are removed along with the tags. HTML entities such as `&copy;` and
+  `&#169;` are decoded to characters.
+- **HTML comments**, written as `<!-- ... -->`, are fully stripped, with no
+  residual `-->` fragments.
+- **Only security-relevant response headers are returned**, such as server,
+  set-cookie, content-type and location.
+- **The response body is capped** at 20K characters.
 
-**Server instructions** are trimmed to essentials (~600 chars vs ~1500).
+**Report generation:**
+It returns a severity breakdown summary and a file path instead of the full
+report content.
 
-**Symptoms of exhaustion:** the model returns an empty response
-("No content response received" in ollmcp), enters repetition loops,
-forgets tool names, or generates incoherent output after receiving a
-large tool response.
+**Server instructions:**
+They are trimmed to essentials, ~600 chars against ~1500.
+
+**Symptoms of exhaustion:**
+After receiving a large tool response, the model
+- returns an empty response, shown as "No content response received" in
+  ollmcp,
+- enters repetition loops,
+- forgets tool names,
+- generates incoherent output.
 
 **Live-tested context budgets:**
-- Qwen3 8B at 32K: 3-4 tool calls before exhaustion
-- Qwen3 8B at 64K (q8_0 KV cache): **8/8 steps with no exhaustion** - context problem solved
-- Qwen3.5 9B at 49K: 8/8 steps, but thinking mode causes empty responses (VRAM-limited)
-- Thinking mode accelerates exhaustion - disable it for simple tool calls
-- After clearing context (`cc` in ollmcp), the model must re-authenticate
-  since the session cookie is lost from context
+
+- **Qwen3 8B at 32K** manages 3-4 tool calls before exhaustion.
+- **Qwen3 8B at 64K with the q8_0 KV cache** completes ***8/8 steps with no
+  exhaustion***. The context problem is solved.
+- **Qwen3.5 9B at 49K** completes 8/8 steps, but thinking mode causes empty
+  responses because it is VRAM-limited.
+- **Thinking mode accelerates exhaustion**. Disable it for simple tool
+  calls.
+- **After clearing context** with `cc` in ollmcp, the model ***must
+  re-authenticate***, since the session cookie is lost from context.
 
 **Additional workarounds:**
-- Use `list_findings` (compact one-line-per-finding) instead of reading
-  full report files
-- Use `get_finding` to retrieve individual findings by ID rather than
-  loading everything at once
-- Keep loop limits modest (10-15) to prevent runaway context growth
-- Batch multiple steps into a single prompt to maximise work per context
-  fill - Qwen3 8B can chain 5-6 tool calls in one multi-step prompt
-- When the model goes silent, type `cc` to clear context and re-prompt
-  for remaining steps (re-authenticate first)
+
+- **Use `list_findings`**, which is compact at one line per finding, instead
+  of reading full report files.
+- **Use `get_finding`** to retrieve individual findings by ID rather than
+  loading everything at once.
+- **Keep loop limits modest**, at 10-15, to prevent runaway context growth.
+- **Batch multiple steps into a single prompt** to maximise work per context
+  fill. Qwen3 8B can chain 5-6 tool calls in one multi-step prompt.
+- **When the model goes silent**, type `cc` to clear context and re-prompt
+  for the remaining steps. Re-authenticate first.
 
 ### Interactive Fabrication (Qwen3.5 Variants)
 
-All Qwen3.5 variants (9B dense, 35B-A3B MoE) fabricate tool outputs
-in interactive single-step mode. This is a universal architecture issue -
-the model generates plausible-looking tool responses instead of actually
-calling tools. Once one fake response enters context, the pattern persists
-even with explicit tool names in the prompt.
+All Qwen3.5 variants, both 9B dense and 35B-A3B MoE, ***fabricate tool
+outputs*** in interactive single-step mode.
 
-**Workaround:** Use Qwen3 8B for interactive work (no fabrication). Use
-Qwen3.5 9B for batch mode only - give all steps in a single prompt and
-the model calls tools correctly.
+This is a universal architecture issue. The model generates
+plausible-looking tool responses instead of actually calling tools.
+
+Once one fake response enters context, the pattern persists even with
+explicit tool names in the prompt.
+
+**Workaround:**
+
+- **Use Qwen3 8B for interactive work**. It does not fabricate.
+- **Use Qwen3.5 9B for batch mode only**. Give all steps in a single prompt
+  and the model calls tools correctly.
 
 ### Info-Level Finding Gap
 
-Neither model reliably saves info-level findings in batch mode. Both
-prioritize higher-severity results from nikto/sqlmap. When nuclei is
-the only tool (individual mode), Qwen3 8B does save the info finding.
+Neither model reliably saves ***info-level findings*** in batch mode.
 
-**Mitigation (shipped):** enable server-side auto-save - set
-`auto_save_findings = true` (and optionally `auto_save_min_severity = "info"`)
-under `[safety]`. Qualifying nuclei findings are then extracted and saved
-automatically, independent of whether the model remembers to call
-`save_finding`.
+Both prioritise higher-severity results from nikto/sqlmap.
+
+When nuclei is the only tool, which is individual mode, Qwen3 8B does save
+the info finding.
+
+**Mitigation, shipped:**
+Enable server-side auto-save. Set `auto_save_findings = true` under
+`[safety]`, and optionally `auto_save_min_severity = "info"` as well.
+
+Qualifying findings from nuclei and seven other scanners are then extracted
+and saved automatically, ***whether or not the model remembers to call
+`save_finding`***.
+
+The seven other scanners are
+- nmap,
+- nikto,
+- dalfox,
+- sqlmap,
+- testssl,
+- gitleaks,
+- trufflehog.
 
 ### Tool Discovery Failures
 
-Some clients (mcphost) or models may only "see" a subset of available
-tools. If the model only uses filesystem tools and ignores raven tools:
+Some clients, mcphost for one, or models may only "see" a subset of the
+available tools.
 
-1. Check that the server name matches what the model expects (no hyphens)
-2. Verify tools are listed in the client's tool discovery output
-3. Try explicitly naming the tool in your prompt: "Use raven.run_nmap"
-   rather than "scan the target"
+If the model only uses filesystem tools and ignores raven tools:
+
+1. **Check that the server name matches** what the model expects, with ***no
+   hyphens***.
+2. **Verify tools are listed** in the client's tool discovery output.
+3. **Try explicitly naming the tool in your prompt**. Say "Use
+   raven.run_nmap" rather than "scan the target".
 
 ## Cookie Passthrough for Authenticated Scanning
 
-Many web targets require a session cookie. The `http_request` cookie jar
-persists across `http_request` calls within a session, but **subprocess
-tools** (sqlmap, nikto, nuclei, feroxbuster, ffuf, whatweb, wpscan,
-dalfox) run as separate OS processes and cannot access the jar. Pass
-cookies explicitly:
+Many web targets require a session cookie.
+
+The `http_request` cookie jar persists across `http_request` calls within a
+session.
+
+**Subprocess tools** run as separate OS processes and ***cannot access the
+jar***. They are
+- sqlmap,
+- nikto,
+- nuclei,
+- feroxbuster,
+- ffuf,
+- whatweb,
+- wpscan,
+- dalfox.
+
+Pass cookies explicitly:
 
 ```
 Step 1: Use raven.http_request to POST to http://localhost/login.php
@@ -407,47 +564,52 @@ Step 1: Use raven.http_request to POST to http://localhost/login.php
         -> the response includes a "Session Cookies" section with the
           PHPSESSID value (e.g. PHPSESSID=abc123; security_level=0)
 
-Step 2: Use raven.run_sqlmap with target "http://localhost/page.php?id=1"
+Step 2: Use raven.run_sqlmap with url "http://localhost/page.php?id=1"
         and cookie "PHPSESSID=abc123;security_level=0"
 ```
 
-The `http_request` response always includes a `--- Session Cookies ---`
-section showing cookies stored in the jar for that URL. All web scanning
-tools accept a `cookie` parameter to pass these explicitly.
+The `http_request` response ***always includes a `--- Session Cookies ---`
+section*** showing the cookies stored in the jar for that URL.
+
+All web scanning tools accept a `cookie` parameter to pass these explicitly.
 
 ## Prompting Strategies
 
 ### Be Explicit with Tool Names
 
-Weaker models struggle to map natural language to the right tool. Instead
-of "scan for vulnerabilities," say "use raven.run_nuclei." Once you
-confirm the model can call tools by name, you can gradually test natural
-language.
+Weaker models struggle to map natural language to the right tool.
+
+Instead of "scan for vulnerabilities", say "use raven.run_nuclei".
+
+Once you confirm the model can call tools by name, you can gradually test
+natural language.
 
 ### Batch vs Interactive
 
-- **Interactive (Qwen3 8B):** one step at a time, inspect output, decide
-  next action. The only mode where no fabrication occurs.
-- **Batch (Qwen3.5 9B, 35B-A3B):** give all steps in a single prompt.
-  The model chains tool calls autonomously. Produces 6+ granular findings
-  with professional reports. Must not be used interactively.
+- **Interactive, with Qwen3 8B**. Go one step at a time: inspect the output,
+  then decide the next action. It is ***the only mode where no fabrication
+  occurs***.
+- **Batch, with Qwen3.5 9B or 35B-A3B**. Give all steps in a single prompt
+  and the model chains tool calls autonomously. It produces 6+ granular
+  findings with professional reports. It ***must not be used
+  interactively***.
 
 ### Thinking Mode
 
-- Disable thinking mode (`tm` in ollmcp) for simple tool invocations -
-  it wastes context budget and can cause empty responses at tight VRAM.
-- At Qwen3.5 9B (7.3/8.2 GB VRAM), thinking mode is unusable.
-- Thinking mode is useful for complex reasoning about scan results.
+- **Disable thinking mode for simple tool invocations**, with `tm` in
+  ollmcp. It wastes context budget and can cause empty responses at tight
+  VRAM.
+- **At Qwen3.5 9B**, with 7.3/8.2 GB VRAM, thinking mode is ***unusable***.
+- **Thinking mode is useful** for complex reasoning about scan results.
 
 ### System Prompt Recommendations
 
-When configuring the system prompt for your local model, include:
-
-- The exact tool prefix (e.g., "Tools are prefixed with `raven.`")
-- A reminder that this is a controlled lab environment (prevents the
-  model from generating excessive safety disclaimers)
-- Parameter names for commonly used tools (reduces hallucination)
-- A note about context limits: "Keep responses concise. Do not reproduce
+When configuring the system prompt for your local model, include
+- the exact tool prefix, for example "Tools are prefixed with `raven.`",
+- a reminder that this is a controlled lab environment, which prevents the
+  model from generating excessive safety disclaimers,
+- parameter names for commonly used tools, which reduces hallucination,
+- a note about context limits: "Keep responses concise. Do not reproduce
   full tool output in your response."
 
 ### Example System Prompt
@@ -457,7 +619,7 @@ You are a penetration testing assistant with access to security scanning
 tools prefixed with "raven." (e.g., raven.run_nmap, raven.run_sqlmap).
 
 Target environment: controlled security lab on localhost. All scanning is
-authorized.
+authorised.
 
 Key tool parameters:
 - http_request: url, method, body, headers
@@ -483,7 +645,7 @@ Key tool parameters:
 All scanning tools accept a "cookie" parameter - pass session cookies
 explicitly after authenticating with http_request.
 
-Keep responses concise. Do not repeat raw tool output - summarize key
+Keep responses concise. Do not repeat raw tool output - summarise key
 findings instead.
 ```
 
@@ -520,19 +682,19 @@ EOF
 
 ### Per-Session Workflow
 
-**Interactive (Qwen3 8B @64K):**
+**Interactive, Qwen3 8B @64K:**
 ```bash
 ollmcp --model qwen3:8b -j ~/.mcphost.json
 # In ollmcp config: num_ctx=65536, context_budget=65536 in default.toml
 ```
 
-**Batch pentesting (Qwen3.5 9B @49K):**
+**Batch pentesting, Qwen3.5 9B @49K:**
 ```bash
 ollmcp --model qwen3.5:9b -j ~/.mcphost.json
 # In ollmcp config: num_ctx=49152, context_budget=49152 in default.toml
 ```
 
-Give a single comprehensive prompt that batches all steps:
+Give a single prompt that batches all the steps:
 
 ```
 Perform a full pentest of bWAPP at localhost. Execute these steps in order,
@@ -548,41 +710,47 @@ passing the session cookie to each scanning tool:
 8. Save each vulnerability as a finding (include owasp_category), then generate a report
 ```
 
-At 64K context, Qwen3 8B completes all 8 steps without exhaustion.
+At 64K context, Qwen3 8B ***completes all 8 steps*** without exhaustion.
+
 Qwen3.5 9B produces 6+ granular findings with professional reports.
 
 ### Monitoring Scans
 
 For **background scans** launched via `launch_scan`:
-- `list_scans` - show all running/completed background scans with IDs
-- `get_scan_status(scan_id)` - check if a specific scan is running/completed/failed
-- `get_scan_results(scan_id)` - retrieve output of a completed scan
+- `list_scans` shows all running and completed background scans with their
+  IDs,
+- `get_scan_status(scan_id)` checks whether a specific scan is running,
+  completed or failed,
+- `get_scan_results(scan_id)` retrieves the output of a completed scan.
 
 For **findings and reports:**
-- `list_findings` - list all saved findings sorted by severity
-- `get_finding(finding_id)` - get full finding details
-- `generate_report(title, format)` - generate a report (markdown default; json/sarif/html) from all findings
+- `list_findings` lists all saved findings sorted by severity,
+- `get_finding(finding_id)` gets the full finding details,
+- `generate_report(title, format)` generates a report from all findings, in
+  markdown by default or in json, sarif or html.
 
-Direct tool calls (run_nuclei, run_nmap, etc.) return when done - the
-MCP server sends progress notifications to the client during execution
+Direct tool calls such as run_nuclei and run_nmap ***return when done***.
+
+During execution the MCP server sends progress notifications to the client,
 when the client supplies a `progressToken` with the call.
 
 ## Reproduction Testing (severity=info)
 
 Results from 3x identical runs per configuration:
 
-**Qwen3 8B @64K - Individual (nuclei severity=info only):**
-- 3/3 runs produced exactly 1 info finding (WAF/SNMPv3/SSH detection)
-- Wording varies slightly but detections are consistent
+**Qwen3 8B @64K, individual, nuclei severity=info only:**
+- 3/3 runs produced exactly 1 info finding, from WAF/SNMPv3/SSH detection,
+- the wording varies slightly but the detections are consistent.
 
-**Qwen3 8B @64K - Batch (full pentest with nuclei severity=info):**
-- 3/3 runs produced exactly 1 high finding (SQL injection from sqlmap)
-- Info-level nuclei findings were never saved (0/3 runs)
+**Qwen3 8B @64K, batch, full pentest with nuclei severity=info:**
+- 3/3 runs produced exactly 1 high finding, SQL injection from sqlmap,
+- info-level nuclei findings were ***never saved***, in 0/3 runs.
 
-**Qwen3.5 9B @49K - Batch (full pentest with nuclei severity=info):**
-- Runs produced 6, 7, and 8 findings respectively (improving)
-- Info-level finding saved in only 1/3 runs (WAF detection)
-- Consistent: SQLi (critical), outdated Apache/PHP (high), missing headers (medium)
+**Qwen3.5 9B @49K, batch, full pentest with nuclei severity=info:**
+- the runs produced 6, 7 and 8 findings respectively, improving each time,
+- an info-level finding was saved in ***only 1/3 runs***, the WAF detection,
+- consistent across runs were SQLi as critical, outdated Apache/PHP as high,
+  and missing headers as medium.
 
 ## Live Testing Results (2026-03-10)
 
@@ -604,9 +772,10 @@ Results from 3x identical runs per configuration:
 
 ### Scaling to Larger Models
 
-All Ollama models support layer splitting between GPU (VRAM) and CPU
-(RAM) via `OLLAMA_NUM_GPU_LAYERS`. This lets you run models larger than
-your VRAM:
+All Ollama models support layer splitting between GPU, which uses VRAM, and
+CPU, which uses RAM, via `OLLAMA_NUM_GPU_LAYERS`.
+
+This lets you ***run models larger than your VRAM***:
 
 ```bash
 # Run 32B model: 20 layers on GPU, rest on CPU
@@ -632,11 +801,12 @@ Upgrade path for 8 GB VRAM + 32 GB RAM:
 | Qwen 3.5 35B-A3B (Q4) | ~22 GB | ~23 GB | Moderate (MoE, only 3B active) |
 | Qwen3-Coder 32B | ~20 GB | ~20 GB | ~3-5 tok/s with layer splitting |
 
-Running both Ollama and Raven Nest simultaneously is lightweight - the MCP
-server is a single Rust binary with minimal memory footprint. The LLM is
-the bottleneck.
+Running both Ollama and Raven Nest simultaneously is lightweight. The MCP
+server is a single Rust binary with a minimal memory footprint.
 
-### Ollama KV Cache Optimization
+***The LLM is the bottleneck***.
+
+### Ollama KV Cache Optimisation
 
 Halve KV cache VRAM cost to double effective context:
 
@@ -646,4 +816,4 @@ Environment="OLLAMA_FLASH_ATTENTION=1"
 Environment="OLLAMA_KV_CACHE_TYPE=q8_0"
 ```
 
-This is what enables Qwen3 8B to run at 64K context on 8GB VRAM.
+This is what lets Qwen3 8B run at ***64K context on 8GB VRAM***.

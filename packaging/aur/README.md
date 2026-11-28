@@ -31,5 +31,5 @@ tarball (`updpkgsums`), regenerate `.SRCINFO`, then publish.
 ## A `-bin` variant
 
 Once the release workflow attaches a prebuilt `raven-server-<tag>-x86_64-unknown-linux-gnu.tar.gz`
-to each GitHub release, a `raven-nest-mcp-bin` package can source that artifact
+to each GitHub release, a `raven-nest-mcp-bin` package can source that artefact
 directly (no `cargo`/Rust build, just `makedepends=()` + the tarball's checksum).

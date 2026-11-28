@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question or setup help
+    url: https://github.com/tidynest/raven-nest-mcp/discussions/categories/q-a
+    about: Ask in Discussions. Issues are for bugs that can be reproduced.
+  - name: Idea or tool proposal
+    url: https://github.com/tidynest/raven-nest-mcp/discussions
+    about: Start a thread under Ideas or Tool proposals.
+  - name: Security vulnerability
+    url: https://github.com/tidynest/raven-nest-mcp/security/advisories/new
+    about: Report a way past a safety control privately. Do not open a public issue.

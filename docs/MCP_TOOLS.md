@@ -9,7 +9,7 @@ attributes in [`crates/raven-server/src/server.rs`](../crates/raven-server/src/s
 
 Every tool input schema is **strict**: the request structs derive
 `#[serde(deny_unknown_fields)]`, the Rust equivalent of JSON Schema
-`additionalProperties: false`. An unrecognized argument is rejected with a
+`additionalProperties: false`. An unrecognised argument is rejected with a
 descriptive error rather than silently ignored, which both catches LLM
 parameter hallucination and prevents unexpected arguments from being smuggled
 into a tool call.

@@ -1,0 +1,49 @@
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Reproduce the problem against `scanme.nmap.org`, a lab target or `example.com` before posting.
+        Do not paste output, hostnames or credentials from a real engagement.
+        If you have found a way around a safety control, stop and report it privately as described in SECURITY.md.
+  - type: textarea
+    id: question
+    attributes:
+      label: What are you trying to do, and what happens?
+      description: Include the exact error text if there is one.
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run the server?
+      options:
+        - Container image
+        - Prebuilt binary
+        - Built from source
+        - Arch PKGBUILD
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Server version or image tag
+      placeholder: "0.4.2"
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: MCP client and model
+      placeholder: "Claude Desktop, or ollmcp with qwen3:8b"
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant config
+      description: The sections of your TOML that matter, with passwords and real targets removed. Say so if you run without a config file.
+      render: toml
+  - type: textarea
+    id: log
+    attributes:
+      label: Server log
+      description: The first lines of stderr show which config was loaded. Paste those and any warning or error lines.
+      render: text

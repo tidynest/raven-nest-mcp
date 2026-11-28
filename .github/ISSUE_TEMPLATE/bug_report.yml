@@ -1,0 +1,52 @@
+name: Bug report
+description: Something the server does wrong, with steps to reproduce it.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If the bug lets a caller get past the allowlist, the scope, a gate or a cap, do not file it here. Report it privately as described in SECURITY.md.
+        Reproduce against `scanme.nmap.org`, a lab target or `example.com`, and leave real engagement data out.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The tool call with its arguments is the most useful thing you can give.
+      render: json
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: How do you run the server?
+      options:
+        - Container image
+        - Prebuilt binary
+        - Built from source
+        - Arch PKGBUILD
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Server version or image tag
+      placeholder: "0.4.2"
+    validations:
+      required: true
+  - type: input
+    id: tool-version
+    attributes:
+      label: Version of the wrapped tool, if one is involved
+      placeholder: "nmap 7.95"
+  - type: textarea
+    id: log
+    attributes:
+      label: Server log
+      description: The stderr output around the failure, including the line that says which config was loaded.
+      render: text

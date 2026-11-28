@@ -9,6 +9,13 @@ listed here is authoritative; the others are caches or views of it.
 > matching row. A generator that parses the source would be the next step *if*
 > drift ever becomes a real problem; until then the anchors are enough.
 
+## Contents
+
+- [Request lifecycle](#request-lifecycle)
+- [Sources of truth](#sources-of-truth)
+- [Auto-saved findings](#auto-saved-findings)
+- [What leaves the machine](#what-leaves-the-machine)
+
 ## Request lifecycle
 
 A single tool call travels through these layers:
@@ -29,7 +36,7 @@ tools::<tool>::run(&config, …, req)                  (per-tool module)
   ▼
 CallToolResult  ──►  server::wrap_result  ──►  PentestError → MCP error code
   │
-  ├─(nmap, nuclei, nikto, dalfox only)
+  ├─(the eight auto-save scanners, see below)
   │     extract::auto_save(finding_store, config, tool, target, scan_id, findings)
   │       └─ writes {findings_dir}/{id}.json + updates in-RAM index
   ▼
@@ -50,7 +57,7 @@ Background scans take a parallel path: `launch_scan` hands the command to the
 | **Launch pacing** | `LAST_LAUNCH` + `PER_TARGET_LAUNCH` statics - [executor.rs](../crates/raven-core/src/executor.rs) | Global gap (`min_exec_gap_ms`) paces every launch; per-host gap (`per_target_min_gap_ms`) additionally spaces launches against the same host (URLs normalised to bare host) while independent hosts run in parallel. Reservation-based under a mutex, lock never held across `.await`; stale reservations pruned on insert. `http_request` shares the same state via `enforce_launch_pacing`. |
 | **Audit trail** (what ran, against what, when) | `{output_dir}/audit.log` - written by `audit::record` [audit.rs:121](../crates/raven-core/src/audit.rs#L121) | Append-only JSON lines, rotated when oversized. Emitted from inside `executor::run` ([executor.rs:261](../crates/raven-core/src/executor.rs#L261)) so every subprocess is logged regardless of caller; `http_request` records its own entry since it bypasses the executor. |
 | **Findings** | `FindingStore` - [store.rs](../crates/raven-report/src/store.rs) | On disk: one `{id}.json` per finding under `findings_dir`. In RAM: `HashMap<String, FindingMeta>` index ([store.rs:28](../crates/raven-report/src/store.rs#L28)) - a rebuildable view of the files, **not** a second source. Held by the server as `Arc<RwLock<FindingStore>>` ([server.rs:63](../crates/raven-server/src/server.rs#L63)). |
-| **Discovery data** (hosts/ports/services over time) | `TargetStore` - [targets.rs](../crates/raven-report/src/targets.rs) | On disk: one `{host}.json` per host under `targets_dir` (host keys sanitized before filename use). In RAM: a rebuildable summary index. Fed from the nmap structured parser (both `run_nmap` and completed background nmap scans, deduped per scan id); merges on re-scan, keeping `first_seen`. Swapped with the finding store on engagement switch. |
+| **Discovery data** (hosts/ports/services over time) | `TargetStore` - [targets.rs](../crates/raven-report/src/targets.rs) | On disk: one `{host}.json` per host under `targets_dir` (host keys sanitised before filename use). In RAM: a rebuildable summary index. Fed from the nmap structured parser (both `run_nmap` and completed background nmap scans, deduped per scan id); merges on re-scan, keeping `first_seen`. Swapped with the finding store on engagement switch. |
 | **Background scans** (status + output) | `ScanManager` - [scan_manager.rs](../crates/raven-core/src/scan_manager.rs) | Terminal output always written to `{output_dir}/scans/{id}.txt` + `{id}.json` metadata (0o600, atomic rename). Restart recovery in `recover()`: completed scans restored with output, running scans marked failed, TTL-expired/corrupt/orphan files cleaned. Terminal scans evicted after `scan_retention_secs` ([scan_manager.rs](../crates/raven-core/src/scan_manager.rs)). |
 | **HTTP session cookies** | `cookie_jar: Arc<reqwest::cookie::Jar>` - [server.rs:65](../crates/raven-server/src/server.rs#L65) | Shared across `http_request` calls only. Subprocess tools (sqlmap, nikto, …) do **not** see it - they take cookies via their own `cookie` parameter. |
 | **Context budget** | `self.budget` - used at e.g. [server.rs:241](../crates/raven-server/src/server.rs#L241) | Scales per-tool result caps (`scale_cap`) so output shrinks as the budget tightens. |
@@ -68,3 +75,58 @@ finding.
 Gated by `auto_save_findings` config, deduped on insert, capped per scan. All
 other findings are saved explicitly by the client through `save_finding`.
 Either way the `FindingStore` is the single owner - auto-save is just one writer.
+
+## What leaves the machine
+
+**In short:**
+The server is a local process. It talks to its MCP client over stdin and
+stdout and ***opens no listening port***.
+
+It has
+- no telemetry,
+- no update check,
+- no client for any AI provider.
+
+**Its own outbound connections are these two:**
+
+| Connection | When | Source |
+|------------|------|--------|
+| HTTP requests to the URL you pass | each `http_request` call | [tools/http.rs](../crates/raven-server/src/tools/http.rs) |
+| RPC to your `msfrpcd` | only with `[metasploit] enabled = true` | [msf_client.rs](../crates/raven-core/src/msf_client.rs) |
+
+**Everything else on the network comes from the wrapped tools**, which are
+the stock binaries. They talk to the target, as you would expect.
+
+Some ***also talk to third parties*** as part of their normal work:
+
+| Tool | Third party | When |
+|------|-------------|------|
+| subfinder | the public data sources it queries about the domain | always, that is how it finds subdomains |
+| nmap | the vulnerability database behind the `vulners` script | `scan_type: "vuln"` |
+| wpscan | the WPScan vulnerability API | when the call carries `api_token` |
+| trufflehog | the service that issued a found secret | when the call sets `verify: true`, off by default |
+| nuclei | ProjectDiscovery's servers for out-of-band checks and template updates | with nuclei's stock settings, which the server does not change |
+| dnsx, dnsrecon | the DNS resolvers they are configured to use | always |
+
+**How sure is this table?**
+- **The first four rows** follow from the arguments the handlers pass.
+- **The nuclei and DNS rows** describe how those tools behave by default
+  according to their own documentation. The server neither adds to nor
+  removes from that.
+
+Check a tool's own docs before relying on this table for a strict engagement,
+and ***remove a tool from `allowed_tools`*** if its lookups are not
+acceptable.
+
+**Where do the tool results go next?**
+That is decided by the MCP client and the model behind it, ***not by the
+server***.
+- **With a model running on the same machine**, they stay there.
+- **With a hosted model**, each tool result is sent to that provider as part
+  of the conversation.
+
+See
+[LOCAL_AI_INTEGRATION.md](LOCAL_AI_INTEGRATION.md) for the local setup.
+
+If you set `[network] http_proxy`, the subprocess tools and `http_request`
+send their traffic through that proxy.
