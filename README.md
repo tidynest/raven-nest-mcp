@@ -152,7 +152,7 @@ The entry above runs on built-in defaults, which means
 - mount your own config,
 - keep findings and the audit log on a volume,
 - add wordlists,
-- run masscan and nmap OS detection, which still need root in the image.
+- get nmap working on images up to 0.4.2, where it needs root.
 
 **No agent?**
 If you would sooner drive the tools by hand,

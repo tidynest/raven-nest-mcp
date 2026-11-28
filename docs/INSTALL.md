@@ -23,7 +23,7 @@ stands.
 ## Contents
 
 - [Container image](#container-image)
-  - [1. Without a config file, the container uses the built-in defaults](#1-without-a-config-file-the-container-uses-the-built-in-defaults)
+  - [1. The config the container starts on](#1-the-config-the-container-starts-on)
   - [2. Pass your own config](#2-pass-your-own-config)
   - [3. Keep the output](#3-keep-the-output)
   - [4. nmap and masscan in the image](#4-nmap-and-masscan-in-the-image)
@@ -62,35 +62,43 @@ That is enough to try it.
 
 Before you use it on real work, ***read the next four points***.
 
-### 1. Without a config file, the container uses the built-in defaults
+### 1. The config the container starts on
 
-The image carries no config in a place the server looks, so it starts on the
-defaults compiled into the binary.
+**After version 0.4.2,** the image carries its own config at
+`/etc/raven-nest/config.toml`, and the server logs `config loaded from
+/etc/raven-nest/config.toml` at startup. In that file
 
-**Those differ from `config/default.toml` in this repository:**
+- **the engagement scope** is ***off***,
+- **the context budget** is off,
+- **`sudo_tools`** is empty, because the image has no `sudo`,
+- **`raw_socket_tools`** lists nmap and masscan, see point 4.
 
-- **The engagement scope** is ***off***.
-- **The context budget** is off.
-- **`sudo_tools`** is empty, which is what you need in the container.
-- **`gitleaks` and `trufflehog`** are missing from the built-in allowlist ***in
-  version 0.4.2 and earlier***. On those images both tools answer "tool not
-  allowed" until you supply a config that lists them. Later versions allow
-  them by default.
+Its source is `config/container.toml` in this repository.
+
+**In version 0.4.2 and earlier,** the image has no config in a place the
+server looks, so it starts on the defaults compiled into the binary. They
+match the list above, with two differences:
+- there is no `raw_socket_tools` setting,
+- `gitleaks` and `trufflehog` are missing from the allowlist, so both tools
+  answer "tool not allowed" until you supply a config that lists them.
 
 ### 2. Pass your own config
 
-**Step 1.** Copy the reference config out of the image:
+**Step 1.** Copy the image's config out of it:
 
 ```bash
-docker run --rm --entrypoint cat ghcr.io/tidynest/raven-nest-mcp:latest /usr/share/doc/raven-nest-mcp/default.toml > raven.toml
+docker run --rm --entrypoint cat ghcr.io/tidynest/raven-nest-mcp:latest /etc/raven-nest/config.toml > raven.toml
 ```
 
+On 0.4.2 and earlier that file does not exist. Copy
+`/usr/share/doc/raven-nest-mcp/default.toml` instead, and set
+`sudo_tools = []` in it, because ***the container has no `sudo`***.
+
 **Step 2.** Edit `raven.toml`:
-- set `sudo_tools = []`, because ***the container has no `sudo`***,
 - turn on `[scope]`,
 - set `output_dir` as described below.
 
-**Step 3.** Mount it back and name it in `RAVEN_CONFIG`:
+**Step 3.** Mount it over the image's config:
 
 ```json
 {
@@ -108,6 +116,9 @@ docker run --rm --entrypoint cat ghcr.io/tidynest/raven-nest-mcp:latest /usr/sha
   }
 }
 ```
+
+The `RAVEN_CONFIG` line is only needed on 0.4.2 and earlier, which do not look
+in `/etc/raven-nest/`. It does no harm on later versions.
 
 ### 3. Keep the output
 
@@ -147,10 +158,11 @@ scan.
 
 **In short:**
 - **After version 0.4.2**, `run_nmap` works as the default user with no extra
-  flags, for the `quick`, `service` and `vuln` scan types.
-- **`run_masscan` and nmap's `os` scan type** are still refused in the image.
-  Run as root for those, as shown below.
+  flags, for every scan type, OS detection included.
+- **`run_masscan`** is no longer refused. It has not yet been seen to find a
+  port from inside the image. See below.
 - **In version 0.4.2 and earlier**, no nmap scan works as the default user.
+  Add `"-u", "0"` before the image name to run the container as root.
 
 **Why it needed fixing:**
 Both tools open raw sockets. The image runs as uid 10001, and a non-root
@@ -161,21 +173,20 @@ open a raw socket" and quit, and the server still reported the call as a
 success with no hosts.
 
 **How it works now:**
-The nmap and masscan binaries in the image carry the `NET_RAW` file
-capability. Docker grants `NET_RAW` to containers by default, so nmap gets
-its raw socket without any flag from you.
+- The nmap and masscan binaries in the image carry the `NET_RAW` file
+  capability. Docker grants `NET_RAW` to containers by default, so they get
+  their raw socket without any flag from you.
+- The image's config lists both tools in `[safety] raw_socket_tools`. That
+  tells the server they need neither root nor `sudo`, so it no longer refuses
+  `run_masscan` or `scan_type: "os"`.
 
-**What still needs root:**
-The server itself refuses `run_masscan` and `scan_type: "os"` unless it runs
-as root or the tool is in `sudo_tools`. That check does not know about file
-capabilities yet. For those two, add this before the image name:
-
-```
-"-u", "0"
-```
-
-That gives up the non-root user for the whole server. Use it for 0.4.2 and
-earlier as well, where it is the only way to get nmap working.
+**What is not confirmed, masscan:**
+In the image masscan starts and sends as the default user, with no permission
+error. Against another container on Docker's bridge network it reported no
+open ports, and it reported none as root either, where nmap found the port at
+once. So the privilege problem is solved, and masscan's results on a bridge
+network are not to be trusted. It has not been tested against a routed
+target.
 
 **Two container options that break it:**
 - **`--cap-drop=NET_RAW`**, or `--cap-drop=ALL`. nmap and masscan then

@@ -170,6 +170,7 @@ report***.
 | trufflehog live verification of found secrets | off | `verify: true` on the call |
 | gitleaks showing secret values | off, values are redacted | `show_secrets: true` on the call |
 | Running a tool through `sudo` | off in the built-in defaults | list the tool in `[safety] sudo_tools` |
+| Running masscan or nmap OS detection without root or `sudo` | refused | list the tool in `[safety] raw_socket_tools`, once its binary has the `NET_RAW` file capability |
 | Saving findings straight from scanner output | off | `[safety] auto_save_findings = true` |
 
 The disabled tools ***still appear in the tool list***. Calling one returns

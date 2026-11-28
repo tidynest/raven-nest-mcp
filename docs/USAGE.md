@@ -250,6 +250,7 @@ max_output_chars = 50000
 | `masscan_max_rate` | integer | 1000 | Max packets/sec for masscan. High rates can disrupt networks - increase only with explicit authorisation. |
 | `tool_paths` | table | empty | Map of tool name to absolute binary path, for tools not on `$PATH`. Falls back to `$PATH` lookup if not specified. |
 | `sudo_tools` | string list | `[]` | Tools invoked via `sudo` for privilege escalation. See [sudo_tools](#sudo_tools---privilege-escalation) below. |
+| `raw_socket_tools` | string list | `[]` | Tools whose binary can already open raw sockets, for example after `setcap cap_net_raw+eip`. Skips the server's root check for `run_masscan` and nmap's `os` scan type. It grants nothing by itself. New after 0.4.2. |
 | `expected_tool_calls` | integer | 10 | Expected tool calls per session. Used by the session budget tracker to plan per-call output allocation. Higher values yield smaller per-call caps. Typical pentest: 6-12 calls. |
 | `auto_save_findings` | bool | `false` | Auto-extract findings from scan output (nmap, nuclei, nikto, dalfox, sqlmap, testssl, gitleaks, trufflehog) into the finding store. Opt-in. |
 | `auto_save_min_severity` | string | `medium` | Minimum severity an auto-extracted finding must meet to be saved (`info`-`critical`). |
@@ -371,6 +372,19 @@ When a tool is listed in `sudo_tools`, the executor invokes it as
 `sudo /usr/bin/nmap <args>` instead of `nmap <args>`.
 
 The tool handlers skip their root-privilege check when sudo is configured.
+
+**Without sudo: `raw_socket_tools`.**
+If a binary carries the `NET_RAW` file capability, it needs neither root nor
+`sudo`. List it in `raw_socket_tools`, and the handlers skip the same check:
+
+```toml
+[safety]
+raw_socket_tools = ["nmap", "masscan"]
+```
+
+The setting ***grants nothing***. It only tells the server not to refuse. A
+tool listed here without the capability fails when it runs. The container
+image is set up this way, see [INSTALL.md](INSTALL.md#4-nmap-and-masscan-in-the-image).
 
 ### `[scope]` - Engagement Authorisation
 
@@ -612,8 +626,8 @@ CVEs by CVSS score***. Other scripts are summarised to single-line entries.
 - **quick** runs `-T4 -F`, the top 100 ports with aggressive timing. When
   `ports` is specified, `-F` is omitted.
 - **service** runs `-sV` for version detection.
-- **os** runs `-O` for OS fingerprinting. It ***requires root or the
-  `sudo_tools` config***.
+- **os** runs `-O` for OS fingerprinting. It ***requires root, the
+  `sudo_tools` config or the `raw_socket_tools` config***.
 - **vuln** runs `-sV --script=vuln`, the vulnerability scripts.
 
 #### `run_whatweb`
@@ -631,8 +645,8 @@ bracket-notation tags.
 #### `run_masscan`
 High-speed port scanning.
 
-It ***requires root or the `sudo_tools` config*** and returns an error if
-neither is available.
+It ***requires root, the `sudo_tools` config or the `raw_socket_tools`
+config*** and returns an error if none is available.
 
 Output is parsed to extract discovered open ports.
 
@@ -1515,7 +1529,7 @@ When the server rejects a request, errors follow predictable formats:
 | Shell metachar | `invalid target: forbidden character: ';'` |
 | Tool not allowed | `tool not allowed: burpsuite` |
 | Invalid CIDR | `invalid target: 192.168.1.0/33` |
-| Root required | `masscan requires root privileges - either run the server as root or add "masscan" to sudo_tools in config` |
+| Root required | `masscan requires root privileges - either run the server as root or add "masscan" to sudo_tools in config (or to raw_socket_tools if the binary has raw-socket file capabilities)` |
 | Timeout | `command timed out: nmap after 600s` |
 | Tool exit error | `nmap failed (exit exit status: 1): <stderr output>` |
 | FUZZ keyword missing | `URL must contain the FUZZ keyword (e.g. http://example.com/FUZZ)` |

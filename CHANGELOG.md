@@ -29,6 +29,16 @@ minor versions may carry feature additions and refinements).
   See the nmap entry under Fixed.
 
 ### Added
+- `[safety] raw_socket_tools`. It lists tools whose binary can already open
+  raw sockets, for example through the `NET_RAW` file capability. For those,
+  the server skips the root check that otherwise refuses `run_masscan` and
+  nmap's `os` scan type. The setting grants nothing by itself.
+- The container image ships its own config at `/etc/raven-nest/config.toml`,
+  from `config/container.toml`. Before, the image had no config where the
+  server looked and always ran on built-in defaults. The shipped file keeps
+  those defaults, with the scope and the context budget off, and adds
+  `raw_socket_tools` for nmap and masscan. Mount your own file over it to
+  change settings.
 - Two standard config locations, checked after `RAVEN_CONFIG` and before the
   paths near the executable: `$XDG_CONFIG_HOME/raven-nest/config.toml`, which
   is `~/.config/raven-nest/config.toml` by default, and
@@ -54,8 +64,10 @@ minor versions may carry feature additions and refinements).
   default user with no extra flags. `NET_ADMIN` is left out on purpose: a
   binary with a file capability the container lacks does not start. Checked
   by building the image and running `run_nmap` over stdio as uid 10001.
-  `run_masscan` and nmap's `os` scan type are still refused in the image by
-  the server's own root check, and still need `-u 0`.
+  With `raw_socket_tools` set in the image's config, nmap's `os` scan type
+  works there too, checked the same way against another container.
+  `run_masscan` is no longer refused. It found no open port on Docker's
+  bridge network, as root or not, so its results there are unconfirmed.
 - `run_gitleaks` and `run_trufflehog` work without a config file. The
   built-in default allowlist left both out, so the container image and any
   other install that ran on built-in defaults answered "tool not allowed". A
