@@ -38,7 +38,10 @@ jobs:
           strip target/release/raven-server
           mkdir -p "$DIST"
           cp target/release/raven-server "$DIST"/
-          cp README.md LICENSE CHANGELOG.md config/default.toml "$DIST"/
+          cp README.md LICENSE CHANGELOG.md SECURITY.md config/default.toml "$DIST"/
+          # The guides, in a docs/ subfolder so the README's relative links resolve.
+          mkdir -p "$DIST/docs"
+          cp docs/*.md "$DIST/docs"/
           tar -czf "${DIST}.tar.gz" "$DIST"
           sha256sum "${DIST}.tar.gz" > "${DIST}.tar.gz.sha256"
 

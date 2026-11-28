@@ -56,9 +56,9 @@ pub async fn run(
     let validation_url = req.url.replace("FUZZ", "test");
     safety::validate_target(&validation_url).map_err(crate::error::to_mcp)?;
 
-    if let Some(ref wordlist) = req.wordlist {
-        super::validate_file_path(wordlist, &config.execution.output_dir)?;
-    }
+    // Covers the default list too: it is absent on a host without SecLists.
+    let wordlist = req.wordlist.as_deref().unwrap_or(DEFAULT_WORDLIST);
+    super::require_input_file(wordlist, &config.execution.output_dir)?;
 
     // The FUZZ keyword is required - it's the substitution point for wordlist entries
     if !req.url.contains("FUZZ") {
@@ -76,7 +76,6 @@ pub async fn run(
     };
     let threads = req.threads.unwrap_or(default_threads).min(150);
 
-    let wordlist = req.wordlist.as_deref().unwrap_or(DEFAULT_WORDLIST);
     let mut args = vec![
         "-u".to_string(),
         req.url.clone(),

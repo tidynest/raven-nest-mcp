@@ -1,10 +1,14 @@
 //! WhatWeb technology identification handler.
 //!
 //! WhatWeb identifies web technologies (CMS, frameworks, servers, JS libraries)
-//! from HTTP responses. Three aggression levels control how much probing is done:
-//! - `stealthy` (default, level 1) - single request, passive analysis.
-//! - `passive` (level 2) - follows redirects, parses additional pages.
-//! - `aggressive` (level 4) - actively probes with extra requests.
+//! from HTTP responses. Three aggression levels control how much probing is done.
+//! They are whatweb's own: it has no level 2.
+//! - `stealthy` (default, level 1) - one request per target, follows redirects.
+//! - `aggressive` (level 3) - extra requests when a level 1 plugin matches.
+//! - `heavy` (level 4) - many requests per target, every plugin URL is tried.
+//!
+//! `passive` is accepted as an old name for `stealthy`. It used to map to
+//! level 2, which whatweb rejects, so the scan returned nothing.
 //!
 //! This is a fast tool (1-5s) and doesn't require a [`ProgressTicker`](crate::progress::ProgressTicker).
 
@@ -18,7 +22,7 @@ use rmcp::schemars;
 pub struct WhatwebRequest {
     #[schemars(description = "Target URL or hostname")]
     pub target: String,
-    #[schemars(description = "Aggression: 'stealthy', 'passive', 'aggressive'")]
+    #[schemars(description = "Aggression: 'stealthy' (default), 'aggressive', 'heavy'")]
     pub aggression: Option<String>,
     #[schemars(description = "Cookie string for authenticated scanning (e.g. 'PHPSESSID=abc123')")]
     pub cookie: Option<String>,
@@ -31,12 +35,7 @@ pub async fn run(
 ) -> Result<CallToolResult, rmcp::ErrorData> {
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
-    // Map aggression names to whatweb's numeric -a levels
-    let level = match req.aggression.as_deref() {
-        Some("passive") => "2",
-        Some("aggressive") => "4",
-        _ => "1", // stealthy (default)
-    };
+    let level = aggression_level(req.aggression.as_deref());
 
     let mut args = vec![
         "-a".to_string(),
@@ -57,6 +56,16 @@ pub async fn run(
         parse_whatweb_output,
     )
     .await
+}
+
+/// Map an aggression name to whatweb's numeric `-a` level. whatweb accepts
+/// 1, 3 and 4 only. Anything else, the old `passive` included, is stealthy.
+fn aggression_level(aggression: Option<&str>) -> &'static str {
+    match aggression {
+        Some("aggressive") => "3",
+        Some("heavy") => "4",
+        _ => "1",
+    }
 }
 
 /// Parse whatweb output, keeping only technology identification lines.
@@ -83,6 +92,18 @@ pub fn parse_whatweb_output(raw: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn aggression_maps_only_to_levels_whatweb_accepts() {
+        assert_eq!(aggression_level(None), "1");
+        assert_eq!(aggression_level(Some("stealthy")), "1");
+        assert_eq!(aggression_level(Some("aggressive")), "3");
+        assert_eq!(aggression_level(Some("heavy")), "4");
+        // The old name, and anything unknown, fall back to stealthy. Level 2
+        // does not exist in whatweb and must never be produced.
+        assert_eq!(aggression_level(Some("passive")), "1");
+        assert_eq!(aggression_level(Some("maximum")), "1");
+    }
 
     #[test]
     fn parse_whatweb_extracts_tech_lines() {

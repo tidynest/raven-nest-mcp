@@ -72,12 +72,14 @@ COPY config/container.toml /etc/raven-nest/config.toml
 # Ship the docs + default config inside the image so they travel with the package
 # and are readable without the repo, e.g.:
 #   docker run --rm --entrypoint cat ghcr.io/tidynest/raven-nest-mcp:latest \
-#     /usr/share/doc/raven-nest-mcp/USAGE.md
-COPY README.md LICENSE CHANGELOG.md SECURITY.md \
-     docs/USAGE.md docs/METASPLOIT.md docs/LOCAL_AI_INTEGRATION.md docs/DATA_FLOW.md \
-     docs/MCP_TOOLS.md \
+#     /usr/share/doc/raven-nest-mcp/docs/USAGE.md
+# The guides keep their docs/ subfolder so the relative links in the README and
+# between the guides still resolve. Every docs/*.md is shipped, so a new guide
+# needs no change here.
+COPY README.md LICENSE CHANGELOG.md SECURITY.md CONTRIBUTING.md \
      config/default.toml \
      /usr/share/doc/raven-nest-mcp/
+COPY docs/*.md /usr/share/doc/raven-nest-mcp/docs/
 
 # Static OCI labels so any build (incl. local `docker build`) is well-described on
 # the package page. CI additionally injects version/revision/created via

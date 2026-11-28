@@ -65,5 +65,9 @@ package() {
   install -Dm644 "config/default.toml" "$pkgdir/usr/share/$pkgname/default.toml"
   install -Dm644 "LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   install -Dm644 "README.md" "$pkgdir/usr/share/doc/$pkgname/README.md"
-  install -Dm644 "docs/USAGE.md" "$pkgdir/usr/share/doc/$pkgname/USAGE.md"
+  # Every guide, in a docs/ subfolder so the README's relative links resolve.
+  local guide
+  for guide in docs/*.md; do
+    install -Dm644 "$guide" "$pkgdir/usr/share/doc/$pkgname/$guide"
+  done
 }

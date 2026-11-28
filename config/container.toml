@@ -1,12 +1,14 @@
 # Config shipped in the container image at /etc/raven-nest/config.toml.
 #
-# It differs from config/default.toml in three settings, all because of how the
+# It differs from config/default.toml in four settings, all because of how the
 # image is built:
 #   - sudo_tools is empty: the image has no sudo.
 #   - raw_socket_tools lists nmap and masscan: their binaries carry the NET_RAW
 #     file capability (see the Dockerfile), so they need neither root nor sudo.
 #   - context_budget is 0: the image has always started with the budget off.
 #     Set it to your model's context size in characters to turn it on.
+#   - output_dir is /var/lib/raven-nest/data, under the container user's home,
+#     so one volume mounted on /var/lib/raven-nest keeps everything.
 #
 # To use your own settings, mount a file over this one:
 #   -v /absolute/path/raven.toml:/etc/raven-nest/config.toml:ro
@@ -92,9 +94,10 @@ max_concurrent_scans = 3
 # Seconds to retain a finished scan before it (and its output + metadata
 # files) are evicted (default 3600 = 1h).
 # scan_retention_secs = 3600
-# SECURITY: /tmp is world-writable. For production, use a restricted location
-# owned by the service user with mode 0700 (e.g. /var/lib/raven-nest).
-output_dir = "/tmp/raven-nest"
+# Under the container user's home. Mount a volume on /var/lib/raven-nest to
+# keep findings, reports and the audit log between runs:
+#   -v raven-nest-data:/var/lib/raven-nest
+output_dir = "/var/lib/raven-nest/data"
 
 # Optional: per-tool timeout overrides (seconds)
 # [execution.timeouts]

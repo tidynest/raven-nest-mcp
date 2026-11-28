@@ -37,7 +37,10 @@ minor versions may carry feature additions and refinements).
   from `config/container.toml`. Before, the image had no config where the
   server looked and always ran on built-in defaults. The shipped file keeps
   those defaults, with the scope and the context budget off, and adds
-  `raw_socket_tools` for nmap and masscan. Mount your own file over it to
+  `raw_socket_tools` for nmap and masscan. It also moves `output_dir` from
+  `/tmp/raven-nest` to `/var/lib/raven-nest/data`, under the container user's
+  home, so one volume mounted on `/var/lib/raven-nest` keeps findings, reports
+  and the audit log between runs. Mount your own file over the config to
   change settings.
 - Two standard config locations, checked after `RAVEN_CONFIG` and before the
   paths near the executable: `$XDG_CONFIG_HOME/raven-nest/config.toml`, which
@@ -46,6 +49,16 @@ minor versions may carry feature additions and refinements).
   environment variable to find its config.
 
 ### Changed
+- **A wordlist or input file that does not exist is now an error that names
+  it.** `run_feroxbuster`, `run_ffuf`, `run_hydra` and `run_john` check their
+  list and hash files before launch, the default wordlists included. Before,
+  a missing SecLists install showed up as empty output with a "may have
+  failed silently" warning, which reads like "nothing found".
+- The container image, the Arch package and the release tarball ship every
+  guide under `docs/`, in a `docs/` subfolder so the README's relative links
+  resolve. In the image the guides move from
+  `/usr/share/doc/raven-nest-mcp/` to `/usr/share/doc/raven-nest-mcp/docs/`.
+  `SAFETY.md` and `INSTALL.md` were not shipped at all before.
 - **A config file that exists but fails to load now stops the server.**
   Before, a `RAVEN_CONFIG` that was missing or did not parse was skipped with
   a warning, and so was a broken `config/default.toml`. The server then
@@ -54,6 +67,13 @@ minor versions may carry feature additions and refinements).
   a stale `RAVEN_CONFIG` being ignored, unset it.
 
 ### Fixed
+- `run_whatweb` with `aggression: "passive"` returned nothing. The preset
+  mapped to whatweb's level 2, which whatweb rejects, and whatweb exits with
+  status 0 when it does, so the failure looked like an empty result.
+  `aggressive` also mapped to level 4, which whatweb calls heavy. The presets
+  now follow whatweb's own levels: `stealthy` is 1, `aggressive` is 3 and the
+  new `heavy` is 4. `passive` is kept as an old name for `stealthy`. Found by
+  the test harness.
 - **nmap works in the container image again.** Since the image went non-root
   in 0.3.0, every `run_nmap` call in it failed: Kali's wrapper runs nmap with
   `--privileged` for a non-root user, a non-root process in a container holds

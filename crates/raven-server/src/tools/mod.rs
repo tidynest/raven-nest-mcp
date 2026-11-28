@@ -192,6 +192,26 @@ pub(crate) fn validate_file_path(path: &str, output_dir: &str) -> Result<(), rmc
     Ok(())
 }
 
+/// Validate a wordlist or other input file a tool will read: it must pass
+/// [`validate_file_path`] and it must exist.
+///
+/// Without the second check a missing list only shows up as the tool's own
+/// terse failure, or as empty output that reads like "nothing found".
+pub(crate) fn require_input_file(path: &str, output_dir: &str) -> Result<(), rmcp::ErrorData> {
+    validate_file_path(path, output_dir)?;
+    if !std::path::Path::new(path).is_file() {
+        return Err(rmcp::ErrorData::invalid_params(
+            format!(
+                "file not found: {path} - install it (the default wordlists come from the \
+                 seclists package) or pass a file that exists under /usr/share/, /usr/lib/ \
+                 or the output directory"
+            ),
+            None,
+        ));
+    }
+    Ok(())
+}
+
 /// Validate that a port specification contains only digits, commas, and hyphens.
 ///
 /// Nmap and masscan accept port specs like `80,443` or `1-1000`. While

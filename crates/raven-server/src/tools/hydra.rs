@@ -85,8 +85,8 @@ pub async fn run(
     safety::validate_target(&req.target).map_err(crate::error::to_mcp)?;
 
     // Validate wordlist paths - prevent reading arbitrary files
-    super::validate_file_path(&req.userlist, &config.execution.output_dir)?;
-    super::validate_file_path(&req.passlist, &config.execution.output_dir)?;
+    super::require_input_file(&req.userlist, &config.execution.output_dir)?;
+    super::require_input_file(&req.passlist, &config.execution.output_dir)?;
 
     // Both are positional args downstream - guard against flag injection.
     validate_service(&req.service)?;

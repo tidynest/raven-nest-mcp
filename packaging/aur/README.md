@@ -1,8 +1,9 @@
 # AUR packaging
 
-Source-build PKGBUILD for the [`raven-nest-mcp`](https://aur.archlinux.org/packages/raven-nest-mcp)
-AUR package. The server needs only `glibc`/`gcc-libs`; every scanner it
-drives is an `optdepends` (install only what you use - many are in BlackArch/AUR).
+Source-build PKGBUILD for `raven-nest-mcp`. **The package is not on the AUR
+yet.** Until it is, build it locally with `makepkg -si` from this directory.
+The server needs only `glibc`/`gcc-libs`; every scanner it drives is an
+`optdepends` (install only what you use - many are in BlackArch/AUR).
 
 ## Test before publishing
 
@@ -30,6 +31,8 @@ tarball (`updpkgsums`), regenerate `.SRCINFO`, then publish.
 
 ## A `-bin` variant
 
-Once the release workflow attaches a prebuilt `raven-server-<tag>-x86_64-unknown-linux-gnu.tar.gz`
-to each GitHub release, a `raven-nest-mcp-bin` package can source that artefact
-directly (no `cargo`/Rust build, just `makedepends=()` + the tarball's checksum).
+Each GitHub release carries a prebuilt
+`raven-server-<tag>-x86_64-unknown-linux-gnu.tar.gz` and its `.sha256`. A
+`raven-nest-mcp-bin` package can source that artefact directly (no
+`cargo`/Rust build, just `makedepends=()` + the tarball's checksum). No such
+package has been written yet.

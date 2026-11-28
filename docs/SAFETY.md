@@ -128,6 +128,9 @@ Each one ***must sit under*** one of
 
 Paths containing `..` are rejected.
 
+A wordlist or hash file that does not exist is ***refused before launch***,
+with an error that names the missing path.
+
 ### Timeouts and process limits
 
 **Each tool has a timeout**, 600 seconds unless you override it.
