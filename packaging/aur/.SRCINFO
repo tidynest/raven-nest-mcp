@@ -1,6 +1,6 @@
 pkgbase = raven-nest-mcp
 	pkgdesc = MCP server exposing 22 security tools + Metasploit behind a safety-hardened interface
-	pkgver = 0.4.2
+	pkgver = 0.4.3
 	pkgrel = 1
 	url = https://github.com/tidynest/raven-nest-mcp
 	arch = x86_64
@@ -32,7 +32,7 @@ pkgbase = raven-nest-mcp
 	optdepends = testssl.sh: TLS/SSL configuration testing
 	optdepends = metasploit: exploitation framework, powers the msf_* tools (off by default)
 	options = !lto
-	source = raven-nest-mcp-0.4.2.tar.gz::https://github.com/tidynest/raven-nest-mcp/archive/refs/tags/v0.4.2.tar.gz
-	sha256sums = f635cc683966d69dc5e69f7372a63bb49b6a6607b5b3d31f54c1ac179f030d7b
+	source = raven-nest-mcp-0.4.3.tar.gz::https://github.com/tidynest/raven-nest-mcp/archive/refs/tags/v0.4.3.tar.gz
+	sha256sums = 3e405c12ce8462ce92a4c81aaaea35bd5203e6a65914c4d19d19c1978f5a35d8
 
 pkgname = raven-nest-mcp
