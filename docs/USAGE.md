@@ -639,7 +639,7 @@ bracket-notation tags.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `target` | string | yes | URL or hostname |
-| `aggression` | string | no | `stealthy` (default, level 1), `passive` (level 2), `aggressive` (level 4) |
+| `aggression` | string | no | `stealthy` (default, level 1), `aggressive` (level 3), `heavy` (level 4). `passive` is accepted as an old name for `stealthy`. |
 | `cookie` | string | no | Cookie string for authenticated scanning (e.g. `PHPSESSID=abc123`) |
 
 #### `run_masscan`

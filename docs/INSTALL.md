@@ -71,14 +71,16 @@ Before you use it on real work, ***read the next four points***.
 - **the engagement scope** is ***off***,
 - **the context budget** is off,
 - **`sudo_tools`** is empty, because the image has no `sudo`,
-- **`raw_socket_tools`** lists nmap and masscan, see point 4.
+- **`raw_socket_tools`** lists nmap and masscan, see point 4,
+- **`output_dir`** is `/var/lib/raven-nest/data`, see point 3.
 
 Its source is `config/container.toml` in this repository.
 
 **In version 0.4.2 and earlier,** the image has no config in a place the
 server looks, so it starts on the defaults compiled into the binary. They
-match the list above, with two differences:
+match the list above, with three differences:
 - there is no `raw_socket_tools` setting,
+- `output_dir` is `/tmp/raven-nest`,
 - `gitleaks` and `trufflehog` are missing from the allowlist, so both tools
   answer "tool not allowed" until you supply a config that lists them.
 
@@ -96,7 +98,7 @@ On 0.4.2 and earlier that file does not exist. Copy
 
 **Step 2.** Edit `raven.toml`:
 - turn on `[scope]`,
-- set `output_dir` as described below.
+- on 0.4.2 and earlier, set `output_dir` as described below.
 
 **Step 3.** Mount it over the image's config:
 
@@ -129,7 +131,18 @@ server***:
 - discovery data,
 - the audit log.
 
-To keep them, mount a volume and point `output_dir` inside it:
+To keep them, mount a volume on the container user's home. Add this before
+the image name:
+
+```
+"-v", "raven-nest-data:/var/lib/raven-nest"
+```
+
+**After version 0.4.2** that is all. The image's config already writes to
+`/var/lib/raven-nest/data`.
+
+**On 0.4.2 and earlier** the default is `/tmp/raven-nest`, so also set this in
+your own config:
 
 ```toml
 [execution]
@@ -210,11 +223,16 @@ The image is also listed on the
 
 ### Reading the docs offline
 
-The image carries the main docs under `/usr/share/doc/raven-nest-mcp/`:
+The image carries the README under `/usr/share/doc/raven-nest-mcp/` and
+every guide under `/usr/share/doc/raven-nest-mcp/docs/`:
 
 ```bash
-docker run --rm --entrypoint cat ghcr.io/tidynest/raven-nest-mcp:latest /usr/share/doc/raven-nest-mcp/USAGE.md
+docker run --rm --entrypoint cat ghcr.io/tidynest/raven-nest-mcp:latest /usr/share/doc/raven-nest-mcp/docs/USAGE.md
 ```
+
+In version 0.4.2 and earlier the guides sit directly in
+`/usr/share/doc/raven-nest-mcp/`, without the `docs/` folder, and
+`SAFETY.md` and `INSTALL.md` are not among them.
 
 ## Prebuilt binary
 
@@ -227,7 +245,8 @@ next to it.
 - the README,
 - the changelog,
 - the licence,
-- `default.toml`.
+- `default.toml`,
+- after version 0.4.2, the guides in a `docs/` folder.
 
 **Check the download:**
 
