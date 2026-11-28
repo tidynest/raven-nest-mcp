@@ -63,6 +63,12 @@ RUN useradd --uid 10001 --create-home --home-dir /var/lib/raven-nest raven
 COPY --from=gobuild /go/bin/katana /go/bin/dalfox /usr/local/bin/
 COPY --from=build /src/target/release/raven-server /usr/local/bin/raven-server
 
+# The image's own config, in the system-wide place the server looks. It turns
+# off sudo and tells the server that nmap and masscan already have raw-socket
+# access through the file capabilities set above. Mount your own file over it
+# to change settings.
+COPY config/container.toml /etc/raven-nest/config.toml
+
 # Ship the docs + default config inside the image so they travel with the package
 # and are readable without the repo, e.g.:
 #   docker run --rm --entrypoint cat ghcr.io/tidynest/raven-nest-mcp:latest \

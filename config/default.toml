@@ -37,6 +37,12 @@ expected_tool_calls = 10
 # Requires passwordless sudo - see /etc/sudoers.d/raven-nest
 sudo_tools = ["masscan", "nmap"]
 
+# Tools whose binary can already open raw sockets without root or sudo, for
+# example after `setcap cap_net_raw+eip` on the binary. Listing a tool here
+# only skips the server's own root check for masscan and nmap OS detection. It
+# grants nothing: a tool listed without the capability fails when it runs.
+# raw_socket_tools = []
+
 # Custom binary paths for tools not resolvable via $PATH.
 # Set per-host as needed (e.g. for gem/cargo/pipx installs); leave empty otherwise.
 [safety.tool_paths]

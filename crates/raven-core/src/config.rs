@@ -109,6 +109,13 @@ pub struct SafetyConfig {
     /// (e.g. via `/etc/sudoers.d/raven-nest`).
     #[serde(default)]
     pub sudo_tools: Vec<String>,
+    /// Tools whose binary can already open raw sockets without root or `sudo`,
+    /// for example through Linux file capabilities (`setcap cap_net_raw+eip`).
+    /// Listing a tool only skips the server's own root pre-check for masscan
+    /// and nmap OS detection. It grants nothing: a tool listed here without
+    /// the capability fails when it runs.
+    #[serde(default)]
+    pub raw_socket_tools: Vec<String>,
     /// Expected tool calls per session. Used by the session budget tracker to
     /// plan output allocation. Higher values yield smaller per-call caps.
     /// Default 10 - typical pentest workflow is 6-12 tool calls.
@@ -397,6 +404,12 @@ impl SafetyConfig {
         self.sudo_tools.iter().any(|t| t == tool)
     }
 
+    /// Whether a raw-socket tool can run without the server itself being root:
+    /// it goes through `sudo`, or the operator listed it in `raw_socket_tools`.
+    pub fn has_raw_socket_access(&self, tool: &str) -> bool {
+        self.needs_sudo(tool) || self.raw_socket_tools.iter().any(|t| t == tool)
+    }
+
     /// Effective HTTP response body cap: `context_budget / 6` when set, else 20,000.
     pub fn effective_max_response_body(&self) -> usize {
         if self.context_budget > 0 {
@@ -561,6 +574,7 @@ impl Default for RavenConfig {
                 masscan_max_rate: default_masscan_max_rate(),
                 context_budget: 0,
                 sudo_tools: Vec::new(),
+                raw_socket_tools: Vec::new(),
                 expected_tool_calls: default_expected_tool_calls(),
                 auto_save_findings: false,
                 auto_save_min_severity: default_auto_save_min_severity(),
@@ -626,6 +640,7 @@ mod tests {
             masscan_max_rate: default_masscan_max_rate(),
             context_budget: 0,
             sudo_tools: Vec::new(),
+            raw_socket_tools: Vec::new(),
             expected_tool_calls: default_expected_tool_calls(),
             auto_save_findings: false,
             auto_save_min_severity: default_auto_save_min_severity(),
@@ -734,14 +749,42 @@ mod tests {
     }
 
     #[test]
-    fn default_allowlist_matches_shipped_config() {
-        let shipped: RavenConfig =
-            toml::from_str(include_str!("../../../config/default.toml")).unwrap();
+    fn default_allowlist_matches_shipped_configs() {
         let mut built_in = RavenConfig::default().safety.allowed_tools;
-        let mut from_file = shipped.safety.allowed_tools;
         built_in.sort();
-        from_file.sort();
-        assert_eq!(built_in, from_file);
+        for shipped in [
+            include_str!("../../../config/default.toml"),
+            include_str!("../../../config/container.toml"),
+        ] {
+            let shipped: RavenConfig = toml::from_str(shipped).unwrap();
+            let mut from_file = shipped.safety.allowed_tools;
+            from_file.sort();
+            assert_eq!(built_in, from_file);
+        }
+    }
+
+    #[test]
+    fn container_config_is_valid_and_needs_no_sudo() {
+        let cfg: RavenConfig =
+            toml::from_str(include_str!("../../../config/container.toml")).unwrap();
+        cfg.validate().unwrap();
+        // The image has no sudo: raw sockets come from file capabilities.
+        assert!(cfg.safety.sudo_tools.is_empty());
+        assert!(cfg.safety.has_raw_socket_access("nmap"));
+        assert!(cfg.safety.has_raw_socket_access("masscan"));
+    }
+
+    #[test]
+    fn raw_socket_access_comes_from_sudo_or_the_explicit_list() {
+        let mut safety = RavenConfig::default().safety;
+        assert!(!safety.has_raw_socket_access("masscan"));
+        safety.sudo_tools = vec!["masscan".into()];
+        assert!(safety.has_raw_socket_access("masscan"));
+        assert!(!safety.has_raw_socket_access("nmap"));
+        safety.raw_socket_tools = vec!["nmap".into()];
+        assert!(safety.has_raw_socket_access("nmap"));
+        // Listing a tool here never routes it through sudo.
+        assert!(!safety.needs_sudo("nmap"));
     }
 
     #[test]

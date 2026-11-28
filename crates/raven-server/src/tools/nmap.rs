@@ -8,8 +8,8 @@
 //! Falls back to raw text output if XML parsing fails (e.g. when nmap emits
 //! warnings before the XML document).
 //!
-//! The `os` scan type checks for root privileges via `libc::geteuid()` before
-//! launching, since nmap's `-O` requires raw sockets.
+//! The `os` scan type needs raw sockets, so it is refused before launch unless
+//! [`require_raw_sockets`](super::require_raw_sockets) finds a way to get them.
 
 use raven_core::{config::RavenConfig, executor, safety};
 use rmcp::{
@@ -52,15 +52,9 @@ pub async fn run(
         req.target.clone(),
     );
 
-    // OS detection requires root for raw sockets.
-    // Skip check when sudo is configured for nmap.
-    // SAFETY: geteuid is a trivial read-only syscall with no invariants
-    let is_root = unsafe { libc::geteuid() } == 0;
-    if req.scan_type.as_deref() == Some("os") && !is_root && !config.safety.needs_sudo("nmap") {
-        return Err(rmcp::ErrorData::invalid_params(
-            "scan_type 'os' requires root privileges - either run the server as root or add \"nmap\" to sudo_tools in config",
-            None,
-        ));
+    // OS detection needs raw sockets.
+    if req.scan_type.as_deref() == Some("os") {
+        super::require_raw_sockets(config, "nmap", "scan_type 'os'")?;
     }
 
     // Build arguments based on scan type preset

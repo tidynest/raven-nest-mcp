@@ -332,6 +332,7 @@ mod tests {
             masscan_max_rate: 1000,
             context_budget: 0,
             sudo_tools: Vec::new(),
+            raw_socket_tools: Vec::new(),
             expected_tool_calls: 10,
             auto_save_findings: false,
             auto_save_min_severity: "medium".into(),

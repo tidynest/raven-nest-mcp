@@ -1,0 +1,131 @@
+# Config shipped in the container image at /etc/raven-nest/config.toml.
+#
+# It differs from config/default.toml in three settings, all because of how the
+# image is built:
+#   - sudo_tools is empty: the image has no sudo.
+#   - raw_socket_tools lists nmap and masscan: their binaries carry the NET_RAW
+#     file capability (see the Dockerfile), so they need neither root nor sudo.
+#   - context_budget is 0: the image has always started with the budget off.
+#     Set it to your model's context size in characters to turn it on.
+#
+# To use your own settings, mount a file over this one:
+#   -v /absolute/path/raven.toml:/etc/raven-nest/config.toml:ro
+
+[safety]
+allowed_tools = [
+    "ping", "nmap", "nuclei", "nikto", "whatweb",
+    "testssl.sh", "feroxbuster", "ffuf",
+    "sqlmap", "hydra", "masscan",
+    "subfinder", "wpscan", "enum4linux-ng",
+    "dalfox", "dnsrecon", "john",
+    "httpx", "dnsx", "katana",
+    "nxc", "gitleaks", "trufflehog",
+]
+max_output_chars = 50000
+
+# Model context window (characters). When > 0, overrides max_output_chars
+# and HTTP body cap to fit ~4 tool outputs per session.
+# Examples: 32768 (Qwen 8B), 65536 (with q8_0 KV cache), 131072 (Qwen 14B)
+context_budget = 0
+
+# Expected tool calls per session. Higher = smaller per-call cap.
+# Typical pentest: 6-12 calls. Default 10.
+expected_tool_calls = 10
+
+# Safety limits for dangerous tools (prevents LLM escalation)
+# sqlmap_max_level = 2    # 1-5, default 2
+# sqlmap_max_risk = 1     # 1-3, default 1
+# hydra_max_tasks = 4     # parallel tasks, default 4
+# masscan_max_rate = 1000 # packets/sec, default 1000
+
+# Auto-save findings extracted from scan output (nmap, nuclei, nikto, dalfox,
+# sqlmap, testssl, gitleaks, trufflehog).
+# OFF by default - opt in. Qualifying findings are deduplicated and stored
+# with source = AutoExtracted. min_severity is one of info|low|medium|high|critical.
+# auto_save_findings = false
+# auto_save_min_severity = "medium"
+# auto_save_max_per_scan = 25
+
+# Tools invoked via sudo. Empty here: the image has no sudo.
+sudo_tools = []
+
+# Tools whose binary can open raw sockets on its own. In the image, nmap and
+# masscan carry the NET_RAW file capability, so the server may run masscan and
+# nmap OS detection without being root.
+raw_socket_tools = ["nmap", "masscan"]
+
+# Custom binary paths for tools not resolvable via $PATH.
+# Set per-host as needed (e.g. for gem/cargo/pipx installs); leave empty otherwise.
+[safety.tool_paths]
+# wpscan = "/path/to/wpscan"
+
+# Engagement scope - an authorization allowlist. DISABLED by default, so any
+# syntactically valid target may be scanned. When enabled=true, every target must
+# match an allowed_* entry AND must not match a denied_* entry (deny wins).
+# Loopback (localhost / 127.0.0.0/8 / ::1) is allowed regardless unless
+# allow_localhost=false. allowed_domains matches the domain and its subdomains.
+# [scope]
+# enabled = true
+# allowed_cidrs = ["10.0.0.0/8", "192.168.0.0/16"]
+# allowed_domains = ["example.com"]
+# denied_cidrs = ["169.254.169.254/32"]   # e.g. cloud metadata endpoint
+# denied_domains = []
+# allow_localhost = true
+
+[execution]
+default_timeout_secs = 600
+max_concurrent_scans = 3
+# Max concurrent synchronous tool executions (default 4). Separate from
+# max_concurrent_scans; bounds parallel run_* calls so an agent can't spawn
+# unbounded subprocesses.
+# max_concurrent_execs = 4
+# Proactive cooldown: minimum milliseconds between consecutive tool launches
+# (process-wide). Stops back-to-back aggressive tools from tripping a target's
+# WAF/rate-limiter. Default 0 (off). Max 60000. Complements reactive WAF detection.
+# min_exec_gap_ms = 1000
+# Per-target cooldown: minimum milliseconds between launches against the same
+# host, independent of the global gap above. Independent targets proceed in
+# parallel; a single host is never hit faster than this. Targets normalise to
+# their host (URL scheme/port/path dropped); tools without a network target
+# (john, gitleaks, trufflehog) are exempt. Default 0 (off). Max 60000.
+# per_target_min_gap_ms = 500
+# Seconds to retain a finished scan before it (and its output + metadata
+# files) are evicted (default 3600 = 1h).
+# scan_retention_secs = 3600
+# SECURITY: /tmp is world-writable. For production, use a restricted location
+# owned by the service user with mode 0700 (e.g. /var/lib/raven-nest).
+output_dir = "/tmp/raven-nest"
+
+# Optional: per-tool timeout overrides (seconds)
+# [execution.timeouts]
+# nmap = 900
+# nuclei = 1200
+
+# [network]
+# http_proxy = "http://127.0.0.1:8080"
+# https_proxy = "http://127.0.0.1:8080"
+# no_proxy = ["127.0.0.1", "localhost"]
+
+# Metasploit Framework RPC integration - disabled by default.
+# Operator must start msfrpcd separately:
+#   msfrpcd -P <password> -a 127.0.0.1 -p 55553 -n -f
+# [metasploit]
+# enabled = true
+# host = "127.0.0.1"
+# port = 55553
+# username = "msf"
+# password = "changeme"    # CHANGE THIS
+# ssl = true
+# max_search_results = 20
+# max_concurrent_exploits = 1
+# require_confirmation = true
+# blocked_modules = []
+
+# NetExec - credentialed network execution (SMB/WinRM/SSH/...). DISABLED by
+# default and intrusive: the run_netexec tool refuses unless enabled = true.
+# Even when enabled it permits only read-only enumeration actions (auth, shares,
+# users, groups, loggedon, sessions, disks, pass-pol) against a SINGLE host with
+# a SINGLE scalar credential - no command/module execution, no lists/spray.
+# Requires the `nxc` binary on PATH (or set [safety.tool_paths].nxc).
+# [netexec]
+# enabled = true
