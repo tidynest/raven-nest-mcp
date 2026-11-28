@@ -7,6 +7,17 @@ minor versions may carry feature additions and refinements).
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-11-28
+
+nmap works in the container image again, the server finds its config in the
+standard places and refuses to start on a broken one, and the README and
+guides are rewritten. Tool count unchanged at 46.
+
+**Behaviour changes to check before upgrading:** a config file that exists
+but does not load now stops the server, a missing wordlist is an error, the
+image writes its output to `/var/lib/raven-nest/data`, and the guides in the
+image move into a `docs/` subfolder.
+
 ### Documentation
 - The README is restructured around what the server is for, who it suits and
   what its controls do and do not cover. Detail moved into two new pages:

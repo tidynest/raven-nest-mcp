@@ -214,7 +214,7 @@ Every other tool in the image works as the default user.
 `latest` moves with each release.
 
 For an engagement, ***pin a tag*** such as
-`ghcr.io/tidynest/raven-nest-mcp:0.4.2`, so the tools and the server do not
+`ghcr.io/tidynest/raven-nest-mcp:0.4.3`, so the tools and the server do not
 change under you.
 
 The image is also listed on the
@@ -251,7 +251,7 @@ next to it.
 **Check the download:**
 
 ```bash
-sha256sum -c raven-server-v0.4.2-x86_64-unknown-linux-gnu.tar.gz.sha256
+sha256sum -c raven-server-v0.4.3-x86_64-unknown-linux-gnu.tar.gz.sha256
 ```
 
 The server ***does not look for `default.toml` beside the binary***. Either
